@@ -523,12 +523,19 @@ async function pump(chatId: string): Promise<void> {
 				continue; // the gone-chat branch rejects next iteration
 			}
 
+			// Re-read the QUEUE too: while we waited, settleSteers/abortJob may
+			// have replaced the array and new results may have landed in the
+			// replacement. The pre-wait stillPending is stale — firing from it
+			// (then deleting the registry entry) would drop those results and
+			// could fire an aborted job's result.
+			const pending = s.queues.get(chatId) ?? [];
+
 			// The runner is required — chat-handler sets it at init. If some
 			// module instance missed the wiring, fail loudly rather than hang.
 			if (!s.turnRunner) {
 				s.queues.delete(chatId);
 				const err = new Error("wake pipeline: no turn runner wired (setTurnRunner)");
-				for (const entry of stillPending) {
+				for (const entry of pending) {
 					failSteer(entry.steer, err);
 					entry.reject(err);
 				}
@@ -537,8 +544,8 @@ async function pump(chatId: string): Promise<void> {
 
 			// A live run may have delivered some markers while the gates were
 			// closed — re-check: only still-missing markers ride the wake.
-			const fire = stillPending.filter((e) => !steerDelivered(fresh.messages, e.steer.id));
-			for (const entry of stillPending) {
+			const fire = pending.filter((e) => !steerDelivered(fresh.messages, e.steer.id));
+			for (const entry of pending) {
 				if (!fire.includes(entry)) {
 					finalizeSteer(entry.steer);
 					entry.resolve();

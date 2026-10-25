@@ -1226,6 +1226,77 @@ function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ─── the parked pump's stale queue (the lost-result bug) ─────────────────────
+
+describe("wake pipeline: a parked pump re-reads the queue", () => {
+	const quiz = (id: string) =>
+		({
+			id: `a-${id}`,
+			role: "assistant",
+			content: [{ type: "toolCall", id, name: "quiz", arguments: { question: "q", choices: ["a", "b"] } }],
+			api: "openai-completions",
+			provider: "openrouter",
+			model: "test",
+			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			stopReason: "toolUse",
+			timestamp: 1,
+		}) as never;
+	const answer = (id: string) =>
+		({
+			id: `r-${id}`,
+			role: "toolResult",
+			toolCallId: id,
+			toolName: "quiz",
+			content: [{ type: "text", text: "a" }],
+			details: { answer: "a", correct: true, explanation: "" },
+			isError: false,
+			timestamp: 1,
+		}) as never;
+
+	function job(chatId: string, n: number): { jobId: string; steer: SteerMessage } {
+		const record = jobStore.createJob({ kind: "research", chatId, toolCallId: `call-stale-${n}` });
+		trackJob(record.id);
+		const result: ResearchResult = { brief: `brief ${n}`, sources: [] };
+		jobStore.updateJob(record.id, { result, activity: "delivering result" });
+		return { jobId: record.id, steer: buildSubagentSteer(record, result) };
+	}
+
+	it("a result queued after settleSteers swapped the queue still rides the wake", async () => {
+		const chat = chatStore.createChat("Test: stale pump queue");
+		trackChat(chat.id);
+		const A = job(chat.id, 1);
+		const B = job(chat.id, 2);
+		const fired: string[][] = [];
+		setTurnRunner(async (_cid, input) => {
+			fired.push(((input as SteerInput).steers as SteerMessage[]).map((x) => x.id));
+			return 200;
+		});
+		chatStore.saveMessages(chat.id, [{ id: "u1", role: "user", content: "hi", timestamp: 1 } as never, quiz("q1")]);
+
+		// A's delivery parks the pump behind the open quiz q1.
+		const dA = deliverJobResult(A.steer);
+		await delay(300);
+
+		// The learner answers q1; that run takes A in-run and ends on quiz q2.
+		assert.ok(beginTurn(chat.id));
+		registerLiveAgent(chat.id, { steer: () => {} } as never);
+		chatStore.saveMessages(chat.id, [...chatStore.getChat(chat.id)!.messages, answer("q1"), A.steer as never, quiz("q2")]);
+		unregisterLiveAgent(chat.id);
+		settleSteers(chat.id, [A.steer as never]); // replaces the queue array
+		endTurn(chat.id);
+		await dA;
+
+		// B finishes while the learner reads q2, then the learner answers.
+		const dB = deliverJobResult(B.steer);
+		await delay(300);
+		chatStore.saveMessages(chat.id, [...chatStore.getChat(chat.id)!.messages, answer("q2")]);
+
+		await dB;
+		assert.ok(fired.flat().includes(B.steer.id), "B rode a wake instead of being dropped");
+		assert.equal(jobStore.getJob(B.jobId)!.status, "done");
+	});
+});
+
 // ─── persist id hygiene (the duplicate-empty-key bug) ────────────────────────
 
 describe("persistTurn (native history, Wave B)", () => {
