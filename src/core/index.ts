@@ -52,6 +52,8 @@ export * from "./prices.ts";
 export * from "./calibration.ts";
 // Knowledge decay: per-topic FSRS memory state and the review schedule. Pure, browser-safe.
 export * from "./retention.ts";
+// The daily briefing planner (calendar + to-do + retention). Pure, browser-safe.
+export * from "./briefing.ts";
 export * from "./context-usage.ts";
 export type { ChatGPTStatus, ChatGPTControlBridge } from "./contracts/chatgpt.ts";
 export { NATIVE_SUBSCRIPTIONS } from "./contracts/subscriptions.ts";

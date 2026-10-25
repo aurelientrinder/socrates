@@ -44,3 +44,13 @@ export { runPiTurn, piTurnResponse, type PiTurnHandle, type PiTurnSpec } from ".
 export * from "./observability.ts";
 export * from "./model-catalog.ts";
 export { sessionCost } from "./pricing.ts";
+// The daily briefing (calendar + to-do + retention → what to study first).
+export * from "./briefing.ts";
+export {
+	googleCalendarStatus,
+	startGoogleSignIn,
+	cancelGoogleSignIn,
+	disconnectGoogle,
+	type GoogleCalendarStatus,
+} from "./integrations/google-calendar.ts";
+export { TASK_PROVIDERS } from "./integrations/todoist.ts";

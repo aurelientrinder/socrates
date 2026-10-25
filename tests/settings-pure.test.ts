@@ -253,6 +253,9 @@ describe("classifyKeys — the Keys section's two-group projection", () => {
 			"DEEPGRAM_API_KEY",
 			"TAVILY_API_KEY",
 			"BRAVE_API_KEY",
+			"GOOGLE_OAUTH_CLIENT_ID",
+			"GOOGLE_OAUTH_CLIENT_SECRET",
+			"TODOIST_API_TOKEN",
 		]);
 		assert.ok(out.toolRows[0]!.present);
 		assert.ok(!out.toolRows[1]!.present);
