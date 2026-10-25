@@ -225,7 +225,13 @@ async function compact(deps: CompactionDeps, chatId: string): Promise<void> {
 			at: new Date().toISOString(),
 		};
 		const marker = newCompactionMarker(trimmed, details);
-		deps.chatStore.saveMessages(chatId, [...messages, marker]);
+		// Write onto a FRESH read, never the pre-summary snapshot: anything
+		// persisted during the summary (a dismissal in the reading pause, a
+		// write-ahead) must survive. The marker is positional through
+		// firstKeptMessageId, so it can land after those appends.
+		const current = deps.chatStore.getChat(chatId)?.messages;
+		if (!current || !current.some((m) => m.id === firstKept.id)) return; // record rewritten meanwhile
+		deps.chatStore.saveMessages(chatId, [...current, marker]);
 		// The money channel: the summary is a real model call on the
 		// session's own engine — its usage keys to the marker (provenance:
 		// the transcript shows the compaction divider at the marker).
@@ -274,7 +280,13 @@ export async function ensureCompacted(deps: CompactionDeps, chatId: string): Pro
 	const record = deps.chatStore.getChat(chatId);
 	if (!record) return;
 	if (projectedContextTokens(record.messages, deps.systemPromptTokens) <= deps.thresholdTokens) return;
-	if (state().inFlight.has(chatId)) return; // a concurrent caller started it while we awaited
+	// A concurrent caller started it while we awaited: wait it out too, so
+	// nothing model-facing interleaves with the running compaction.
+	const running = state().inFlight.get(chatId);
+	if (running) {
+		await running;
+		return;
+	}
 	const run = compact(deps, chatId);
 	state().inFlight.set(chatId, run);
 	try {

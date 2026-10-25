@@ -425,6 +425,46 @@ describe("send (one input event, verbatim consumption)", () => {
 		await done;
 	});
 
+describe("send after an error (the stuck-composer pin)", () => {
+	it("a refused send leaves the session able to send again", async () => {
+		const posts: string[] = [];
+		let refuse = true;
+		globalThis.fetch = dietFetch({
+			onPost: (b) => posts.push(b),
+			post: () =>
+				refuse ? new Response(JSON.stringify({ error: "models_not_configured" }), { status: 503 }) : Response.json({ ok: true }),
+			stream: () => sseResponse({ type: "agent_start" }, { type: "agent_end", messages: [] }, "[DONE]"),
+		});
+		const m = model();
+		await m.send({ type: "text", text: "first" });
+		assert.equal(m.getState().status, "error");
+		// The BYOK refusal flow: clear the banner, the learner configures a
+		// model, then re-sends. The retry must reach the server.
+		m.clearError();
+		assert.equal(m.getState().status, "ready");
+		refuse = false;
+		await m.send({ type: "text", text: "retry" });
+		assert.equal(posts.length, 2);
+		assert.equal(JSON.parse(posts[1]!).input.text, "retry");
+	});
+
+	it("a retry goes through even without clearError", async () => {
+		const posts: string[] = [];
+		let calls = 0;
+		globalThis.fetch = dietFetch({
+			onPost: (b) => posts.push(b),
+			post: () => (calls++ === 0 ? new Response("boom", { status: 500 }) : Response.json({ ok: true })),
+			stream: () => sseResponse({ type: "agent_start" }, { type: "agent_end", messages: [] }, "[DONE]"),
+		});
+		const m = model();
+		await m.send({ type: "text", text: "first" });
+		assert.equal(m.getState().status, "error");
+		await m.send({ type: "text", text: "again" });
+		assert.equal(posts.length, 2);
+		assert.equal(m.getState().status, "ready");
+	});
+});
+
 it("Wave C: markers injected mid-run (custom role, follow-up delivery) append to the tail by id", () => {
 	// A never-settling fetch: the send only needs to flip the model into its
 	// streaming status synchronously — its POST floats (never rejects) while

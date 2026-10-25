@@ -132,6 +132,42 @@ describe("the compaction service", () => {
 		assert.equal(summarizeCalls, before + 1, "exactly one summary however many gates race");
 	});
 
+	it("a concurrent gate WAITS for the in-flight compaction instead of slipping past it", async () => {
+		const chatId = overThresholdChat("compact: concurrent gate");
+		let release!: () => void;
+		const gate = new Promise<void>((done) => { release = done; });
+		const base = depsOf(chatId, 40_000);
+		const deps = { ...base, summarize: async (prompt: string) => { await gate; return base.summarize!(prompt, base.engine); } };
+		let aDone = false, bDone = false;
+		const a = ensureCompacted(deps, chatId).then(() => { aDone = true; });
+		const b = ensureCompacted(deps, chatId).then(() => { bDone = true; });
+		await new Promise((r) => setTimeout(r, 20));
+		assert.equal(aDone, false);
+		assert.equal(bDone, false, "the second gate must not open while the summary runs");
+		release();
+		await Promise.all([a, b]);
+		assert.ok(activeCompactionOf(chatStore.getChat(chatId)!.messages));
+	});
+
+	it("messages persisted during the summary survive the marker write", async () => {
+		const chatId = overThresholdChat("compact: fresh write");
+		let release!: () => void, entered!: () => void;
+		const gate = new Promise<void>((done) => { release = done; });
+		const started = new Promise<void>((done) => { entered = done; });
+		const base = depsOf(chatId, 40_000);
+		const deps = { ...base, summarize: async (prompt: string) => { entered(); await gate; return base.summarize!(prompt, base.engine); } };
+		kickCompaction(() => deps, chatId);
+		await started;
+		// A write landing in the reading pause (a dismissal, a write-ahead):
+		const late = newUserMessage("LATE INPUT");
+		chatStore.saveMessages(chatId, [...chatStore.getChat(chatId)!.messages, late]);
+		release();
+		await awaitCompaction(chatId);
+		const messages = chatStore.getChat(chatId)!.messages;
+		assert.ok(messages.some((m) => m.id === late.id), "the late write survived");
+		assert.ok(activeCompactionOf(messages), "and the marker still landed");
+	});
+
 	it("awaitCompaction: a later call rides the in-flight one (the structural gate)", async () => {
 		const chatId = overThresholdChat("compact: gate");
 		const events: string[] = [];

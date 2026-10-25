@@ -234,7 +234,8 @@ export class SessionModel {
 	// The single live consume (POST response or reattach stream): a newer
 	// consume cancels the older — one reader at a time.
 	private consumeAbort: AbortController | null = null;
-	/** Synchronous ready check for the gate (send/read mount logic). */
+	/** Synchronous ready check for the gate (send/read mount logic). An
+	 *  errored session is idle too: the learner's retry must go through. */
 	readyRef = true;
 
 	constructor(opts: SessionModelOptions) {
@@ -294,7 +295,7 @@ export class SessionModel {
 	private setStatus(status: SessionStatus): void {
 		if (status === "submitted") this.liveFailureId = null;
 		this.statusValue = status;
-		this.readyRef = status === "ready";
+		this.readyRef = status === "ready" || status === "error";
 		this.onChange?.();
 	}
 
@@ -772,5 +773,6 @@ export class SessionModel {
 
 	clearError(): void {
 		this.setError(null);
+		if (this.statusValue === "error") this.setStatus("ready");
 	}
 }
