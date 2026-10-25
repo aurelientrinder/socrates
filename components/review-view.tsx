@@ -6,8 +6,10 @@ import {
 	UPCOMING_DAYS,
 	relativeDays,
 	type RetentionReport,
+	type ReviewStatus,
 	type TopicRetention,
 } from "@/src/core";
+import { ReviewStart } from "@/components/review-start";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,7 +19,7 @@ import { cn } from "@/lib/utils";
  * estimated retention. Presentational only: the page folds the records
  * server-side (src/core/retention.ts).
  */
-export function ReviewView({ report }: { report: RetentionReport }) {
+export function ReviewView({ report, status }: { report: RetentionReport; status?: ReviewStatus }) {
 	const target = Math.round(TARGET_RETENTION * 100);
 	return (
 		<div data-testid="review-view" className="h-full overflow-y-auto">
@@ -40,6 +42,7 @@ export function ReviewView({ report }: { report: RetentionReport }) {
 					</p>
 				) : (
 					<>
+						{status && <ReviewStart status={status} />}
 						<section className="flex flex-col gap-3">
 							<SectionTitle>Due now</SectionTitle>
 							{report.due.length === 0 ? (

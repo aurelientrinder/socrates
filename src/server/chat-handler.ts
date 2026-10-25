@@ -1,6 +1,7 @@
 import type { Usage } from "@earendil-works/pi-ai";
 import {
 	createPracticeAgent,
+	createReviewAgent,
 	createProberAgent,
 	createTeacherAgent,
 	type AgentBuildOptions,
@@ -245,12 +246,12 @@ export async function handleChatInput(
 			engine: piEngineForSpec(conversation, true),
 			canStart: () => connectionBackgroundAllowed(conversation.provider),
 			modelId: modelIdForCompaction,
-			kind: record.kind === "practice" ? "practice" : hasProbeDone(record.messages) ? "teach" : "probe",
+			kind: record.kind === "practice" || record.kind === "review" ? record.kind : hasProbeDone(record.messages) ? "teach" : "probe",
 			thresholdTokens: effectiveThresholdTokens(
 				effective.compaction?.thresholdTokens,
 				catalogContextLimits().get(modelIdForCompaction),
 			),
-			systemPromptTokens: Math.ceil(composeInstructions(record.kind === "practice" ? "practice" : "teacher").length / 4),
+			systemPromptTokens: Math.ceil(composeInstructions(record.kind === "practice" || record.kind === "review" ? record.kind : "teacher").length / 4),
 		},
 		chatId,
 	);
@@ -395,6 +396,10 @@ export async function handleChatInput(
 	// uniform across kinds).
 	const constructed: TeachingAgent = buildAgent
 		? buildAgent({ ...agentOpts, teaching })
+		: record.kind === "review"
+			? // REVIEW BRANCH (spaced repetition): the reviewer from turn 1 —
+				// the review quiz only, validated against the session's queue.
+				createReviewAgent({ chatId, chatStore: stores.chatStore }, agentOpts)
 		: record.kind === "practice"
 			? createPracticeAgent(
 					{
@@ -517,8 +522,9 @@ export async function handleChatInput(
 				// extraction, its auditor — dies with the master switch.
 				// PRACTICE (owner, 2026-10-04): practice sessions write nothing —
 				// no extraction, no graph, no coverage (v1: the session itself
-				// is the deliverable).
-				if ((!requestCycle || requestCycle.dispatched) && record.kind !== "practice" && extractionEnabled(effective.graph)) {
+				// is the deliverable). Review sessions likewise: their answers
+				// reach the memory model through the retention fold, not the graph.
+				if ((!requestCycle || requestCycle.dispatched) && record.kind !== "practice" && record.kind !== "review" && extractionEnabled(effective.graph)) {
 					// Fresh per-turn read of the graph section's chunk budget
 					// (extraction-UX redesign, 2026-09-24): the trigger compares
 					// against it and the pipeline's batches share it.
@@ -574,12 +580,12 @@ export async function handleChatInput(
 							engine: kickEngine,
 							canStart: () => connectionBackgroundAllowed(spec.provider),
 							modelId: kickModelId,
-							kind: freshRecord.kind === "practice" ? "practice" : hasProbeDone(freshRecord.messages) ? "teach" : "probe",
+							kind: freshRecord.kind === "practice" || freshRecord.kind === "review" ? freshRecord.kind : hasProbeDone(freshRecord.messages) ? "teach" : "probe",
 							thresholdTokens: effectiveThresholdTokens(
 								fresh.compaction?.thresholdTokens,
 								catalogContextLimits().get(kickModelId),
 							),
-							systemPromptTokens: Math.ceil(composeInstructions(freshRecord.kind === "practice" ? "practice" : "teacher").length / 4),
+							systemPromptTokens: Math.ceil(composeInstructions(freshRecord.kind === "practice" || freshRecord.kind === "review" ? freshRecord.kind : "teacher").length / 4),
 						};
 					}, chatId);
 			},

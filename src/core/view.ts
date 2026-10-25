@@ -355,6 +355,16 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			});
 			return;
 		}
+		case "review-context": {
+			// The review session's queue (spaced repetition): user-side
+			// scaffolding, the graph-context card's twin.
+			out.push({
+				id: marker.id,
+				role: "user",
+				parts: [{ type: "data-review-context", id: `rc_${marker.id}`, data: marker.details }],
+			});
+			return;
+		}
 		case "probe-handoff": {
 			out.push({
 				id: marker.id,
