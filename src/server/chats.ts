@@ -2,6 +2,7 @@ import { abortExtraction, extractionStatuses } from "../agent/subagents/extracti
 import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
 import { titleFromPrompt } from "../core/contracts.ts";
+import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -157,4 +158,14 @@ export function sessionCoverage(chatId: string): SessionCoverage | null {
 		running: extractionStatuses().some((run) => run.kind === "chat" && run.chatId === chatId),
 		lastFoldedAt,
 	};
+}
+
+/** The calibration view's report: every session's graded quiz answers,
+ *  folded into stated confidence vs actual accuracy. */
+export function calibrationAcrossSessions(): CalibrationReport {
+	const answers = listChats().flatMap((summary) => {
+		const record = getChat(summary.id);
+		return record ? calibrationAnswers(record) : [];
+	});
+	return calibrationReport(answers);
 }

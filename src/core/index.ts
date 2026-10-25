@@ -48,6 +48,8 @@ export * from "./input-events.ts";
 export * from "./view.ts";
 export * from "./tool-parts.ts";
 export * from "./prices.ts";
+// The cross-session confidence fold (calibration view). Pure, browser-safe.
+export * from "./calibration.ts";
 export * from "./context-usage.ts";
 export type { ChatGPTStatus, ChatGPTControlBridge } from "./contracts/chatgpt.ts";
 export { NATIVE_SUBSCRIPTIONS } from "./contracts/subscriptions.ts";
