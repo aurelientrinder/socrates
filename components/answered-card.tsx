@@ -67,6 +67,8 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 			    transcript. No `tool` on old records: kind labels as before. */}
 				{answer.tool === "probe"
 					? "Probe"
+					: answer.tool === "review"
+						? "Review"
 					: answer.tool === "recall"
 						? "Recall"
 						: isQuiz

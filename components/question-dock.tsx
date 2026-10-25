@@ -57,7 +57,7 @@ import { CONFIDENCE_COLORS, confidenceRailStyle } from "@/components/confidence-
  */
 
 export interface QuestionDockProps {
-	toolName: "quiz" | "probe" | "ask_user_question" | "explain" | "recall";
+	toolName: "quiz" | "probe" | "ask_user_question" | "explain" | "recall" | "review";
 	toolCallId: string;
 	input: QuizToolInput | AskToolInput | ExplainToolInput;
 	/** Collapse state, owned by the DockOverlay (it drives the shell's height morph). */
@@ -110,11 +110,11 @@ export function QuestionDock({
 	// the probe quiz ("probe") is quiz-shaped, the probe free-recall
 	// ("recall") is explain-shaped. Old records keep the teach names.
 	const canonical =
-		toolName === "probe" ? "quiz" : toolName === "recall" ? "explain" : toolName;
+		toolName === "probe" || toolName === "review" ? "quiz" : toolName === "recall" ? "explain" : toolName;
 	// The chip's display name carries the tool's OWN name (owner
 	// 2026-10-09): probe-phase questions label Probe/Recall in the
 	// composer; teach tools keep the standing labels.
-	const toolLabel = toolName === "probe" ? "Probe" : toolName === "recall" ? "Recall" : undefined;
+	const toolLabel = toolName === "probe" ? "Probe" : toolName === "recall" ? "Recall" : toolName === "review" ? "Review" : undefined;
 	// Parse, don't cast (src/core/tool-parts.ts): the model authored this
 	// input, and only the schema the tool declared vouches for its shape.
 	// The dock mounts on input-available parts (already validated at the
@@ -548,6 +548,8 @@ function QuestionDockForm({
 				<div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 					{toolName === "probe"
 						? "Probe"
+						: toolName === "review"
+							? "Review"
 						: toolName === "recall"
 							? "Recall"
 							: kind === "quiz"
