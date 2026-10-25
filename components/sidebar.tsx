@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode } from "@/src/core";
-import { DumbbellIcon, GaugeIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { BrainIcon, DumbbellIcon, GaugeIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
@@ -378,6 +378,43 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 export type SessionKindFilter = "teach" | "all" | "practice";
 const KIND_FILTER_KEY = "lh:session-kind-filter";
 
+/** The Review link, badged with how many topics have decayed under the
+ *  retention target. Refetched when a turn settles (new answers) and on
+ *  resync; a failed fetch just hides the badge. */
+function ReviewLink() {
+	const [due, setDue] = useState<number | null>(null);
+	const pathname = usePathname();
+	const refresh = useCallback(async () => {
+		try {
+			const res = await fetch("/api/review");
+			if (res.ok) setDue(((await res.json()) as { due: number }).due);
+		} catch {
+			setDue(null);
+		}
+	}, []);
+	useEffect(() => {
+		void refresh();
+	}, [refresh, pathname]);
+	useServerEvent("turn-settled", () => void refresh());
+	useServerResync(() => void refresh());
+	return (
+		<Link
+			href="/review"
+			data-testid="open-review"
+			className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+		>
+			<BrainIcon className="size-3" />
+			Review
+			{due !== null && due > 0 && (
+				<span data-testid="review-due-count" className="ml-auto rounded-full bg-amber-500/20 px-1.5 text-[10px] tabular-nums text-amber-500">
+					{due}
+				</span>
+			)}
+			<span className="sr-only">see which topics you are forgetting and what is due for review</span>
+		</Link>
+	);
+}
+
 function SessionsSidebar() {
 	const { open, toggle } = useSidebar();
 	const [chats, setChats] = useState<ChatListItem[] | null>(null);
@@ -715,6 +752,7 @@ function SessionsSidebar() {
 						Calibration
 						<span className="sr-only">see how your confidence compares with your accuracy</span>
 					</Link>
+					<ReviewLink />
 				</div>
 
 				<div className="mx-3 mb-2 flex items-center gap-2">
