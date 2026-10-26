@@ -5,6 +5,7 @@ import { APP_IDENTITY, piEngineFor, type PiEngine } from "../models.ts";
 import { usageWasAdmitted } from "../subscription-request-cycle.ts";
 import { providerEventObserver } from "../provider-events.ts";
 import type { ModelRole } from "../../../config.ts";
+import { MAX_RATE_LIMIT_RETRIES, noteRateLimit, rateLimitCooling, rateLimitDelayMs, rateLimitFailure, isRateLimitError, waitForRateLimit } from "../rate-limit.ts";
 
 /**
  * The shared sub-agent runner (docs/pi-engine-swap.md §6): one helper every
@@ -16,6 +17,10 @@ import type { ModelRole } from "../../../config.ts";
  * failures THROW (pi encodes them in the stream; this helper surfaces
  * them), and an abort throws an AbortError so every existing
  * `signal.aborted` early-return keeps working unchanged.
+ *
+ * Rate limits (2026-10-26): a per-minute 429 is not a failure. The failed
+ * turn is dropped from the transcript, the process-wide cooldown is waited
+ * out (rate-limit.ts), and the run continues from where it stopped.
  */
 
 export interface SubagentRunOptions {
@@ -81,7 +86,8 @@ export async function runSubagent(tools: AgentTool<any, any>[], opts: SubagentRu
 		// 0.87.1: shouldStopAfterTurn → finishTurn (same call point; "end"
 		// exits before the steering poll, exactly the old boolean-true).
 		finishTurn: (turn) => {
-			turns++;
+			// A turn the provider refused (a rate limit) is retried, not spent.
+			if (turn.message.stopReason !== "error") turns++;
 			return turns >= opts.maxTurns || opts.shouldStop?.(turn.message, turn.toolResults) === true
 				? { action: "end" }
 				: undefined;
@@ -120,12 +126,35 @@ export async function runSubagent(tools: AgentTool<any, any>[], opts: SubagentRu
 					break;
 			}
 		});
-		if (opts.prompt !== undefined) await agent.prompt({
-			role: "user",
-			content: opts.prompt,
-			timestamp: Date.now(),
-		});
-		else await agent.continue();
+		let retries = 0;
+		for (let first = true; ; first = false) {
+			if (rateLimitCooling()) {
+				try {
+					await waitForRateLimit(opts.abortSignal);
+				} catch {
+					aborted = true; // aborted while waiting: never start the call
+					break;
+				}
+			}
+			errorMessage = undefined;
+			if (first && opts.prompt !== undefined) await agent.prompt({
+				role: "user",
+				content: opts.prompt,
+				timestamp: Date.now(),
+			});
+			else await agent.continue();
+			if (aborted || opts.abortSignal?.aborted || errorMessage === undefined) break;
+			const delay = rateLimitDelayMs(errorMessage);
+			if (delay === null || retries >= MAX_RATE_LIMIT_RETRIES) break;
+			retries++;
+			noteRateLimit(delay);
+			console.info(`[subagent ${opts.role}] rate limited; retry ${retries}/${MAX_RATE_LIMIT_RETRIES} in ${Math.round(delay / 1000)}s`);
+			// Drop the refused turn so the transcript ends on the user /
+			// tool-result message again, then continue from there.
+			const messages = agent.state.messages;
+			const last = messages[messages.length - 1] as { role?: string; stopReason?: string } | undefined;
+			if (last?.role === "assistant" && last.stopReason === "error") agent.state.messages = messages.slice(0, -1);
+		}
 	} finally {
 		opts.abortSignal?.removeEventListener("abort", onAbort);
 	}
@@ -135,7 +164,7 @@ export async function runSubagent(tools: AgentTool<any, any>[], opts: SubagentRu
 		err.name = "AbortError";
 		throw err;
 	}
-	if (errorMessage !== undefined) throw new Error(errorMessage);
+	if (errorMessage !== undefined) throw isRateLimitError(errorMessage) ? rateLimitFailure(errorMessage) : new Error(errorMessage);
 
 	// 0.87.1: drop the seeded leading SystemMessage (transcript rework —
 	// see ui-stream's settleWith) before slicing past the input count, or
