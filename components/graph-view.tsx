@@ -77,6 +77,7 @@ import { MenuShell } from "@/components/menu-shell.tsx";
 import { DeleteNodeDialog } from "@/components/delete-node-dialog.tsx";
 import { ChainTableOverlay } from "@/components/chain-table.tsx";
 import { Hint } from "@/components/ui/hint";
+import { useAppearance } from "@/components/settings/appearance";
 import {
 	ARROW_LENGTH_LADDER,
 	CHARGE_RANGE,
@@ -976,6 +977,7 @@ export function GraphView({
 }) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
+	const { themeKey } = useAppearance();
 	const cardRef = useRef<HTMLDivElement | null>(null);
 	const [snapshot, setSnapshot] = useState<GraphSnapshot | null>(null);
 	const [selected, setSelected] = useState<Selection | null>(null);
@@ -1432,10 +1434,13 @@ export function GraphView({
 				label: tokenHex("--muted-foreground"),
 				hoverText: tokenHex("--foreground"),
 			},
-			// Match the app typography (Geist via the body's stack).
+			// Match the app typography (the body's chrome stack).
 			fontFamily: getComputedStyle(document.body).fontFamily,
 		});
-	}, [snapshot, isEmpty]);
+		// The theme deps: the colors above are READ from the live palette,
+		// so a mode/typeface switch must re-feed them (AppearanceProvider
+		// applies them in a layout effect — already in place by now).
+	}, [snapshot, isEmpty, themeKey]);
 
 	// Feed #2 — settings: just marks the frame dirty. No rebuild, no
 	// re-layout, no camera touch (the whole point of the new renderer).

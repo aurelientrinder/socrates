@@ -52,6 +52,35 @@ const PRODUCT_NAME = "Socrates";
 app.setName(PRODUCT_NAME);
 const AUTH_FILE = () => path.join(app.getPath("userData"), "auth.json");
 const DATA_DIR = () => path.join(app.getPath("userData"), "data");
+const THEME_FILE = () => path.join(app.getPath("userData"), "theme.json");
+
+/** The last theme the renderer reported (light/dark mode, typeface, and
+ *  the window colors it resolved to). Persisted so the NEXT launch paints
+ *  the native window, the Windows caption buttons, and the page's first
+ *  frame in the right theme — the server port (and with it the page's
+ *  localStorage origin) changes every launch, so the renderer cannot keep
+ *  this itself. */
+const DEFAULT_THEME = { mode: "light", typeface: "claude", background: "#faf9f5", symbol: "#1f1e1d" };
+const HEX = /^#[0-9a-f]{6}$/i;
+function sanitizeTheme(raw) {
+	const t = raw && typeof raw === "object" ? raw : {};
+	return {
+		mode: ["light", "dark", "system"].includes(t.mode) ? t.mode : DEFAULT_THEME.mode,
+		typeface: ["claude", "classic"].includes(t.typeface) ? t.typeface : DEFAULT_THEME.typeface,
+		background: HEX.test(t.background) ? t.background : DEFAULT_THEME.background,
+		symbol: HEX.test(t.symbol) ? t.symbol : DEFAULT_THEME.symbol,
+	};
+}
+let currentTheme = null;
+function loadTheme() {
+	if (currentTheme) return currentTheme;
+	try {
+		currentTheme = sanitizeTheme(JSON.parse(fs.readFileSync(THEME_FILE(), "utf8")));
+	} catch {
+		currentTheme = sanitizeTheme(null);
+	}
+	return currentTheme;
+}
 
 /** The packaged standalone server (extraResources → Resources/server).
  *  In dev LH_DEV_URL short-circuits everything: no spawn, no packaging —
@@ -306,7 +335,7 @@ function createWindow(url) {
 				// height. Do not force the zoom-invariant native overlay to match
 				// the renderer's 60 CSS px bar: zooming out would cover its border.
 				// The renderer reserves the actual width via env(titlebar-area-*).
-				titleBarOverlay: { color: "#141414", symbolColor: "#e5e5e5" },
+				titleBarOverlay: { color: loadTheme().background, symbolColor: loadTheme().symbol },
 				// Keep the custom bar alone; Alt reveals the native menu.
 				autoHideMenuBar: true,
 			}),
@@ -320,10 +349,10 @@ function createWindow(url) {
 		// the native window surface changes size before Chromium's compositor
 		// has a frame at the new size, and the gap shows the window's NATIVE
 		// background — Electron's default is white, glaring on a dark app.
-		// The app background (#141414) fills the lag instead. `show: false` +
+		// The app background (the last theme's, see loadTheme) fills the lag instead. `show: false` +
 		// ready-to-show is the same treatment for first paint: the window
 		// appears only once the page has actually rendered.
-		backgroundColor: "#141414",
+		backgroundColor: loadTheme().background,
 		show: false,
 		// Narrow-window behavior (owner, 2026-09-17): 640px is the floor —
 		// below it even a wrapped chrome row gets cramped and the chat header
@@ -661,6 +690,32 @@ async function main() {
 	// are log lines — this can never block boot.
 	setupAutoUpdater();
 	ipcMain.on("lh:update-install", () => installUpdateNow());
+
+	// Theme sync (light theme wave): the renderer reports its resolved
+	// theme on every change; the native surfaces follow it live and the
+	// file carries it to the next launch. "lh:theme:boot" is the preload's
+	// synchronous read for the page's pre-paint script.
+	ipcMain.on("lh:theme:boot", (event) => {
+		event.returnValue = loadTheme();
+	});
+	ipcMain.on("lh:theme", (event, raw) => {
+		const win = BrowserWindow.fromWebContents(event.sender);
+		if (!win || !trustedAppWindows.has(win)) return;
+		const next = sanitizeTheme(raw);
+		if (JSON.stringify(next) === JSON.stringify(loadTheme())) return;
+		currentTheme = next;
+		for (const w of trustedAppWindows) {
+			w.setBackgroundColor(next.background);
+			if (process.platform !== "darwin") {
+				try {
+					w.setTitleBarOverlay({ color: next.background, symbolColor: next.symbol });
+				} catch {
+					// No overlay on this window (fullscreen, older shell): nothing to recolor.
+				}
+			}
+		}
+		fs.promises.writeFile(THEME_FILE(), JSON.stringify(next)).catch(() => {});
+	});
 
 	// Sidebar-at-narrow-window (owner, 2026-09-17): the renderer auto-closes
 	// the sidebar below SIDEBAR_AUTOCLOSE (928px); opening it again at that

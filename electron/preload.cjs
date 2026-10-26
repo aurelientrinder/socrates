@@ -71,4 +71,14 @@ contextBridge.exposeInMainWorld("lh", {
 		return () => ipcRenderer.removeListener("lh:update-status", listener);
 	},
 	installUpdate: () => ipcRenderer.send("lh:update-install"),
+	// Theme sync: the last persisted theme (read once, synchronously, so the
+	// page's pre-paint script can use it) and the live report back.
+	bootTheme: (() => {
+		try {
+			return ipcRenderer.sendSync("lh:theme:boot");
+		} catch {
+			return null;
+		}
+	})(),
+	setTheme: (theme) => ipcRenderer.send("lh:theme", theme),
 });
