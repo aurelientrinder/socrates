@@ -42,6 +42,37 @@ export function SectionHeading({ children, className }: { children: React.ReactN
 	return <h2 className={cn("text-lg font-semibold text-foreground", className)}>{children}</h2>;
 }
 
+/** The Progress page's three views. Memory and Calibration render inside
+ *  /progress; Map is the full-bleed knowledge map at /map. */
+export const PROGRESS_TABS = [
+	{ id: "memory", label: "Memory", href: "/progress" },
+	{ id: "calibration", label: "Calibration", href: "/progress?tab=calibration" },
+	{ id: "map", label: "Map", href: "/map" },
+];
+
+/** The same tabs as a floating pill, for the map, which has no page
+ *  header to sit under. */
+export function FloatingTabs({ tabs, active }: { tabs: { id: string; label: string; href: string }[]; active: string }) {
+	return (
+		<nav aria-label="Progress views" className="flex gap-0.5 rounded-xl border bg-surface/95 p-1 shadow-sm backdrop-blur">
+			{tabs.map((t) => (
+				<Link
+					key={t.id}
+					href={t.href}
+					data-testid={`tab-${t.id}`}
+					aria-current={t.id === active ? "page" : undefined}
+					className={cn(
+						"rounded-lg px-3 py-1.5 text-sm transition-colors",
+						t.id === active ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					{t.label}
+				</Link>
+			))}
+		</nav>
+	);
+}
+
 /** Underlined tabs as links (?tab=…), so each tab is a real address. */
 export function PageTabs({ tabs, active }: { tabs: { id: string; label: string; href: string }[]; active: string }) {
 	return (

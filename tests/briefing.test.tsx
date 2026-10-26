@@ -298,5 +298,36 @@ describe("TodayShell", () => {
 		assert.match(html, /Add to Todoist/);
 		assert.match(html, /Block time/);
 		assert.match(html, /today-upcoming/);
+		// One primary button starts the first step of the plan (redesign wave).
+		assert.match(html, /data-testid="today-start-first"/);
+		assert.match(html, /today-plan/);
+		assert.doesNotMatch(html, /today-honesty/);
+	});
+
+	it("calls out overconfidence only when the page passes it in", () => {
+		const html = renderToStaticMarkup(
+			<TodayShell
+				briefing={null}
+				integrations={disconnected}
+				budgetMinutes={45}
+				sessions={[]}
+				busy={false}
+				pushing={null}
+				error={null}
+				handlers={handlers}
+				honesty={{ points: 18 }}
+			/>,
+		);
+		assert.match(html, /today-honesty/);
+		assert.match(html, /about 18 points surer/);
+		assert.match(html, /href="\/progress\?tab=calibration"/);
+	});
+
+	it("marks the chosen time budget", () => {
+		const html = renderToStaticMarkup(
+			<TodayShell briefing={null} integrations={disconnected} budgetMinutes={30} sessions={[]} busy={false} pushing={null} error={null} handlers={handlers} />,
+		);
+		assert.equal(html.match(/aria-pressed="true"/g)?.length, 1);
+		assert.match(html, /aria-pressed="true"[^>]*>30 min</);
 	});
 });
