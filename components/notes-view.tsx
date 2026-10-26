@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { NOTES_ACCEPT, NotesImportErrors, useNotesImport } from "@/components/notes-import.tsx";
 import { useActivity } from "@/components/activity-dock";
+import { SectionHeading } from "@/components/page-header";
 
 /** Transport-only mirror of src/store/notes.ts NoteMeta. */
 export interface SavedNote {
@@ -56,7 +57,7 @@ export function NotesView() {
 	});
 
 	return (
-		<div data-testid="notes-view" className="h-full overflow-y-auto">
+		<section data-testid="notes-view" aria-labelledby="notes-heading" className="flex flex-col gap-4">
 			<input
 				ref={fileInputRef}
 				type="file"
@@ -68,45 +69,45 @@ export function NotesView() {
 					e.target.value = "";
 				}}
 			/>
-			<div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-10">
-				<header className="flex flex-col gap-2">
-					<h1 className="text-xs uppercase tracking-widest text-muted-foreground/70">Notes</h1>
-					<div className="flex items-center justify-between gap-4">
-						<p className="text-lg">{headline(notes)}</p>
-						<Button
-							data-testid="notes-import"
-							size="sm"
-							disabled={notesImport.importing}
-							onClick={() => fileInputRef.current?.click()}
-						>
-							{notesImport.importing ? "Importing…" : "Import notes…"}
-						</Button>
-					</div>
-					<p className="text-sm text-muted-foreground">
-						PDFs, .txt and .md files. The app keeps a copy of each file, adds its ideas to your map, and the tutor can
-						check what your notes actually say during a session. Scanned pages have no text: the tutor can still read
-						them, but they don&apos;t reach the map.
-					</p>
-					<NotesImportErrors errors={notesImport.errors} warnings={notesImport.warnings} />
-				</header>
+			<header className="flex flex-col gap-2">
+				<div className="flex items-center justify-between gap-4">
+					<SectionHeading className="flex items-baseline gap-2">
+						<span id="notes-heading">Your notes</span>
+						<span className="text-sm font-normal text-muted-foreground">{headline(notes)}</span>
+					</SectionHeading>
+					<Button
+						data-testid="notes-import"
+						size="sm"
+						disabled={notesImport.importing}
+						onClick={() => fileInputRef.current?.click()}
+					>
+						{notesImport.importing ? "Importing…" : "Import notes…"}
+					</Button>
+				</div>
+				<p className="max-w-2xl text-sm text-muted-foreground">
+					PDFs, .txt and .md files. The app keeps a copy of each file, adds its ideas to your map, and the tutor can
+					check what your notes actually say during a session. Scanned pages have no text: the tutor can still read
+					them, but they don&apos;t reach the map.
+				</p>
+				<NotesImportErrors errors={notesImport.errors} warnings={notesImport.warnings} />
+			</header>
 
-				{loadError && <p role="alert" className="text-sm text-red-400">{loadError}</p>}
-				{notes && notes.length > 0 && (
-					<ul className="flex flex-col divide-y divide-border/60 rounded-lg border border-border/60">
-						{notes.map((note) => (
-							<NoteRow key={note.id} note={note} onChanged={load} />
-						))}
-					</ul>
-				)}
-			</div>
-		</div>
+			{loadError && <p role="alert" className="text-sm text-red-400">{loadError}</p>}
+			{notes && notes.length > 0 && (
+				<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
+					{notes.map((note) => (
+						<NoteRow key={note.id} note={note} onChanged={load} />
+					))}
+				</ul>
+			)}
+		</section>
 	);
 }
 
 function headline(notes: SavedNote[] | null): string {
-	if (notes === null) return "Loading your notes…";
-	if (notes.length === 0) return "No saved notes yet.";
-	return `${notes.length} saved ${notes.length === 1 ? "file" : "files"}.`;
+	if (notes === null) return "loading…";
+	if (notes.length === 0) return "none saved yet";
+	return `${notes.length} saved ${notes.length === 1 ? "file" : "files"}`;
 }
 
 function NoteRow({ note, onChanged }: { note: SavedNote; onChanged: () => Promise<void> }) {
@@ -170,10 +171,10 @@ function NoteRow({ note, onChanged }: { note: SavedNote; onChanged: () => Promis
 	};
 
 	return (
-		<li data-testid="note-row" className="flex flex-col gap-2 px-3 py-2">
+		<li data-testid="note-row" className="flex flex-col gap-2 px-4 py-3">
 			<div className="flex items-center gap-3">
 				<div className="min-w-0 flex-1">
-					<p className="truncate text-sm">{note.name}</p>
+					<p className="truncate text-base">{note.name}</p>
 					<p className="truncate text-xs text-muted-foreground">{details(note)}</p>
 				</div>
 				<div className="flex shrink-0 items-center gap-1">
@@ -188,7 +189,7 @@ function NoteRow({ note, onChanged }: { note: SavedNote; onChanged: () => Promis
 				</div>
 			</div>
 			{message && (
-				<p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-xs text-red-400" : "text-xs text-emerald-500"}>
+				<p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-xs text-destructive" : "text-xs text-good-ink"}>
 					{message.text}
 				</p>
 			)}

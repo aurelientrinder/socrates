@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode } from "@/src/core";
-import { BrainIcon, DumbbellIcon, FileTextIcon, GaugeIcon, SunriseIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { BookOpenIcon, ChartLineIcon, DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
@@ -380,10 +380,50 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 export type SessionKindFilter = "teach" | "all" | "practice";
 const KIND_FILTER_KEY = "lh:session-kind-filter";
 
-/** The Review link, badged with how many topics have decayed under the
- *  retention target. Refetched when a turn settles (new answers) and on
- *  resync; a failed fetch just hides the badge. */
-function ReviewLink() {
+/** One of the sidebar's three places (redesign wave, 2026-10-26): Today,
+ *  Progress, Library. Sentence case at reading size, filled while you are
+ *  on that page (or one of its sub-addresses). */
+function NavRow({
+	href,
+	icon,
+	label,
+	testId,
+	badge,
+	hint,
+}: {
+	href: string;
+	icon: React.ReactNode;
+	label: string;
+	testId: string;
+	badge?: React.ReactNode;
+	/** Screen-reader description of what the page holds. */
+	hint: string;
+}) {
+	const pathname = usePathname();
+	const active = pathname === href || pathname.startsWith(`${href}/`);
+	return (
+		<Link
+			href={href}
+			data-testid={testId}
+			aria-current={active ? "page" : undefined}
+			className={cn(
+				"flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-base transition-colors hover:bg-accent",
+				active ? "bg-accent font-semibold text-foreground" : "font-medium text-foreground/85",
+			)}
+		>
+			{icon}
+			<span className="flex-1">{label}</span>
+			{badge}
+			<span className="sr-only">{hint}</span>
+		</Link>
+	);
+}
+
+/** The Today row, badged with how many topics have decayed under the
+ *  retention target (what Today's plan will ask you to review). Refetched
+ *  when a turn settles (new answers), on navigation and on resync; a
+ *  failed fetch just hides the badge. */
+function TodayLink() {
 	const [due, setDue] = useState<number | null>(null);
 	const pathname = usePathname();
 	const refresh = useCallback(async () => {
@@ -400,20 +440,20 @@ function ReviewLink() {
 	useServerEvent("turn-settled", () => void refresh());
 	useServerResync(() => void refresh());
 	return (
-		<Link
-			href="/review"
-			data-testid="open-review"
-			className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-		>
-			<BrainIcon className="size-3" />
-			Review
-			{due !== null && due > 0 && (
-				<span data-testid="review-due-count" className="ml-auto rounded-full bg-amber-500/20 px-1.5 text-[10px] tabular-nums text-amber-500">
-					{due}
-				</span>
-			)}
-			<span className="sr-only">see which topics you are forgetting and what is due for review</span>
-		</Link>
+		<NavRow
+			href="/today"
+			testId="open-today"
+			icon={<SunIcon className="size-4" />}
+			label="Today"
+			hint="see today's plan: what to study first and what you are forgetting"
+			badge={
+				due !== null && due > 0 ? (
+					<span data-testid="review-due-count" className="rounded-full bg-warn-soft px-2 py-px text-xs font-semibold tabular-nums text-warn-ink">
+						{due} due
+					</span>
+				) : undefined
+			}
+		/>
 	);
 }
 
@@ -678,7 +718,7 @@ function SessionsSidebar() {
 			className={cn("sidebar-motion shrink-0 overflow-hidden duration-200", open ? "w-72" : "w-0")}
 			aria-hidden={!open}
 		>
-			<div className="flex h-full w-72 flex-col border-r bg-background">
+			<div className="flex h-full w-72 flex-col border-r bg-card">
 				{/* LH wordmark — the owner's header; close toggle sits at the edge.
 				    Merged chrome (2026-09-17): in Electron this band is the
 				    window's drag surface and starts after the traffic lights
@@ -702,9 +742,11 @@ function SessionsSidebar() {
 						<Link
 							href="/"
 							aria-label="Home"
-							className="lh-no-drag flex size-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
+							className="lh-no-drag flex h-9 shrink-0 items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
 						>
 							<LhMark className="size-6" />
+							{/* The wordmark (redesign wave): the app's name in the title face. */}
+							<span className="lh-page-title text-xl">Socrates</span>
 						</Link>
 					</Hint>
 					<Hint label="Close sidebar" action="toggle-sidebar">
@@ -720,63 +762,56 @@ function SessionsSidebar() {
 					</Hint>
 				</div>
 
-				{/* Two doors, STACKED (owner round 8, 2026-10-05 — was a
-				    half/half row): full-width rows read cleaner and give the
-				    labels room; teaching keeps the original draft route,
-				    practice carries its mode. */}
-				<div className="mx-3 mb-2 flex flex-col gap-1.5">
-					<button
-						type="button"
-						data-testid="new-session"
-						onClick={() => void newSession()}
-						className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					>
-						<PlusIcon className="size-3" />
-						Teaching
-						<span className="sr-only">create a new teaching session</span>
-					</button>
-					<button
-						type="button"
-						data-testid="new-session-practice"
-						onClick={() => router.push("/chat/new?mode=practice")}
-						className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					>
-						<DumbbellIcon className="size-3" />
-						Practice
-						<span className="sr-only">create a new practice session</span>
-					</button>
-					<Link
-						href="/today"
-						data-testid="open-today"
-						className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					>
-						<SunriseIcon className="size-3" />
-						Today
-						<span className="sr-only">see today's study briefing from your calendar and what you are forgetting</span>
-					</Link>
-					<Link
-						href="/calibration"
-						data-testid="open-calibration"
-						className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					>
-						<GaugeIcon className="size-3" />
-						Calibration
-						<span className="sr-only">see how your confidence compares with your accuracy</span>
-					</Link>
-					<ReviewLink />
-					<Link
-						href="/notes"
-						data-testid="open-notes"
-						className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					>
-						<FileTextIcon className="size-3" />
-						Notes
-						<span className="sr-only">see the notes and PDFs you imported</span>
-					</Link>
+				{/* THE REDESIGN NAV (2026-10-26): one primary door, then three
+				    places. Start studying opens the teaching draft (the old
+				    Teaching door), the dumbbell beside it the practice draft.
+				    Today / Progress / Library replace the six all-caps links
+				    (Calibration and Review live in Progress, Notes in Library). */}
+				<div className="mx-3 mb-4 flex flex-col gap-3">
+					<div className="flex gap-1.5">
+						<button
+							type="button"
+							data-testid="new-session"
+							onClick={() => void newSession()}
+							className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-base font-medium text-primary-foreground transition-opacity hover:opacity-90"
+						>
+							<PlayIcon className="size-3.5 fill-current" />
+							Start studying
+							<span className="sr-only">: open a new teaching session</span>
+						</button>
+						<Hint label="New practice session" side="bottom">
+							<button
+								type="button"
+								data-testid="new-session-practice"
+								aria-label="New practice session"
+								onClick={() => router.push("/chat/new?mode=practice")}
+								className="flex size-10 items-center justify-center rounded-lg border bg-surface text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+							>
+								<DumbbellIcon className="size-4" />
+							</button>
+						</Hint>
+					</div>
+					<nav aria-label="Main" className="flex flex-col gap-0.5">
+						<TodayLink />
+						<NavRow
+							href="/progress"
+							testId="open-progress"
+							icon={<ChartLineIcon className="size-4" />}
+							label="Progress"
+							hint="see what you are forgetting and how your confidence compares with your accuracy"
+						/>
+						<NavRow
+							href="/library"
+							testId="open-library"
+							icon={<BookOpenIcon className="size-4" />}
+							label="Library"
+							hint="see the notes you imported and every session"
+						/>
+					</nav>
 				</div>
 
 				<div className="mx-3 mb-2 flex items-center gap-2">
-					<span className="text-xs uppercase tracking-widest text-muted-foreground/70">Sessions</span>
+					<span className="pl-2.5 text-sm font-medium text-muted-foreground">Sessions</span>
 					<Hint label="Search sessions" action="sessions-search" side="bottom">
 					<span className="relative flex-1">
 						<Input
@@ -829,7 +864,7 @@ function SessionsSidebar() {
 							}}
 							placeholder="Search…"
 							aria-label="Search sessions"
-							className="h-6 rounded-sm border-border bg-background pl-6 text-xs placeholder:text-muted-foreground/60"
+							className="h-7 rounded-md border-border bg-surface pl-6 text-sm placeholder:text-muted-foreground/70"
 						/>
 						<SearchIcon className="pointer-events-none absolute left-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/70" />
 					</span>
@@ -843,7 +878,7 @@ function SessionsSidebar() {
 				    Practice / All — the real modes first, "All" as the escape
 				    hatch on the right, mirroring the create-buttons above.
 				    Persisted client-side. */}
-				<div className="mx-3 flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5" data-testid="session-kind-filter">
+				<div className="mx-3 flex items-center gap-0.5 rounded-lg bg-accent/70 p-0.5" data-testid="session-kind-filter">
 					{(["teach", "practice", "all"] as const).map((f) => (
 						<button
 							key={f}
@@ -851,13 +886,13 @@ function SessionsSidebar() {
 							data-testid={`kind-filter-${f}`}
 							onClick={() => setFilter(f)}
 							className={cn(
-								"flex-1 rounded-sm px-2 py-1 text-[11px] uppercase tracking-wider transition-colors",
+								"flex-1 rounded-md px-2 py-1 text-sm transition-colors",
 								kindFilter === f
-									? "bg-accent text-foreground"
+									? "bg-surface font-semibold text-foreground shadow-xs"
 									: "text-muted-foreground hover:text-foreground",
 							)}
 						>
-							{f === "teach" ? "Teaching" : f === "all" ? "All" : "Practice"}
+							{f === "teach" ? "Learn" : f === "all" ? "All" : "Practice"}
 						</button>
 					))}
 				</div>
@@ -911,9 +946,9 @@ function SessionsSidebar() {
 								type="button"
 								onClick={() => openSettings()}
 								data-testid="settings-entry"
-								className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+								className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-base text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
 							>
-								<SettingsIcon className="size-3" />
+								<SettingsIcon className="size-4" />
 								Settings
 							</button>
 						</Hint>

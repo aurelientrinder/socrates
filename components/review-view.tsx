@@ -10,6 +10,7 @@ import {
 	type TopicRetention,
 } from "@/src/core";
 import { ReviewStart } from "@/components/review-start";
+import { SectionHeading } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,57 +18,55 @@ import { cn } from "@/lib/utils";
  * Leads with what is due (estimated recall under the target, weakest
  * first), then what falls due this week, then every tested topic with its
  * estimated retention. Presentational only: the page folds the records
- * server-side (src/core/retention.ts).
+ * server-side (src/core/retention.ts). Rendered as the Memory tab of the
+ * Progress page, which owns the page title.
  */
 export function ReviewView({ report, status }: { report: RetentionReport; status?: ReviewStatus }) {
 	const target = Math.round(TARGET_RETENTION * 100);
 	return (
-		<div data-testid="review-view" className="h-full overflow-y-auto">
-			<div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-10">
-				<header className="flex flex-col gap-2">
-					<h1 className="text-xs uppercase tracking-widest text-muted-foreground/70">Review</h1>
-					<p data-testid="review-headline" className="text-lg">
-						{headline(report)}
-					</p>
-					<p className="text-sm text-muted-foreground">
-						Each topic&apos;s memory is estimated from how you actually did when tested (quiz checks after teaching, and
-						practice problems), never from how sure you felt. It fades over time, and a topic is due once its estimated
-						recall drops under {target}%. Each successful review makes it last longer.
-					</p>
-				</header>
+		<div data-testid="review-view" className="flex flex-col gap-8">
+			<header className="flex flex-col gap-2">
+				<p data-testid="review-headline" className="font-prose text-xl">
+					{headline(report)}
+				</p>
+				<p className="text-sm text-muted-foreground">
+					Each topic&apos;s memory is estimated from how you actually did when tested (quiz checks after teaching, and
+					practice problems), never from how sure you felt. It fades over time, and a topic is due once its estimated
+					recall drops under {target}%. Each successful review makes it last longer.
+				</p>
+			</header>
 
-				{report.topics.length === 0 ? (
-					<p className="text-sm text-muted-foreground">
-						Answer a few check questions in a teaching session, or solve a practice problem, and your topics appear here.
-					</p>
-				) : (
-					<>
-						{status && <ReviewStart status={status} />}
-						<section className="flex flex-col gap-3">
-							<SectionTitle>Due now</SectionTitle>
-							{report.due.length === 0 ? (
-								<p className="text-sm text-muted-foreground">Nothing is due. Your next review is in the list below.</p>
-							) : (
-								<TopicList topics={report.due} now={report.now} testId="review-due" />
-							)}
-						</section>
+			{report.topics.length === 0 ? (
+				<p className="text-sm text-muted-foreground">
+					Answer a few check questions in a teaching session, or solve a practice problem, and your topics appear here.
+				</p>
+			) : (
+				<>
+					{status && <ReviewStart status={status} />}
+					<section className="flex flex-col gap-3">
+						<SectionHeading>Due now</SectionHeading>
+						{report.due.length === 0 ? (
+							<p className="text-sm text-muted-foreground">Nothing is due. Your next review is in the list below.</p>
+						) : (
+							<TopicList topics={report.due} now={report.now} testId="review-due" />
+						)}
+					</section>
 
-						<section className="flex flex-col gap-3">
-							<SectionTitle>Coming up in the next {UPCOMING_DAYS} days</SectionTitle>
-							{report.upcoming.length === 0 ? (
-								<p className="text-sm text-muted-foreground">Nothing else falls due this week.</p>
-							) : (
-								<TopicList topics={report.upcoming} now={report.now} testId="review-upcoming" />
-							)}
-						</section>
+					<section className="flex flex-col gap-3">
+						<SectionHeading>Coming up in the next {UPCOMING_DAYS} days</SectionHeading>
+						{report.upcoming.length === 0 ? (
+							<p className="text-sm text-muted-foreground">Nothing else falls due this week.</p>
+						) : (
+							<TopicList topics={report.upcoming} now={report.now} testId="review-upcoming" />
+						)}
+					</section>
 
-						<section className="flex flex-col gap-3">
-							<SectionTitle>All topics</SectionTitle>
-							<TopicList topics={report.topics} now={report.now} testId="review-topic" />
-						</section>
-					</>
-				)}
-			</div>
+					<section className="flex flex-col gap-3">
+						<SectionHeading>All topics</SectionHeading>
+						<TopicList topics={report.topics} now={report.now} testId="review-topic" />
+					</section>
+				</>
+			)}
 		</div>
 	);
 }
@@ -81,10 +80,10 @@ function headline(report: RetentionReport): string {
 
 function TopicList({ topics, now, testId }: { topics: TopicRetention[]; now: number; testId: string }) {
 	return (
-		<ul className="flex flex-col divide-y divide-border/60 rounded-lg border border-border/60">
+		<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
 			{topics.map((t) => (
 				<li key={t.key} data-testid={testId}>
-					<Link href={`/chat/${t.chatId}`} className="flex items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-accent">
+					<Link href={`/chat/${t.chatId}`} className="flex items-center gap-3 px-4 py-2.5 text-base transition-colors hover:bg-accent">
 						<div className="min-w-0 flex-1">
 							<p className="truncate">{t.title}</p>
 							<p className="truncate text-xs text-muted-foreground">
@@ -93,7 +92,7 @@ function TopicList({ topics, now, testId }: { topics: TopicRetention[]; now: num
 							</p>
 						</div>
 						<RetentionBar retention={t.retention} />
-						<span className={cn("w-24 shrink-0 text-right text-xs tabular-nums", t.due ? "text-amber-500" : "text-muted-foreground")}>
+						<span className={cn("w-24 shrink-0 text-right text-xs tabular-nums", t.due ? "font-semibold text-warn-ink" : "text-muted-foreground")}>
 							{t.due ? `due ${dueText(t.dueAt, now)}` : `due ${relativeDays(t.dueAt, now)}`}
 						</span>
 					</Link>
@@ -117,11 +116,11 @@ function RetentionBar({ retention }: { retention: number }) {
 	const pct = Math.round(retention * 100);
 	return (
 		<div className="flex w-32 shrink-0 items-center gap-2" title={`Estimated chance you recall this now: ${pct}%`}>
-			<div className="relative h-2 flex-1 rounded bg-muted/40">
+			<div className="relative h-1.5 flex-1 rounded-full bg-accent">
 				<div
 					className={cn(
-						"absolute inset-y-0 left-0 rounded",
-						retention >= TARGET_RETENTION ? "bg-emerald-500/60" : retention >= 0.7 ? "bg-amber-500/60" : "bg-red-500/60",
+						"absolute inset-y-0 left-0 rounded-full",
+						retention >= TARGET_RETENTION ? "bg-good" : "bg-warn",
 					)}
 					style={{ width: `${Math.max(pct, 1)}%` }}
 				/>
@@ -129,8 +128,4 @@ function RetentionBar({ retention }: { retention: number }) {
 			<span className="w-9 text-right text-xs tabular-nums">{pct}%</span>
 		</div>
 	);
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-	return <h2 className="text-xs uppercase tracking-widest text-muted-foreground/70">{children}</h2>;
 }

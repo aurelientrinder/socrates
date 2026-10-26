@@ -18,6 +18,7 @@ import { startDraftSession } from "@/components/new-session";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { onSettingsSaved } from "@/components/settings-signal";
 import { Button } from "@/components/ui/button";
+import { PageFrame, SectionHeading } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 /**
@@ -93,121 +94,121 @@ export function TodayShell({
 	const plan = briefing?.plan;
 	const todo = integrations.todo[0];
 	return (
-		<div data-testid="today-view" className="h-full overflow-y-auto">
-			<div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-10">
-				<header className="flex flex-col gap-3">
-					<div className="flex items-center gap-3">
-						<h1 className="text-xs uppercase tracking-widest text-muted-foreground/70">Today</h1>
-						<span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-							<label htmlFor="today-budget">Daily budget</label>
-							<select
-								id="today-budget"
-								data-testid="today-budget"
-								value={budgetMinutes}
-								onChange={(e) => handlers.onBudget(Number(e.target.value))}
-								className="rounded-md border bg-transparent px-1.5 py-0.5"
-							>
-								{BUDGET_CHOICES.map((m) => (
-									<option key={m} value={m}>
-										{m} min
-									</option>
-								))}
-							</select>
-							<Button variant="ghost" size="sm" onClick={handlers.onRefresh} disabled={busy} data-testid="today-refresh">
-								{busy ? <Loader2Icon className="size-3.5 animate-spin" /> : <RefreshCwIcon className="size-3.5" />}
-								Refresh
-							</Button>
-						</span>
-					</div>
-					{briefing ? (
-						<p data-testid="today-note" className="text-lg leading-relaxed">
-							{briefing.note}
-						</p>
-					) : (
-						<p className="text-lg text-muted-foreground">{busy ? "Putting today's briefing together…" : "No briefing yet today."}</p>
-					)}
-					{error && (
-						<p role="alert" className="text-sm text-destructive">
-							{error}
-						</p>
-					)}
-				</header>
-
-				<Connections integrations={integrations} briefing={briefing} handlers={handlers} />
-
-				{plan && (
-					<>
-						<section className="flex flex-col gap-3">
-							<SectionTitle>Do first</SectionTitle>
-							{plan.items.length === 0 ? (
-								<p className="text-sm text-muted-foreground">Nothing urgent. A good day to learn something new.</p>
-							) : (
-								<ol className="flex flex-col gap-3">
-									{plan.items.map((item, i) => (
-										<ItemCard
-											key={item.id}
-											index={i + 1}
-											item={item}
-											pushed={briefing.pushed?.[item.id]}
-											pushing={pushing}
-											canTodo={todo?.configured === true}
-											todoLabel={todo?.label ?? "to-do"}
-											canCalendar={integrations.google.connected}
-											handlers={handlers}
-										/>
-									))}
-								</ol>
-							)}
-							{plan.trackedTopics === 0 && (
-								<p className="text-sm text-muted-foreground">
-									Your memory of each topic is measured from quiz checks and practice. Once you have answered a few, the briefing
-									can tell what is fading before each exam.
-								</p>
-							)}
-						</section>
-
-						<section className="flex flex-col gap-3">
-							<SectionTitle>Coming up in the next two weeks</SectionTitle>
-							{plan.upcoming.length === 0 ? (
-								<p className="text-sm text-muted-foreground">
-									{integrations.google.connected || todo?.configured
-										? "No exams or deadlines found."
-										: "Connect your calendar to see exams and deadlines here."}
-								</p>
-							) : (
-								<ul className="flex flex-col divide-y rounded-md border">
-									{plan.upcoming.map((u) => (
-										<UpcomingRow key={u.event.id} entry={u} now={plan.generatedAt} sessions={sessions} onLink={handlers.onLinkCourse} />
-									))}
-								</ul>
-							)}
-						</section>
-
-						{plan.todayClasses.length > 0 && (
-							<section className="flex flex-col gap-3">
-								<SectionTitle>Classes today</SectionTitle>
-								<ul className="flex flex-col divide-y rounded-md border">
-									{plan.todayClasses.map((c) => (
-										<li key={c.event.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-											<span className="w-20 shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">{timeOf(c.event)}</span>
-											<span className="min-w-0 flex-1 truncate">{c.event.title}</span>
-											<Button variant="ghost" size="sm" onClick={() => handlers.onPrimer(c)} data-testid="today-primer">
-												5-minute primer
-											</Button>
-										</li>
-									))}
-								</ul>
-							</section>
-						)}
-					</>
+		<PageFrame
+			title="Today"
+			testId="today-view"
+			actions={
+				<span className="flex items-center gap-2 text-sm text-muted-foreground">
+					<label htmlFor="today-budget">Daily budget</label>
+					<select
+						id="today-budget"
+						data-testid="today-budget"
+						value={budgetMinutes}
+						onChange={(e) => handlers.onBudget(Number(e.target.value))}
+						className="h-8 rounded-md border bg-surface px-2 text-foreground"
+					>
+						{BUDGET_CHOICES.map((m) => (
+							<option key={m} value={m}>
+								{m} min
+							</option>
+						))}
+					</select>
+					<Button variant="ghost" size="sm" onClick={handlers.onRefresh} disabled={busy} data-testid="today-refresh">
+						{busy ? <Loader2Icon className="size-3.5 animate-spin" /> : <RefreshCwIcon className="size-3.5" />}
+						Refresh
+					</Button>
+				</span>
+			}
+		>
+			<header className="-mt-4 flex flex-col gap-3">
+				{briefing ? (
+					<p data-testid="today-note" className="max-w-2xl font-prose text-xl leading-relaxed text-foreground/85">
+						{briefing.note}
+					</p>
+				) : (
+					<p className="font-prose text-xl text-muted-foreground">{busy ? "Putting today's briefing together…" : "No briefing yet today."}</p>
 				)}
-			</div>
-		</div>
+				{error && (
+					<p role="alert" className="text-sm text-destructive">
+						{error}
+					</p>
+				)}
+			</header>
+
+			<Connections integrations={integrations} briefing={briefing} handlers={handlers} />
+
+			{plan && (
+				<>
+					<section className="flex flex-col gap-3">
+						<SectionTitle>Do first</SectionTitle>
+						{plan.items.length === 0 ? (
+							<p className="text-sm text-muted-foreground">Nothing urgent. A good day to learn something new.</p>
+						) : (
+							<ol className="flex flex-col gap-3">
+								{plan.items.map((item, i) => (
+									<ItemCard
+										key={item.id}
+										index={i + 1}
+										item={item}
+										pushed={briefing.pushed?.[item.id]}
+										pushing={pushing}
+										canTodo={todo?.configured === true}
+										todoLabel={todo?.label ?? "to-do"}
+										canCalendar={integrations.google.connected}
+										handlers={handlers}
+									/>
+								))}
+							</ol>
+						)}
+						{plan.trackedTopics === 0 && (
+							<p className="text-sm text-muted-foreground">
+								Your memory of each topic is measured from quiz checks and practice. Once you have answered a few, the briefing
+								can tell what is fading before each exam.
+							</p>
+						)}
+					</section>
+
+					<section className="flex flex-col gap-3">
+						<SectionTitle>Coming up in the next two weeks</SectionTitle>
+						{plan.upcoming.length === 0 ? (
+							<p className="text-sm text-muted-foreground">
+								{integrations.google.connected || todo?.configured
+									? "No exams or deadlines found."
+									: "Connect your calendar to see exams and deadlines here."}
+							</p>
+						) : (
+							<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
+								{plan.upcoming.map((u) => (
+									<UpcomingRow key={u.event.id} entry={u} now={plan.generatedAt} sessions={sessions} onLink={handlers.onLinkCourse} />
+								))}
+							</ul>
+						)}
+					</section>
+
+					{plan.todayClasses.length > 0 && (
+						<section className="flex flex-col gap-3">
+							<SectionTitle>Classes today</SectionTitle>
+							<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
+								{plan.todayClasses.map((c) => (
+									<li key={c.event.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+										<span className="w-20 shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">{timeOf(c.event)}</span>
+										<span className="min-w-0 flex-1 truncate">{c.event.title}</span>
+										<Button variant="ghost" size="sm" onClick={() => handlers.onPrimer(c)} data-testid="today-primer">
+											5-minute primer
+										</Button>
+									</li>
+								))}
+							</ul>
+						</section>
+					)}
+				</>
+			)}
+		</PageFrame>
 	);
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-	return <h2 className="text-xs uppercase tracking-widest text-muted-foreground/70">{children}</h2>;
+	return <SectionHeading>{children}</SectionHeading>;
 }
 
 function timeOf(e: StudyEvent): string {
@@ -222,7 +223,7 @@ function Connections({ integrations, briefing, handlers }: { integrations: Integ
 	const allGood = g.connected && todo?.configured && !calendarError && !todoError;
 	if (allGood) return null;
 	return (
-		<section data-testid="today-connections" className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+		<section data-testid="today-connections" className="flex flex-col gap-2 rounded-xl border border-border/70 bg-surface p-4 text-sm">
 			<div className="flex flex-wrap items-center gap-2">
 				<span className="font-medium">Google Calendar</span>
 				{g.connected ? (
@@ -288,10 +289,10 @@ function ItemCard({
 	handlers: Handlers;
 }) {
 	return (
-		<li data-testid="today-item" className="flex flex-col gap-2 rounded-md border p-3">
+		<li data-testid="today-item" className="flex flex-col gap-2 rounded-xl border border-border/70 bg-surface p-4">
 			<div className="flex items-baseline gap-2">
 				<span className="tabular-nums text-muted-foreground">{index}.</span>
-				<span className="font-medium">{item.title}</span>
+				<span className="font-prose text-lg">{item.title}</span>
 				<span className="ml-auto shrink-0 text-xs text-muted-foreground">
 					{ACTION_LABEL[item.action]} · {item.minutes} min
 				</span>
@@ -395,11 +396,11 @@ function UpcomingRow({
 					<span className="ml-2 text-xs text-muted-foreground">{entry.kind}</span>
 				</span>
 				{r === null ? (
-					<span className="text-xs text-amber-500">nothing studied yet</span>
+					<span className="text-xs text-warn-ink">nothing studied yet</span>
 				) : (
 					<span className="flex w-28 shrink-0 items-center gap-2" title="Average predicted recall of the linked topics on the day">
 						<span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-							<span className={cn("block h-full", r >= 0.9 ? "bg-emerald-500" : r >= 0.7 ? "bg-amber-500" : "bg-red-500")} style={{ width: pct(r) }} />
+							<span className={cn("block h-full", r >= 0.9 ? "bg-good" : "bg-warn")} style={{ width: pct(r) }} />
 						</span>
 						<span className="tabular-nums text-xs text-muted-foreground">{pct(r)}</span>
 					</span>

@@ -73,6 +73,19 @@
 	--lh-rail-tick: color-mix(in srgb, var(--foreground) 35%, transparent);
 	/* Code blocks sit a shade off the page (see the chrome-melt rules). */
 	--lh-code-bg: color-mix(in oklab, var(--background) 96%, black);
+	/* The redesign's two signal colors (redesign wave, 2026-10-26): blue =
+	   remembered / on track, amber = fading or overconfident. -ink is the
+	   text shade (passes 4.5:1 on -soft and on the page), -soft the tint
+	   behind badges and callouts. --lh-surface is a raised card, a step
+	   lighter than the page. Blue/amber, not green/red: they differ in
+	   lightness too, so they stay apart for color-blind eyes. */
+	--lh-good: #2c5d84;
+	--lh-good-ink: #1d4566;
+	--lh-good-soft: #e5edf4;
+	--lh-warn: #c27a2c;
+	--lh-warn-ink: #8a4a06;
+	--lh-warn-soft: #f6e7d3;
+	--lh-surface: #fffefb;
 	/* THE TYPEFACE SETS (light theme wave). The @theme font tokens below
 	   point at these runtime variables, so <html data-typeface> swaps the
 	   whole set with no re-render. "classic" = the original JetBrains Mono
@@ -115,6 +128,13 @@ html[data-typeface="claude"] {
 	--ring: #8d8d8d;
 	/* The tint is DARKER than the page (owner note, chrome-melt tweaks). */
 	--lh-code-bg: color-mix(in oklab, var(--background) 86%, black);
+	--lh-good: #6fa3cc;
+	--lh-good-ink: #9cc3e3;
+	--lh-good-soft: #1b2733;
+	--lh-warn: #d9954a;
+	--lh-warn-ink: #e8b073;
+	--lh-warn-soft: #33271a;
+	--lh-surface: #1c1c1c;
 }
 
 /* CMU Serif bold (titles) — bundled local file, no CDN dependency. */
@@ -320,6 +340,21 @@ body {
  * bg-sidebar / border-sidebar): map it onto the app's card surface. */
 @theme inline {
 	--color-sidebar: var(--card);
+	--color-good: var(--lh-good);
+	--color-good-ink: var(--lh-good-ink);
+	--color-good-soft: var(--lh-good-soft);
+	--color-warn: var(--lh-warn);
+	--color-warn-ink: var(--lh-warn-ink);
+	--color-warn-soft: var(--lh-warn-soft);
+	--color-surface: var(--lh-surface);
+}
+
+/* Page titles (redesign wave): the title face at a reading weight, not
+   the session-name Black cut that .font-title asks for. */
+.lh-page-title {
+	font-family: var(--font-title);
+	font-weight: 500;
+	letter-spacing: -0.015em;
 }
 
 /* Mermaid diagrams render through Pele (components/mermaid-render.ts), whose

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BellIcon, BellOffIcon, PlayIcon } from "lucide-react";
 import { REVIEW_REMINDER_KEY, type ReviewStatus } from "@/src/core";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * THE START PANEL (spaced repetition): one button that opens a short
@@ -40,14 +41,17 @@ export function ReviewStart({ status }: { status: ReviewStatus }) {
 	};
 
 	return (
-		<section data-testid="review-start" className="flex flex-col gap-3 rounded-lg border border-border/60 px-4 py-4">
+		<section
+			data-testid="review-start"
+			className={cn("flex flex-col gap-3 rounded-xl px-5 py-4", n > 0 ? "bg-warn-soft" : "border border-border/70 bg-surface")}
+		>
 			{n > 0 ? (
 				<div className="flex flex-wrap items-center gap-3">
 					<Button data-testid="review-start-button" onClick={() => void start()} disabled={busy}>
 						<PlayIcon className="size-4" />
 						Start review
 					</Button>
-					<p className="text-sm text-muted-foreground">
+					<p className="text-base text-foreground/80">
 						{n} {n === 1 ? "question" : "questions"}, about {n} {n === 1 ? "minute" : "minutes"}
 						{status.due > n ? `. ${status.due - n} more wait for the next round.` : "."}
 					</p>
