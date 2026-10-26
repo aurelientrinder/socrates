@@ -18,16 +18,18 @@ import { StartDialogBody, notePrompt, type StartMode } from "../components/start
 
 const noop = () => {};
 
-function render(mode: StartMode, opts: { topic?: string; due?: number | null; notes?: { id: string; name: string }[] } = {}) {
+function render(mode: StartMode, opts: { topic?: string; due?: number | null; notes?: { id: string; name: string }[]; minutes?: number } = {}) {
 	return renderToStaticMarkup(
 		<StartDialogBody
 			mode={mode}
 			topic={opts.topic ?? ""}
 			due={opts.due === undefined ? 3 : opts.due}
 			notes={opts.notes ?? []}
+			minutes={opts.minutes ?? 25}
 			busy={false}
 			error={null}
 			onMode={noop}
+			onMinutes={noop}
 			onTopic={noop}
 			onStart={noop}
 			onNote={noop}
@@ -40,7 +42,7 @@ describe("StartDialogBody", () => {
 	it("presses the chosen kind and badges Review with what is due", () => {
 		const html = render("learn");
 		assert.match(html, /aria-pressed="true"[^>]*data-testid="start-mode-learn"/);
-		assert.equal(html.match(/aria-pressed="true"/g)?.length, 1);
+		assert.equal(html.match(/aria-pressed="true" data-testid="start-mode-/g)?.length, 1);
 		assert.match(html, /3 due/);
 	});
 
@@ -69,5 +71,13 @@ describe("StartDialogBody", () => {
 		const none = render("review", { due: 0 });
 		assert.match(none, /Nothing is due right now/);
 		assert.match(none, /data-testid="start-go" disabled=""/);
+	});
+
+	it("asks how long for Learn and Practice, not Review", () => {
+		const learn = render("learn", { minutes: 45 });
+		assert.match(learn, /data-testid="start-length"/);
+		assert.match(learn, /aria-pressed="true"[^>]*>45 min/);
+		assert.match(learn, /aria-pressed="false"[^>]*>25 min/);
+		assert.doesNotMatch(render("review"), /start-length/);
 	});
 });

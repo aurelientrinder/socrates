@@ -9,6 +9,7 @@ import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { startDraftSession } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
 import { REVIEW_SESSION_SIZE } from "@/src/core";
+import { DEFAULT_SESSION_LENGTH, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
 import { cn } from "@/lib/utils";
 
 /**
@@ -65,6 +66,7 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 	const [topic, setTopic] = useState("");
 	const [due, setDue] = useState<number | null>(null);
 	const [notes, setNotes] = useState<NoteChip[]>([]);
+	const [minutes, setMinutes] = useState<number>(DEFAULT_SESSION_LENGTH);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const backdropDismiss = useBackdropDismiss(() => {
@@ -114,6 +116,7 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 				target = `/chat/${body.id}?prompt=${encodeURIComponent(REVIEW_START_PROMPT)}`;
 			} else {
 				target = await startDraftSession(text, fetch, mode === "practice" ? "practice" : undefined);
+				if (target) setSessionBudget(target, minutes);
 			}
 			if (!target) {
 				setBusy(false);
@@ -134,9 +137,11 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 				topic={topic}
 				due={due}
 				notes={notes}
+				minutes={minutes}
 				busy={busy}
 				error={error}
 				onMode={setMode}
+				onMinutes={setMinutes}
 				onTopic={setTopic}
 				onStart={() => void go(topic)}
 				onNote={(name) => void go(notePrompt(mode === "practice" ? "practice" : "learn", name))}
@@ -159,9 +164,11 @@ export function StartDialogBody({
 	topic,
 	due,
 	notes,
+	minutes,
 	busy,
 	error,
 	onMode,
+	onMinutes,
 	onTopic,
 	onStart,
 	onNote,
@@ -173,9 +180,12 @@ export function StartDialogBody({
 	due: number | null;
 	/** The most recent saved notes, offered as one-click starts. */
 	notes: NoteChip[];
+	/** The session length, for Learn and Practice (sets the session timer). */
+	minutes: number;
 	busy: boolean;
 	error: string | null;
 	onMode: (mode: StartMode) => void;
+	onMinutes: (minutes: number) => void;
 	onTopic: (text: string) => void;
 	onStart: () => void;
 	onNote: (name: string) => void;
@@ -287,6 +297,30 @@ export function StartDialogBody({
 				<p role="alert" className="text-sm text-destructive">
 					{error}
 				</p>
+			)}
+
+			{mode !== "review" && (
+				<div className="flex flex-wrap items-center gap-3">
+					<span id="start-length-label" className="text-sm font-semibold">
+						How long?
+					</span>
+					<div role="group" aria-labelledby="start-length-label" data-testid="start-length" className="flex gap-0.5 rounded-lg bg-accent/70 p-0.5">
+						{SESSION_LENGTHS.map((m) => (
+							<button
+								key={m}
+								type="button"
+								aria-pressed={minutes === m}
+								onClick={() => onMinutes(m)}
+								className={cn(
+									"h-8 rounded-md px-3 text-sm tabular-nums transition-colors",
+									minutes === m ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+								)}
+							>
+								{m} min
+							</button>
+						))}
+					</div>
+				</div>
 			)}
 
 			<div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-5">

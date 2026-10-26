@@ -15,6 +15,7 @@ import {
 	type UpcomingEntry,
 } from "@/src/core";
 import { startDraftSession } from "@/components/new-session";
+import { setSessionBudget } from "@/components/session-timer";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { onSettingsSaved } from "@/components/settings-signal";
 import { Button } from "@/components/ui/button";
@@ -609,7 +610,10 @@ export function TodayView({
 		onStart: async (item) => {
 			try {
 				const target = await startDraftSession(startPrompt(item), fetch);
-				if (target) router.push(target);
+				if (target) {
+					setSessionBudget(target, item.minutes);
+					router.push(target);
+				}
 			} catch {
 				setError("Could not start the session.");
 			}
@@ -618,7 +622,10 @@ export function TodayView({
 			const text = `5-minute primer before my ${entry.event.title} class: remind me where we left off and ask me one prediction question about what comes next.`;
 			try {
 				const target = await startDraftSession(text, fetch);
-				if (target) router.push(target);
+				if (target) {
+					setSessionBudget(target, 5);
+					router.push(target);
+				}
 			} catch {
 				setError("Could not start the session.");
 			}
