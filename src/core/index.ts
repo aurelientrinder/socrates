@@ -52,6 +52,8 @@ export * from "./prices.ts";
 export * from "./calibration.ts";
 // Knowledge decay: per-topic FSRS memory state and the review schedule. Pure, browser-safe.
 export * from "./retention.ts";
+// Minutes studied per day, from transcript timestamps (Today's "This week"). Pure, browser-safe.
+export * from "./study-time.ts";
 // The daily briefing planner (calendar + to-do + retention). Pure, browser-safe.
 export * from "./briefing.ts";
 // Spaced-repetition review sessions: the queue marker + progress tally. Pure.

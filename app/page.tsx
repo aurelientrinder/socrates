@@ -6,6 +6,7 @@ import {
 	listChats,
 	readBriefingPrefs,
 	savedBriefing,
+	studyWeek,
 	TASK_PROVIDERS,
 } from "@/src/server";
 
@@ -25,6 +26,8 @@ export default function TodayPage() {
 	const gap = calibration.gap;
 	const honesty =
 		gap !== null && calibration.answered >= HONESTY_MIN_ANSWERS && gap > CALIBRATED_WITHIN ? { points: Math.round(gap) } : null;
+	const now = new Date();
+	const week = { minutes: studyWeek(now), today: (now.getDay() + 6) % 7 };
 	return (
 		<TodayView
 			initialBriefing={savedBriefing()}
@@ -35,6 +38,7 @@ export default function TodayPage() {
 			initialBudget={readBriefingPrefs().budgetMinutes}
 			sessions={listChats().map((c) => ({ id: c.id, title: c.title }))}
 			honesty={honesty}
+			week={week}
 		/>
 	);
 }

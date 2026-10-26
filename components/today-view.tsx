@@ -84,6 +84,7 @@ export function TodayShell({
 	error,
 	handlers,
 	honesty = null,
+	week = null,
 }: {
 	briefing: BriefingData | null;
 	integrations: IntegrationsData;
@@ -97,6 +98,8 @@ export function TodayShell({
 	handlers: Handlers;
 	/** Set when quiz answers show clear overconfidence: the gap in points. */
 	honesty?: { points: number } | null;
+	/** Minutes studied each day this week (Monday first) and today's index. */
+	week?: StudyWeek | null;
 }) {
 	const plan = briefing?.plan;
 	const todo = integrations.todo[0];
@@ -238,6 +241,8 @@ export function TodayShell({
 						</SideCard>
 					)}
 
+					{week && <WeekCard week={week} />}
+
 					{honesty && (
 						<section data-testid="today-honesty" className="flex flex-col gap-2 rounded-2xl bg-good-soft px-5 py-4">
 							<h2 className="text-base font-semibold text-good-ink">Honesty check</h2>
@@ -255,6 +260,63 @@ export function TodayShell({
 				</div>
 			</div>
 		</PageFrame>
+	);
+}
+
+export interface StudyWeek {
+	/** Seven entries, Monday first. */
+	minutes: number[];
+	/** Today's position in `minutes` (0 = Monday). */
+	today: number;
+}
+
+const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** "1 h 40 min", "25 min". Pure. */
+export function formatStudyTotal(minutes: number): string {
+	const h = Math.floor(minutes / 60);
+	const m = minutes % 60;
+	return h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+/** This week (redesign wave): minutes studied per day, as small bars. */
+function WeekCard({ week }: { week: StudyWeek }) {
+	const total = week.minutes.reduce((a, b) => a + b, 0);
+	// Scale to the busiest day, but never so that a few minutes fill the bar.
+	const top = Math.max(30, ...week.minutes);
+	return (
+		<section data-testid="today-week" className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface px-5 py-4">
+			<div className="flex items-baseline justify-between gap-2">
+				<h2 className="text-base font-semibold">This week</h2>
+				<span className="text-sm text-muted-foreground tabular-nums">{total > 0 ? formatStudyTotal(total) : "Nothing yet"}</span>
+			</div>
+			<div
+				role="img"
+				aria-label={`Minutes studied each day: ${week.minutes.map((m, i) => `${DAY_NAMES[i]} ${m}`).join(", ")}`}
+				className="flex h-16 items-end gap-2"
+			>
+				{week.minutes.map((m, i) => (
+					<span
+						key={i}
+						data-testid="today-week-bar"
+						className={cn(
+							"flex-1 rounded",
+							m > 0 ? "bg-good" : "bg-accent",
+							i === week.today && "outline-dashed outline-[1.5px] outline-offset-2 outline-muted-foreground/60",
+						)}
+						style={{ height: m > 0 ? `${Math.max(8, Math.round((m / top) * 64))}px` : "4px" }}
+					/>
+				))}
+			</div>
+			<div aria-hidden="true" className="flex gap-2 text-xs text-muted-foreground">
+				{DAY_LETTERS.map((d, i) => (
+					<span key={i} className={cn("flex-1 text-center", i === week.today && "font-semibold text-foreground")}>
+						{d}
+					</span>
+				))}
+			</div>
+		</section>
 	);
 }
 
@@ -532,12 +594,14 @@ export function TodayView({
 	initialBudget,
 	sessions,
 	honesty = null,
+	week = null,
 }: {
 	initialBriefing: BriefingData | null;
 	initialIntegrations: IntegrationsData;
 	initialBudget: number;
 	sessions: SessionOption[];
 	honesty?: { points: number } | null;
+	week?: StudyWeek | null;
 }) {
 	const router = useRouter();
 	const { open: openSettings } = useSettingsDialog();
@@ -725,6 +789,7 @@ export function TodayView({
 			error={error}
 			handlers={handlers}
 			honesty={honesty}
+			week={week}
 		/>
 	);
 }
