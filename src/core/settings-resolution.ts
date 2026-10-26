@@ -26,6 +26,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ModelRole } from "../../config.ts";
 import type { ChatSettings } from "./contracts/chat.ts";
 import type { SearchEngineId } from "./search.ts";
+import type { DictationEngineId } from "./dictation.ts";
 import {
 	BACKGROUND_MODEL_ROLES,
 	FACTORY_SETTINGS,
@@ -79,6 +80,9 @@ export interface EffectiveSettings {
 		 *  passthrough delta — engine resolution (pin → auto → unavailable)
 		 *  lives in server/search.ts, where keys are visible. */
 		search: { engine?: SearchEngineId };
+		/** Dictation preferences as stored (passthrough delta; resolution
+		 *  lives in server/dictation.ts, where keys are visible). */
+		dictation: { engine?: DictationEngineId; language?: string };
 		/** Prober graph tools (wave 7): passthrough delta as stored —
 		 * absent/undefined enabled = ON; consumers use graphToolsEnabled. */
 		graphTools: { enabled?: boolean };
@@ -181,6 +185,7 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 			tools: agent.tools ?? {},
 			prompts: agent.prompts ?? {},
 			search: agent.search ?? {},
+			dictation: agent.dictation ?? {},
 			graphTools: agent.graphTools ?? {},
 		},
 		models: {

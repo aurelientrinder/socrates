@@ -31,6 +31,10 @@
  * grays whole-row (a choice without a key would only BLOCK the other
  * engine's auto-activation).
  *
+ * Gemini joined the search engines and two dictation rows (engine +
+ * language) joined the group on 2026-10-26 — same menu look, the engine
+ * row's reason line from /api/stt.
+ *
  * Tools — the owner's final list (2026-09-19): research, demo, visual, pdf.
  * Absent key = enabled in the schema; the UI writes explicit booleans for
  * all four (simpler to reason about, sanitize-equivalent).
@@ -62,6 +66,10 @@ import {
 	resolveSettings,
 	type AgentSettings,
 	type CompactionSettings,
+	DICTATION_ENGINES,
+	DICTATION_LANGUAGES,
+	dictationLanguageLabel,
+	type DictationEngineId,
 	type GraphSettings,
 	type ModelCatalogEntry,
 	type ModelSlotName,
@@ -83,8 +91,13 @@ const SLOT_META: Record<ModelSlotName, { label: string; roster: string }> = {
 	vision: { label: "Vision", roster: "The assistants that draw and read PDFs" },
 };
 
-/** The search engines this wave ships (src/core/search.ts) + their labels. */
-const SEARCH_ENGINES = ["tavily", "brave"] as const;
+/** The search engines (src/core/search.ts) + their labels and key vars. */
+const SEARCH_ENGINES = ["tavily", "brave", "gemini"] as const;
+const SEARCH_ENGINE_META: Record<(typeof SEARCH_ENGINES)[number], { label: string; envVar: string }> = {
+	tavily: { label: "Tavily", envVar: "TAVILY_API_KEY" },
+	brave: { label: "Brave", envVar: "BRAVE_API_KEY" },
+	gemini: { label: "Gemini", envVar: "GEMINI_API_KEY" },
+};
 
 /** The owner's final toggleable-tool list (confirm with the user before
  *  changing — the Teacher stream settled this 2026-09-19). */
@@ -170,6 +183,25 @@ export function composeSearchEngine(
 		return { ...rest } as AgentSettings;
 	}
 	return { ...agent, search: { engine } };
+}
+
+/** Compose: one dictation preference (engine pin or language). null =
+ *  the pin is REMOVED (automatic). Pure — exported for tests. */
+export function composeDictation(
+	agent: AgentSettings | undefined,
+	field: "engine" | "language",
+	value: string | null,
+): AgentSettings {
+	const next: { engine?: DictationEngineId; language?: string } = { ...agent?.dictation };
+	if (value === null) delete next[field];
+	else if (field === "engine") next.engine = value as DictationEngineId;
+	else next.language = value;
+	if (Object.keys(next).length === 0) {
+		if (!agent?.dictation) return { ...agent };
+		const { dictation: _drop, ...rest } = agent;
+		return { ...rest } as AgentSettings;
+	}
+	return { ...agent, dictation: next };
 }
 
 /** The indicator under a row whose override IS the version in use (owner
@@ -312,13 +344,19 @@ export function AgentSection({
 	/** Which search engines have a key (/api/keys) — the no-keys-anywhere
 	 *  state grays the row; per-engine marks ride the menu rows. */
 	const [engineKeys, setEngineKeys] = useState<Partial<Record<(typeof SEARCH_ENGINES)[number], boolean>>>({});
+	/** The live dictation state (/api/stt) + which dictation engines have a key. */
+	const [dictation, setDictation] = useState<{ available: boolean; engine: string | null; reason: string } | null>(null);
+	const [dictationKeys, setDictationKeys] = useState<Partial<Record<DictationEngineId, boolean>>>({});
 	const [prompts, setPrompts] = useState<{ prober: SegmentInfo[]; teacher: SegmentInfo[] } | null>(null);
 	const [openSegment, setOpenSegment] = useState<string | null>(null);
 	const [segmentDraft, setSegmentDraft] = useState<Record<string, string>>({});
 	const [segmentStatus, setSegmentStatus] = useState<string | null>(null);
 	/** One open dropdown for the whole section: which slot (or the search
 	 *  row), which kind. */
-	const [openMenu, setOpenMenu] = useState<{ target: ModelSlotName | "search"; kind: "model" | "thinking" | "engine" } | null>(null);
+	const [openMenu, setOpenMenu] = useState<{
+		target: ModelSlotName | "search" | "dictation" | "dictation-language";
+		kind: "model" | "thinking" | "engine";
+	} | null>(null);
 	const menuAnchorRef = useRef<HTMLSpanElement>(null);
 
 	const refreshSearch = () =>
@@ -380,12 +418,13 @@ export function AgentSection({
 		fetch("/api/keys")
 			.then((r) => r.json())
 			.then((body: { keys: { id: string; present: boolean }[] }) => {
+				const has = (envVar: string) => body.keys.some((k) => k.id === envVar && k.present);
 				const present: Partial<Record<(typeof SEARCH_ENGINES)[number], boolean>> = {};
-				for (const id of SEARCH_ENGINES) {
-					const envVar = id === "tavily" ? "TAVILY_API_KEY" : "BRAVE_API_KEY";
-					present[id] = body.keys.some((k) => k.id === envVar && k.present);
-				}
+				for (const id of SEARCH_ENGINES) present[id] = has(SEARCH_ENGINE_META[id].envVar);
 				setEngineKeys(present);
+				const dictationPresent: Partial<Record<DictationEngineId, boolean>> = {};
+				for (const e of DICTATION_ENGINES) dictationPresent[e.id] = has(e.envVar);
+				setDictationKeys(dictationPresent);
 			})
 			.catch(() => {});
 		return () => { modelsMounted.current = false; modelsRequest.current++; };
@@ -398,6 +437,12 @@ export function AgentSection({
 	useEffect(() => {
 		refreshSearch();
 	}, [agent?.search?.engine]);
+	useEffect(() => {
+		fetch("/api/stt")
+			.then((r) => r.json())
+			.then((body: { available: boolean; engine: string | null; reason: string }) => setDictation(body))
+			.catch(() => setDictation(null));
+	}, [agent?.dictation?.engine]);
 
 	// The dropdown contract (the chat model selector's, mirrored): any
 	// click outside the open menu — or an Esc — closes it. Esc is CLAIMED
@@ -475,7 +520,7 @@ export function AgentSection({
 
 		/** The search-engine menu row — label + the quiet live-key mark. */
 	const engineOption = (
-		id: (typeof SEARCH_ENGINES)[number] | "auto",
+		id: string,
 		label: string,
 		active: boolean,
 		live: boolean | null,
@@ -804,7 +849,7 @@ export function AgentSection({
 				))}
 				{(() => {
 					const engine = agent?.search?.engine ?? null;
-					const anyKey = engineKeys.tavily === true || engineKeys.brave === true;
+					const anyKey = SEARCH_ENGINES.some((id) => engineKeys[id] === true);
 					const open = openMenu?.target === "search";
 					return (
 						<SettingsRow
@@ -815,7 +860,7 @@ export function AgentSection({
 						>
 							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
 								<MenuTrigger
-									value={engine === "tavily" ? "Tavily" : engine === "brave" ? "Brave" : ""}
+									value={engine ? SEARCH_ENGINE_META[engine].label : ""}
 									emptyLabel="Automatic"
 									ariaLabel="Search engine"
 									testid="search-engine-trigger"
@@ -836,8 +881,95 @@ export function AgentSection({
 											setOpenMenu(null);
 										})}
 										{SEARCH_ENGINES.map((id) =>
-											engineOption(id, id === "tavily" ? "Tavily" : "Brave", engine === id, engineKeys[id] ?? false, () => {
+											engineOption(id, SEARCH_ENGINE_META[id].label, engine === id, engineKeys[id] ?? false, () => {
 												onSectionChange(composeSearchEngine(agent, id));
+												setOpenMenu(null);
+											}),
+										)}
+									</MenuShell>
+								)}
+							</span>
+						</SettingsRow>
+					);
+				})()}
+				{(() => {
+					const engine = agent?.dictation?.engine ?? null;
+					const anyKey = DICTATION_ENGINES.some((e) => dictationKeys[e.id] === true);
+					const open = openMenu?.target === "dictation";
+					return (
+						<SettingsRow
+							label="Dictation engine"
+							hint={dictation?.reason ?? undefined}
+							testid="dictation-engine-row"
+							dimmed={!anyKey}
+						>
+							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
+								<MenuTrigger
+									value={DICTATION_ENGINES.find((e) => e.id === engine)?.label ?? ""}
+									emptyLabel="Automatic"
+									ariaLabel="Dictation engine"
+									testid="dictation-engine-trigger"
+									open={open}
+									onClick={() => setOpenMenu(open ? null : { target: "dictation", kind: "engine" })}
+									widthClass="min-w-20"
+									disabled={!anyKey}
+								/>
+								{open && (
+									<MenuShell
+										preferredSide="down"
+										anchorTestid="dictation-engine-trigger"
+										testid="dictation-engine-menu"
+										menuClass="flex w-44 flex-col gap-0.5 rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
+									>
+										{engineOption("dictation-auto", "Automatic", engine === null, null, () => {
+											onSectionChange(composeDictation(agent, "engine", null));
+											setOpenMenu(null);
+										})}
+										{DICTATION_ENGINES.map((e) =>
+											engineOption(`dictation-${e.id}`, e.label, engine === e.id, dictationKeys[e.id] ?? false, () => {
+												onSectionChange(composeDictation(agent, "engine", e.id));
+												setOpenMenu(null);
+											}),
+										)}
+									</MenuShell>
+								)}
+							</span>
+						</SettingsRow>
+					);
+				})()}
+				{(() => {
+					const language = agent?.dictation?.language ?? null;
+					const open = openMenu?.target === "dictation-language";
+					return (
+						<SettingsRow
+							label="Dictation language"
+							hint="The language you speak — Automatic detects it"
+							testid="dictation-language-row"
+						>
+							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
+								<MenuTrigger
+									value={dictationLanguageLabel(language) ?? ""}
+									emptyLabel="Automatic"
+									ariaLabel="Dictation language"
+									testid="dictation-language-trigger"
+									open={open}
+									onClick={() => setOpenMenu(open ? null : { target: "dictation-language", kind: "engine" })}
+									widthClass="min-w-20"
+								/>
+								{open && (
+									<MenuShell
+										preferredSide="down"
+										anchorTestid="dictation-language-trigger"
+										testid="dictation-language-menu"
+										menuClass="flex w-44 flex-col gap-0.5 rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
+									>
+										{engineOption("language-auto", "Automatic", language === null, null, () => {
+											onSectionChange(composeDictation(agent, "language", null));
+											setOpenMenu(null);
+										})}
+										{DICTATION_LANGUAGES.map((l) =>
+											engineOption(`language-${l.code}`, l.label, language === l.code, null, () => {
+												onSectionChange(composeDictation(agent, "language", l.code));
 												setOpenMenu(null);
 											}),
 										)}

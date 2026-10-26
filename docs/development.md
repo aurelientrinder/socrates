@@ -43,6 +43,7 @@ Secrets and machine-specific paths only. Model choice and thinking budgets are t
 | `OPENROUTER_API_KEY` | required — all LLM calls go through OpenRouter |
 | `GOOGLE_SEARCH_API_KEY` + `GOOGLE_CSE_ID` | researcher's `web_search` (Google Custom Search) |
 | `DEEPGRAM_API_KEY` | optional — dictation (STT token minting; audio streams browser→Deepgram, never through the server) |
+| `GEMINI_API_KEY` | model key; also powers dictation (batch transcription via `/api/stt/transcribe`) and web search (Google Search grounding) when no dedicated key is set. `LH_GEMINI_TOOL_MODEL` overrides the model (default `gemini-flash-lite-latest`) |
 | `CHROME_PATH` | optional system Chrome fallback for demo verification; the app's own browser helper is primary (nothing is downloaded) |
 
 The packaged desktop app takes keys from `userData/auth.json` (BYOK, mode 0600, read/written directly by the server via `LH_AUTH_FILE`). PDFs render natively with pdfjs/Skia; SVGs use resvg.
@@ -165,7 +166,7 @@ pricing-generation step: Pi AI's catalog and public calculator are the authority
 
 **Practice (problem sets).** A node selection resolves to the STORED reasoning chains it fully contains (a chain rides iff every member is selected; unchained nodes ride as singletons); the `/practice` creation dialog picks a birth-session cluster (the graph view's own groups) and freezes its propositions + chains into a self-contained `ProblemSet`. Three named-level axes steer generation (ladder rung 0–4, cue distance 0–2, Theory|Application — never a number to interpolate; defaults Direct exercise · Adjacent context · Theory), plus an optional free-form note the agents weigh but need not follow. Creation has two entries: the cluster picker on `/practice`, or the graph view's chain table — a full-bleed sortable table of every reasoning chain, grouped by birth cluster under the shared top bar, selecting chips, chains, or whole clusters, whose floating selection bar shows the exact `N nodes → M chains` the agents will receive — handing a free-form node selection to the same dialog — and carries the fenced Delete action, making it the graph's management view (whole-cluster cleanup through the same full-death confirm dialog). A partitioner agent covers every chain exactly once, one generator per partition writes problems against the owner's problem-engineering framework (commit-before-pose: statement + solution + rubric together), and grading is **strengthening, not assessment** — one attempt per problem with its own submit button, instant solution/rubric reveal, then a score 0–10 with brief reasoning landing live; nothing ever written back to the graph. Runs are registry-backed background jobs on the activity dock (no steer, never wakes the teacher); sets live in `data/practice`, crash-swept on boot.
 
-**Dictation.** Optional speech-to-text: the server mints short-lived Deepgram tokens; audio streams browser→Deepgram over WebSocket, never through the server.
+**Dictation.** Optional speech-to-text with two engines: Deepgram (the server mints short-lived tokens; audio streams browser→Deepgram over WebSocket, never through the server) or Gemini (the run is recorded and sent once, at stop, through `/api/stt/transcribe`). Settings → Agent picks the engine (automatic = Deepgram when keyed) and the spoken language.
 
 ## Testing
 
