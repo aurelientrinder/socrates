@@ -390,6 +390,7 @@ function NavRow({
 	testId,
 	badge,
 	hint,
+	also = [],
 }: {
 	href: string;
 	icon: React.ReactNode;
@@ -398,9 +399,11 @@ function NavRow({
 	badge?: React.ReactNode;
 	/** Screen-reader description of what the page holds. */
 	hint: string;
+	/** Other addresses that belong to this place (Progress owns /map). */
+	also?: string[];
 }) {
 	const pathname = usePathname();
-	const active = pathname === href || pathname.startsWith(`${href}/`);
+	const active = [href, ...also].some((p) => pathname === p || (p !== "/" && pathname.startsWith(`${p}/`)));
 	return (
 		<Link
 			href={href}
@@ -441,7 +444,7 @@ function TodayLink() {
 	useServerResync(() => void refresh());
 	return (
 		<NavRow
-			href="/today"
+			href="/"
 			testId="open-today"
 			icon={<SunIcon className="size-4" />}
 			label="Today"
@@ -731,12 +734,10 @@ function SessionsSidebar() {
 					{/* Hover mirrors the ghost toggle buttons (owner ask, 2026-09-17):
 					    same size-9 chip geometry, same hover:bg-accent treatment. */}
 					<Hint
-						// Kept (owner, subtlety round 2026-09-25) but to the RIGHT
-						// of the logo, carrying its real shortcut: ⌘G jumps to
-						// the graph view (keyboard-shortcuts routes it to "/",
-						// the same destination as this logo).
-						label="Home"
-						action="jump-graph"
+						// To the RIGHT of the logo (owner, subtlety round
+						// 2026-09-25). Home is Today since the redesign wave; the
+						// knowledge map's ⌘G moved with it to /map.
+						label="Today"
 						side="right"
 					>
 						<Link
@@ -796,9 +797,10 @@ function SessionsSidebar() {
 						<NavRow
 							href="/progress"
 							testId="open-progress"
+							also={["/map"]}
 							icon={<ChartLineIcon className="size-4" />}
 							label="Progress"
-							hint="see what you are forgetting and how your confidence compares with your accuracy"
+							hint="see what you are forgetting, how your confidence compares with your accuracy, and your knowledge map"
 						/>
 						<NavRow
 							href="/library"

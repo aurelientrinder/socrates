@@ -12,6 +12,7 @@ import { DictationBar, joinDictation, useDictation } from "@/components/dictatio
 import { useFieldCycle } from "@/components/field-cycle";
 import { SidebarToggle } from "@/components/sidebar";
 import { StatsBar } from "@/components/stats-bar";
+import { FloatingTabs, PROGRESS_TABS } from "@/components/page-header";
 import type { TurnUsage } from "@/src/core";
 
 /**
@@ -202,6 +203,11 @@ export function Home({
 			<header className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 px-3 py-2">
 				<div className="pointer-events-auto">
 					<SidebarToggle />
+				</div>
+				{/* The map is Progress → Map since the redesign wave: the tabs
+				    float here so the other two views stay one click away. */}
+				<div className="pointer-events-auto">
+					<FloatingTabs tabs={PROGRESS_TABS} active="map" />
 				</div>
 			</header>
 
