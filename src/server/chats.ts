@@ -3,6 +3,7 @@ import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
 import { titleFromPrompt } from "../core/contracts.ts";
 import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
+import { propositionNames, recallEvents, retentionReport, type RetentionReport } from "../core/retention.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -168,4 +169,15 @@ export function calibrationAcrossSessions(): CalibrationReport {
 		return record ? calibrationAnswers(record) : [];
 	});
 	return calibrationReport(answers);
+}
+
+/** The review view's report: every tested recall across sessions, folded
+ *  into per-topic memory state, estimated retention, and what is due. */
+export function retentionAcrossSessions(now: number = Date.now()): RetentionReport {
+	const names = propositionNames(stores.graphStore.readNodes());
+	const events = listChats().flatMap((summary) => {
+		const record = getChat(summary.id);
+		return record ? recallEvents(record, (id) => names.get(id)) : [];
+	});
+	return retentionReport(events, now);
 }

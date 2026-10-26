@@ -48,6 +48,24 @@ export const AUTH_KEYS: readonly AuthKeyInfo[] = [
 		description: "Web-search engine for the researcher sub-agent — the alternative to Tavily. Setting the key activates it.",
 		docsUrl: "https://brave.com/search/api/",
 	},
+	{
+		id: "GOOGLE_OAUTH_CLIENT_ID",
+		label: "Google OAuth client ID",
+		description: "For Google Calendar sign-in (daily briefing). Create a Desktop app OAuth client in Google Cloud and paste its client ID here, then sign in from the Today page.",
+		docsUrl: "https://console.cloud.google.com/apis/credentials",
+	},
+	{
+		id: "GOOGLE_OAUTH_CLIENT_SECRET",
+		label: "Google OAuth client secret",
+		description: "The client secret of the same Desktop app OAuth client (Google requires it for desktop sign-in; it stays on this computer).",
+		docsUrl: "https://console.cloud.google.com/apis/credentials",
+	},
+	{
+		id: "TODOIST_API_TOKEN",
+		label: "Todoist",
+		description: "Lets the daily briefing read your dated tasks and add study tasks when you click. Todoist → Settings → Integrations → Developer → API token (free plan works).",
+		docsUrl: "https://app.todoist.com/app/settings/integrations/developer",
+	},
 ] as const;
 
 const AUTH_KEY_IDS: ReadonlySet<string> = new Set(AUTH_KEYS.map((k) => k.id));
@@ -164,6 +182,17 @@ export function validateKeyShape(id: string, rawValue: string): KeyShapeResult {
 		case "DEEPGRAM_API_KEY":
 			// No public format — the length floor only catches truncated pastes.
 			return nonEmpty(20);
+		case "GOOGLE_OAUTH_CLIENT_ID":
+			return value.endsWith(".apps.googleusercontent.com")
+				? nonEmpty(40)
+				: { ok: false, error: `${id} must end with ".apps.googleusercontent.com" (a Google OAuth client ID)` };
+		case "GOOGLE_OAUTH_CLIENT_SECRET":
+			// Current secrets start GOCSPX-; older clients have bare 24-char secrets.
+			return nonEmpty(20);
+		case "TODOIST_API_TOKEN":
+			return /^[0-9a-f]{40}$/i.test(value)
+				? { ok: true }
+				: { ok: false, error: `${id} must be the 40-character token from Todoist's Developer settings` };
 		default:
 			return { ok: false, error: `unknown key "${id}" (supported: ${[...AUTH_KEY_IDS].join(", ")})` };
 	}
