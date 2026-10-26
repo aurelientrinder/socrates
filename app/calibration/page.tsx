@@ -1,10 +1,6 @@
-import { CalibrationView } from "@/components/calibration-view";
-import { calibrationAcrossSessions } from "@/src/server";
+import { redirect } from "next/navigation";
 
-// Dynamic: every visit re-reads the session records, so the view always
-// carries the answers given since the last look.
-export const dynamic = "force-dynamic";
-
+// The Calibration page is a tab of Progress now (redesign wave).
 export default function CalibrationPage() {
-	return <CalibrationView report={calibrationAcrossSessions()} />;
+	redirect("/progress?tab=calibration");
 }

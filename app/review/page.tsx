@@ -1,11 +1,6 @@
-import { ReviewView } from "@/components/review-view";
-import { retentionAcrossSessions, reviewStatus } from "@/src/server";
+import { redirect } from "next/navigation";
 
-// Dynamic: retention decays with the clock and every visit re-reads the
-// session records, so the view is always as of now.
-export const dynamic = "force-dynamic";
-
+// The Review page is the Memory tab of Progress now (redesign wave).
 export default function ReviewPage() {
-	const now = Date.now();
-	return <ReviewView report={retentionAcrossSessions(now)} status={reviewStatus(now)} />;
+	redirect("/progress");
 }

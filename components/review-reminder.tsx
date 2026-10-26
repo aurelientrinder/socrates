@@ -49,7 +49,7 @@ export function ReviewReminder() {
 			const n = new Notification(title, { body, tag: "lh-review" });
 			n.onclick = () => {
 				window.focus();
-				router.push("/review");
+				router.push("/progress");
 				n.close();
 			};
 		};
