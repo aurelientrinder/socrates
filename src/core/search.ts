@@ -30,8 +30,13 @@ export interface SearchHit {
 	snippet: string;
 }
 
-/** The engine ids this wave ships (the catalog: curated keys + adapters). */
-export type SearchEngineId = "tavily" | "brave";
+/** The engine ids (the catalog: curated keys + adapters). gemini rides the
+ *  model-provider GEMINI_API_KEY — Google Search grounding (2026-10-26). */
+export type SearchEngineId = "tavily" | "brave" | "gemini";
+
+export function isSearchEngineId(value: unknown): value is SearchEngineId {
+	return value === "tavily" || value === "brave" || value === "gemini";
+}
 
 /** A live search engine: an id (for status/labels) + one operation. The
  *  adapters own their wire protocol (fetch, timeouts, error mapping) —

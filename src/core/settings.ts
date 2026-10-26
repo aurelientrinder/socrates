@@ -31,7 +31,8 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { AUTH_PROVIDER_KEYS } from "./auth-keys.ts";
 import type { ModelRole } from "../../config.ts";
 import type { ChatSettings } from "./contracts/chat.ts";
-import type { SearchEngineId } from "./search.ts";
+import { isSearchEngineId, type SearchEngineId } from "./search.ts";
+import { isDictationEngineId, isDictationLanguage, type DictationEngineId } from "./dictation.ts";
 
 /** The schema version this code understands. Bump ONLY for breaking shape
  *  changes (a field renamed/meaning changed); pure additions never bump. */
@@ -249,6 +250,10 @@ export interface AgentSettings {
 	 *  engine must still have its key, else search is honestly unavailable.
 	 *  Absent + no key = unavailable (no silent fallback, no default). */
 	search?: { engine?: SearchEngineId };
+	/** Dictation preferences (2026-10-26): engine pin (same discipline as
+	 *  search — a key is enough, the pin only chooses between keyed
+	 *  engines) + the spoken language (absent = automatic). */
+	dictation?: { engine?: DictationEngineId; language?: string };
 	/** Prober graph tools (wave 7, owner ruling 2026-09-23): read-only
 	 *  knowledge-graph views for the prober agent — a session list +
 	 *  per-session propositions with understanding levels. Its SUBJECT
@@ -519,7 +524,14 @@ function sanitizeAgent(raw: Record<string, unknown>): AgentSettings {
 	// record, it just loses the pin and auto-detection resumes).
 	if (raw.search !== null && typeof raw.search === "object" && !Array.isArray(raw.search)) {
 		const engine = (raw.search as Record<string, unknown>).engine;
-		if (engine === "tavily" || engine === "brave") out.search = { engine };
+		if (isSearchEngineId(engine)) out.search = { engine };
+	}
+	if (raw.dictation !== null && typeof raw.dictation === "object" && !Array.isArray(raw.dictation)) {
+		const d = raw.dictation as Record<string, unknown>;
+		const dictation: { engine?: DictationEngineId; language?: string } = {};
+		if (isDictationEngineId(d.engine)) dictation.engine = d.engine;
+		if (isDictationLanguage(d.language)) dictation.language = d.language;
+		out.dictation = dictation;
 	}
 	// Prober graph tools (wave 7): its own agent-section subsection —
 	// lenient read side (a bad shape drops the key and the default ON

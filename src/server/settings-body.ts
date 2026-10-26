@@ -25,6 +25,8 @@ import type {
 } from "../core/settings.ts";
 import { BACKGROUND_MODEL_ROLES, COMPACTION_THRESHOLD_FLOOR, EXTRACTION_CHUNK_TOKENS_FLOOR, MODEL_SLOTS } from "../core/settings.ts";
 import { WRITABLE_TOOL_KEYS } from "../core/pending.ts";
+import { isSearchEngineId } from "../core/search.ts";
+import { DICTATION_LANGUAGES, isDictationEngineId, isDictationLanguage, type DictationEngineId } from "../core/dictation.ts";
 
 /** Parsed-or-rejected — `ok: false` carries the 400's error message. */
 export type SettingsBodyResult<T> =
@@ -177,11 +179,29 @@ export function parseAgentSettingsBody(body: unknown): SettingsBodyResult<AgentS
 		const search = asRecord(raw.search);
 		if (!search) return { ok: false, error: "search must be an object" };
 		if (search.engine !== undefined) {
-			if (search.engine !== "tavily" && search.engine !== "brave") {
-				return { ok: false, error: 'search.engine must be "tavily" or "brave"' };
+			if (!isSearchEngineId(search.engine)) {
+				return { ok: false, error: 'search.engine must be "tavily", "brave" or "gemini"' };
 			}
 			settings.search = { engine: search.engine };
 		}
+	}
+	if (raw.dictation !== undefined) {
+		const dictation = asRecord(raw.dictation);
+		if (!dictation) return { ok: false, error: "dictation must be an object" };
+		const out: { engine?: DictationEngineId; language?: string } = {};
+		if (dictation.engine !== undefined) {
+			if (!isDictationEngineId(dictation.engine)) {
+				return { ok: false, error: 'dictation.engine must be "deepgram" or "gemini"' };
+			}
+			out.engine = dictation.engine;
+		}
+		if (dictation.language !== undefined) {
+			if (!isDictationLanguage(dictation.language)) {
+				return { ok: false, error: `dictation.language must be one of: ${DICTATION_LANGUAGES.map((l) => l.code).join(", ")}` };
+			}
+			out.language = dictation.language;
+		}
+		settings.dictation = out;
 	}
 	// Prober graph tools (wave 7, owner ruling 2026-09-23): an agent-section
 	// subsection, not a tool-toggles key — the mechanism is agent capability

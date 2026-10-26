@@ -33,7 +33,7 @@ export const AUTH_KEYS: readonly AuthKeyInfo[] = [
 	{
 		id: "DEEPGRAM_API_KEY",
 		label: "Deepgram",
-		description: "Speech-to-text key for dictation — needs ≥ Member permission in the Deepgram console to mint tokens.",
+		description: "Streaming speech-to-text for dictation — needs ≥ Member permission in the Deepgram console to mint tokens. Optional: a Gemini (Google) model key also powers dictation.",
 		docsUrl: "https://console.deepgram.com/",
 	},
 	{
@@ -45,7 +45,7 @@ export const AUTH_KEYS: readonly AuthKeyInfo[] = [
 	{
 		id: "BRAVE_API_KEY",
 		label: "Brave Search",
-		description: "Web-search engine for the researcher sub-agent — the alternative to Tavily. Setting the key activates it.",
+		description: "Web-search engine for the researcher sub-agent — the alternative to Tavily. Setting the key activates it. Without any search key, a Gemini (Google) model key searches through Google Search grounding.",
 		docsUrl: "https://brave.com/search/api/",
 	},
 	{

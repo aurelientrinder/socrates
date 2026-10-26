@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2Icon, MicIcon } from "lucide-react";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { Hint } from "@/components/ui/hint";
+import { BATCH_DICTATION_MAX_SECONDS, type DictationSession } from "@/src/core";
 
 /**
  * Voice dictation — the cloud engine (STT wave 1, 2026-09-17).
@@ -79,6 +80,17 @@ import { Hint } from "@/components/ui/hint";
  *     path, which always mints FRESH.
  *   - The honest floor stays: getUserMedia can't be pre-warmed (the mic
  *     indicator would stay lit) — hence the owner's optimistic meter.
+ *
+ * Engines + language (2026-10-26, core/dictation.ts): the "token" mint is
+ * now a SESSION — {engine, language, token?}. Deepgram streams as above,
+ * with the language pin on the socket URL (absent = nova-3's `multi`).
+ * Gemini is a BATCH engine on the user's existing Gemini key: the run's
+ * frames accumulate in recordedRef and, at stop, POST to
+ * /api/stt/transcribe; the answer lands in the deferred buffer and the
+ * run ends exactly like a Deepgram run (same flush, same finish()
+ * waiters). Frames captured before the session resolves sit in the same
+ * pre-open queue and move over once the engine is known. A batch run
+ * stops itself at BATCH_DICTATION_MAX_SECONDS (the request ceiling).
  */
 
 /*
@@ -86,15 +98,22 @@ import { Hint } from "@/components/ui/hint";
  * endpointing=300, no interims. Silence streams too (the worklet never
  * pauses), so the socket never idles — no KeepAlive needed.
  */
-const DG_URL =
-	"wss://api.deepgram.com/v1/listen" +
-	"?model=nova-3" +
-	"&encoding=linear16" +
-	"&sample_rate=16000" +
-	"&channels=1" +
-	"&smart_format=true" +
-	"&punctuate=true" +
-	"&endpointing=300";
+export function deepgramUrl(language: string | null): string {
+	return (
+		"wss://api.deepgram.com/v1/listen" +
+		"?model=nova-3" +
+		`&language=${language ?? "multi"}` +
+		"&encoding=linear16" +
+		"&sample_rate=16000" +
+		"&channels=1" +
+		"&smart_format=true" +
+		"&punctuate=true" +
+		"&endpointing=300"
+	);
+}
+
+/** One second of the worklet's linear16 16kHz mono, in bytes. */
+const PCM_BYTES_PER_SECOND = 16000 * 2;
 
 /** Meter tuning — the owner's tested values, see the file header. */
 const METER_FLOOR_DB = -50;
@@ -112,22 +131,22 @@ export const DEEPGRAM_KEY_ID = "DEEPGRAM_API_KEY";
  * (desktop) or .env.local (dev)") — the surface says the short truth
  * instead. Exported for pins; the errored idle button's click recognizes
  * it and deep-links Settings → Keys → the Deepgram row. */
-export const DICTATION_KEYLESS = "Dictation needs a Deepgram key";
+export const DICTATION_KEYLESS = "Dictation needs a Deepgram or Gemini key";
 
-/** Mint a fresh short-lived token (the route holds the real key
- *  server-side). Module-level: the start path's warm cache and the
- *  reconnect path both bottom out here. The keyless 503 (no
- *  DEEPGRAM_API_KEY) is the route's ONLY 503 — the raw message is
- *  dev-speak, so the error becomes the short client-authored line
- *  (zero-keys wave, owner 2026-09-25). */
-async function mintFreshToken(): Promise<string> {
+/** Mint a fresh run session — engine, language, and (Deepgram) a
+ *  short-lived token; the route holds the real key server-side.
+ *  Module-level: the start path's warm cache and the reconnect path both
+ *  bottom out here. The keyless 503 (no engine keyed) is the route's ONLY
+ *  503 — its message is dev-speak, so the error becomes the short
+ *  client-authored line (zero-keys wave, owner 2026-09-25). */
+async function mintFreshToken(): Promise<DictationSession> {
 	const res = await fetch("/api/stt/token");
-	const data = (await res.json()) as { token?: string; message?: string };
-	if (!res.ok || !data.token) {
+	const data = (await res.json()) as Partial<DictationSession> & { message?: string };
+	if (!res.ok || !data.engine || (data.engine === "deepgram" && !data.token)) {
 		if (res.status === 503) throw new Error(DICTATION_KEYLESS);
 		throw new Error(data.message ?? `token route ${res.status}`);
 	}
-	return data.token;
+	return { engine: data.engine, language: data.language ?? null, token: data.token };
 }
 
 /** Warm-token cache (mitigation D, owner 2026-09-27): the click path takes
@@ -139,15 +158,15 @@ async function mintFreshToken(): Promise<string> {
  *  failures are silently tolerated (a keyless pre-mint just doesn't warm). */
 export const WARM_TOKEN_TTL_MS = 3 * 60_000;
 
-export type WarmMinter = { mint: () => Promise<string>; refresh: () => void };
+export type WarmMinter<T = string> = { mint: () => Promise<T>; refresh: () => void };
 
-export function createWarmMinter(
-	mint: () => Promise<string>,
+export function createWarmMinter<T = string>(
+	mint: () => Promise<T>,
 	now: () => number = Date.now,
 	ttlMs: number = WARM_TOKEN_TTL_MS,
-): WarmMinter {
-	let warm: { p: Promise<string>; at: number } | null = null;
-	const m: WarmMinter = {
+): WarmMinter<T> {
+	let warm: { p: Promise<T>; at: number } | null = null;
+	const m: WarmMinter<T> = {
 		mint: () => {
 			if (!warm || now() - warm.at > ttlMs) {
 				const p = mint().catch((e: unknown) => {
@@ -315,6 +334,16 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 	/** Resolvers waiting for the run to fully end (finish(), owner
 	 *  2026-10-01): released by cleanup() — every terminal path runs it. */
 	const waitersRef = useRef<Array<() => void>>([]);
+	/** Which engine this run drives — "pending" until the session resolves
+	 *  (frames queue in pendingRef meanwhile). */
+	const modeRef = useRef<"pending" | "stream" | "batch">("pending");
+	/** The batch engine's whole recording (Gemini): every frame of the run,
+	 *  POSTed once at stop. Cleared at teardown. */
+	const recordedRef = useRef<ArrayBuffer[]>([]);
+	const recordedBytesRef = useRef(0);
+	/** The latest stop() — the worklet handler (bound once per run) calls
+	 *  it when a batch run reaches its length cap. */
+	const stopRef = useRef<() => void>(() => {});
 
 	/** Flush the buffered transcript into the primary input — question claim
 	 *  first, composer fallback. Called exactly once per run, at cleanup; the
@@ -336,6 +365,9 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 			safetyRef.current = null;
 		}
 		pendingRef.current = [];
+		recordedRef.current = [];
+		recordedBytesRef.current = 0;
+		modeRef.current = "pending";
 		for (const track of streamRef.current?.getTracks() ?? []) track.stop();
 		streamRef.current = null;
 		sourceRef.current?.disconnect();
@@ -362,11 +394,11 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 
 	/** Open the Deepgram socket and wire its messages. `gen` guards staleness. */
 	const openSocket = useCallback(
-		(gen: number, token: string) => {
+		(gen: number, session: DictationSession) => {
 			// Minted JWTs authenticate via the "bearer" subprotocol — ["token",
 			// jwt] is rejected at the handshake (verified live; "token" is for
 			// raw API keys only, as in the owner's pi dictate extension).
-			const ws = new WebSocket(DG_URL, ["bearer", token]);
+			const ws = new WebSocket(deepgramUrl(session.language), ["bearer", session.token ?? ""]);
 			wsRef.current = ws;
 
 			ws.addEventListener("open", () => {
@@ -432,6 +464,9 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 		reconnectsRef.current = 0;
 		bufferRef.current = []; // fresh run, fresh buffer (round 2)
 		pendingRef.current = []; // fresh run, fresh queue (mitigation A)
+		recordedRef.current = [];
+		recordedBytesRef.current = 0;
+		modeRef.current = "pending";
 		const gen = ++genRef.current;
 
 		// Mitigation D: the warm token (pre-minted at mount / after the last
@@ -468,6 +503,12 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 				if (msg.type === "level") {
 					levelRef.current = msg.rms ?? 0; // never reset to zero (dictate pattern)
 				} else if (msg.type === "audio") {
+					if (modeRef.current === "batch") {
+						recordedRef.current.push(msg.buffer!);
+						recordedBytesRef.current += msg.buffer!.byteLength;
+						if (recordedBytesRef.current >= BATCH_DICTATION_MAX_SECONDS * PCM_BYTES_PER_SECOND) stopRef.current();
+						return;
+					}
 					const ws = wsRef.current;
 					if (ws && ws.readyState === WebSocket.OPEN) ws.send(msg.buffer!);
 					// Mitigation A: not OPEN yet (handshake or reconnect gap) —
@@ -497,9 +538,9 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 			return;
 		}
 		if (gen !== genRef.current) return;
-		let token: string;
+		let session: DictationSession;
 		try {
-			token = await tokenPromise;
+			session = await tokenPromise;
 		} catch (e) {
 			if (gen !== genRef.current) return;
 			setError(e instanceof Error ? e.message : "token unavailable");
@@ -507,10 +548,55 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 			return;
 		}
 		if (gen !== genRef.current) return;
+		if (session.engine === "gemini") {
+			// Batch engine: everything queued so far is the recording's start.
+			modeRef.current = "batch";
+			recordedRef.current = pendingRef.current;
+			recordedBytesRef.current = recordedRef.current.reduce((n, b) => n + b.byteLength, 0);
+			pendingRef.current = [];
+			setPhase("recording");
+			return;
+		}
+		modeRef.current = "stream";
 		// Mitigation B: the handshake fires the moment the graph is live,
 		// overlapping any remaining token wait — mic-gated, never before it.
-		openSocket(gen, token);
+		openSocket(gen, session);
 	}, [openSocket, cleanup]);
+
+	/** End a BATCH run: send the recording, buffer the transcript, end the
+	 *  run (cleanup flushes it into the primary input). A cancel mid-request
+	 *  bumps the generation, so its late answer is dropped. */
+	const transcribeBatch = useCallback(
+		(gen: number) => {
+			const frames = recordedRef.current;
+			recordedRef.current = [];
+			if (frames.length === 0) {
+				cleanup();
+				return;
+			}
+			fetch("/api/stt/transcribe", {
+				method: "POST",
+				headers: { "content-type": "application/octet-stream" },
+				body: new Blob(frames),
+			})
+				.then(async (res) => {
+					const data = (await res.json()) as { text?: string; message?: string };
+					if (!res.ok) throw new Error(data.message ?? `transcribe route ${res.status}`);
+					return data.text ?? "";
+				})
+				.then((text) => {
+					if (gen !== genRef.current) return;
+					if (text) bufferRef.current.push(text);
+					cleanup();
+				})
+				.catch((e: unknown) => {
+					if (gen !== genRef.current) return;
+					setError(e instanceof Error ? e.message : "Transcription failed");
+					cleanup();
+				});
+		},
+		[cleanup],
+	);
 
 	const stop = useCallback(() => {
 		const gen = genRef.current;
@@ -526,6 +612,10 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 		workletRef.current?.disconnect();
 		workletRef.current = null;
 
+		if (modeRef.current === "batch") {
+			transcribeBatch(gen);
+			return;
+		}
 		const ws = wsRef.current;
 		if (ws && ws.readyState === WebSocket.OPEN) {
 			try {
@@ -542,7 +632,8 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 		} else {
 			cleanup();
 		}
-	}, [phase, cleanup]);
+	}, [phase, cleanup, transcribeBatch]);
+	stopRef.current = stop;
 
 	const cancel = useCallback(() => {
 		if (phase === "idle") return;
