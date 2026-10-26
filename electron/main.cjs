@@ -486,17 +486,13 @@ function setupAutoUpdater() {
 		log(`auto-update: electron-updater unavailable (${err?.message ?? err}) — updates disabled`);
 		return;
 	}
-	// Socrates: the built-in GitHub feed would need a public repo, and the
-	// upstream LearnHarness feed would replace this build. Update only from
-	// an explicit LH_UPDATE_FEED; otherwise the updater stays off.
+	// Socrates: the default feed is this repo's GitHub Releases
+	// (aurelientrinder/socrates, from electron-builder.yml publish).
 	const feed = process.env.LH_UPDATE_FEED;
-	if (!feed) {
-		autoUpdater = null;
-		log("auto-update: no LH_UPDATE_FEED — updates disabled");
-		return;
+	if (feed) {
+		autoUpdater.setFeedURL({ provider: "generic", url: feed });
+		log(`auto-update: LH_UPDATE_FEED override → ${feed}`);
 	}
-	autoUpdater.setFeedURL({ provider: "generic", url: feed });
-	log(`auto-update: LH_UPDATE_FEED override → ${feed}`);
 	autoUpdater.autoDownload = true;
 	autoUpdater.autoInstallOnAppQuit = true;
 	// Route every updater log line through the shell's own log (userData/
