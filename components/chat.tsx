@@ -46,6 +46,8 @@ import {
 } from "@/src/core";
 import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
+import { PlanRail, railProgress, usePlanSteps } from "@/components/session-rail";
+import { PlanProgressLine, SessionTimerChip, useSessionTimer } from "@/components/session-timer";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
 import { ArrowRightIcon, DumbbellIcon, RepeatIcon, WaypointsIcon } from "lucide-react";
@@ -90,6 +92,11 @@ import { useSettingsSaved } from "@/components/settings-signal";
  * deliberately narrower (~46rem centered) per the reference. Same ELEMENT,
  * same place — width polish only.
  */
+/** What "Finish and recap" sends (redesign wave): the learner's own words,
+ *  asking the tutor to close the session with a recap and one last check. */
+export const RECAP_PROMPT =
+	"Let's wrap up here. Give me a short recap of what we covered, then one question to check I've got the most important idea.";
+
 const COLUMN = "mx-auto w-full max-w-none px-6";
 const DOCK = "mx-auto w-full max-w-[46rem] px-4";
 // The DOCK container's fixed width (46rem) and the plan marginalia's
@@ -851,6 +858,10 @@ export function Chat({
 	// The session's live plan (drives the top-bar chip; the marginalia
 	// derives its own from the same transcript).
 	const planTree = useMemo(() => latestTree(messages), [messages]);
+	// The redesign wave's session chrome: the plan as a checklist rail and a
+	// progress line, and the studied-time chip when the session has a budget.
+	const planSteps = usePlanSteps(messages);
+	const sessionTimer = useSessionTimer(chatId);
 
 	// ── Session usage (wave-4 stats bar) ──
 	// The money channel: the record's turns log and read-time server Pi
@@ -1276,6 +1287,23 @@ export function Chat({
 							<div className="min-w-4 flex-1" aria-hidden="true" />
 					</>
 					)}
+					{sessionTimer && <SessionTimerChip budget={sessionTimer.budget} spent={sessionTimer.spent} />}
+					{/* Finish and recap (redesign wave): one click asks the tutor to
+					    close the session well, so stopping is an ending. */}
+					{kind !== "review" && messages.length > 0 && (
+						<button
+							type="button"
+							data-testid="finish-recap"
+							disabled={busy}
+							onClick={(e) => {
+								blurAfterPointerClick(e);
+								void send({ type: "text", text: RECAP_PROMPT });
+							}}
+							className="flex h-8 shrink-0 items-center rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+						>
+							Finish and recap
+						</button>
+					)}
 					{/* The plan chip (owner, plan-placement round): session-level
 					    structure beside the phase chip — access to the full-DAG popup
 					    at every width; the marginalia is the wide-screen glance view. */}
@@ -1328,6 +1356,7 @@ export function Chat({
 						<PhaseChip phase={phases.at(-1) ?? "probe"} />
 					)}
 				</TopBar>
+				{planSteps && <PlanProgressLine value={railProgress(planSteps)} />}
 
 				<SessionFind scopeRef={sessionFindScopeRef} scrollContextRef={scrollContextRef} />
 				<div ref={sessionFindScopeRef} className="relative flex min-h-0 flex-1">
@@ -1707,6 +1736,7 @@ export function Chat({
 				<AbortTurnDialog mode={abortAsk} onClose={() => setAbortAsk(null)} onConfirm={confirmAbort} busy={busy} />
 				</div>
 			</div>
+			{planSteps && <PlanRail steps={planSteps} onOpenPlan={() => setPlanOpen(true)} />}
 		</div>
 		</JobsContext.Provider>
 		</SessionMermaidContext.Provider>
