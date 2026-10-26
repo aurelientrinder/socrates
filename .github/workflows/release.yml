@@ -7,6 +7,11 @@ on:
   # release. A manual run on a v* tag (dispatched by tag-release.yml) is a
   # real release run, same as a tag push.
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the draft once it is verified (tag runs only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -259,3 +264,19 @@ jobs:
           done
       - name: Verify draft assets and update feeds
         run: npx tsx scripts/verify-release.ts verify "$RUNNER_TEMP/releases.json" "$RUNNER_TEMP/metadata" --tag "$GITHUB_REF_NAME"
+
+  # Opt-in last step (tag-release.yml's "publish" input): flip the verified
+  # draft to published, which is what the installed apps update from.
+  publish:
+    name: Publish verified draft
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v') && inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
