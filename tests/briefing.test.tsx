@@ -37,7 +37,7 @@ import type { TopicRetention } from "../src/core/retention.ts";
 import { validateKeyShape } from "../src/core/auth-keys.ts";
 import { toStudyEvent } from "../src/server/integrations/google-calendar.ts";
 import { todoistDueAt, todoistToStudyEvent } from "../src/server/integrations/todoist.ts";
-import { TodayShell, type BriefingData, type IntegrationsData } from "../components/today-view.tsx";
+import { TodayShell, formatStudyTotal, type BriefingData, type IntegrationsData } from "../components/today-view.tsx";
 
 const DAY = 24 * 60 * 60 * 1000;
 // A Monday, 09:00 local.
@@ -321,6 +321,29 @@ describe("TodayShell", () => {
 		assert.match(html, /today-honesty/);
 		assert.match(html, /about 18 points surer/);
 		assert.match(html, /href="\/progress\?tab=calibration"/);
+	});
+
+	it("shows this week's minutes per day, today outlined", () => {
+		const html = renderToStaticMarkup(
+			<TodayShell
+				briefing={null}
+				integrations={disconnected}
+				budgetMinutes={45}
+				sessions={[]}
+				busy={false}
+				pushing={null}
+				error={null}
+				handlers={handlers}
+				week={{ minutes: [25, 0, 30, 20, 25, 0, 0], today: 4 }}
+			/>,
+		);
+		assert.match(html, /data-testid="today-week"/);
+		assert.match(html, /1 h 40 min/);
+		assert.match(html, /Monday 25, Tuesday 0, Wednesday 30/);
+		assert.equal(html.match(/data-testid="today-week-bar"/g)?.length, 7);
+		assert.equal(html.match(/outline-dashed/g)?.length, 1);
+		assert.equal(formatStudyTotal(25), "25 min");
+		assert.equal(formatStudyTotal(120), "2 h");
 	});
 
 	it("marks the chosen time budget", () => {

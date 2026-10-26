@@ -4,6 +4,7 @@ import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from ".
 import { titleFromPrompt } from "../core/contracts.ts";
 import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
 import { propositionNames, recallEvents, retentionReport, type RetentionReport } from "../core/retention.ts";
+import { studyMinutesByDay, weekStartOf } from "../core/study-time.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -169,6 +170,16 @@ export function calibrationAcrossSessions(): CalibrationReport {
 		return record ? calibrationAnswers(record) : [];
 	});
 	return calibrationReport(answers);
+}
+
+/** Today's "This week": minutes studied each day of the current week,
+ *  Monday first. Only sessions active since the week began are read. */
+export function studyWeek(now: Date = new Date()): number[] {
+	const start = weekStartOf(now);
+	const sessions = listChats()
+		.filter((summary) => Date.parse(summary.updatedAt) >= start.getTime())
+		.map((summary) => (getChat(summary.id)?.messages ?? []).map((m) => (m as { timestamp?: number }).timestamp ?? NaN));
+	return studyMinutesByDay(sessions, start);
 }
 
 /** The review view's report: every tested recall across sessions, folded
