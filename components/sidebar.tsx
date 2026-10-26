@@ -13,6 +13,7 @@ import { LhMark } from "@/components/lh-mark";
 import { BrailleSpinner } from "@/components/braille-spinner";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { SettingsDialogProvider, useSettingsDialog } from "@/components/settings/settings-dialog.tsx";
+import { StartDialogProvider, useStartDialog } from "@/components/start-dialog";
 import { Hint } from "@/components/ui/hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -477,13 +478,9 @@ function SessionsSidebar() {
 	const router = useRouter();
 	const { open: openSettings } = useSettingsDialog();
 
-	/* New session (owner, 2026-09-13): NO POST — the button opens the
-	   sessionless draft view; the session is created only when the first
-	   message is sent (and that message becomes its title). Search: a
-	   client-side filter over the poll snapshot — no server round trip. */
-	const newSession = useCallback(() => {
-		router.push("/chat/new");
-	}, [router]);
+	/* Start studying (redesign wave): the Start dialog is the one door —
+	   it creates the session only on Start, the draft view's contract. */
+	const { open: openStart } = useStartDialog();
 
 	/* FUZZY (owner round 8, 2026-10-05): subsequence match ranked by
 	 * fuzzyScore — prefix beats word-boundary beats scattered. Empty query
@@ -764,34 +761,22 @@ function SessionsSidebar() {
 				</div>
 
 				{/* THE REDESIGN NAV (2026-10-26): one primary door, then three
-				    places. Start studying opens the teaching draft (the old
-				    Teaching door), the dumbbell beside it the practice draft.
+				    places. Start studying opens the Start dialog (Learn /
+				    Practice / Review), which replaced the Teaching and
+				    Practice doors.
 				    Today / Progress / Library replace the six all-caps links
 				    (Calibration and Review live in Progress, Notes in Library). */}
 				<div className="mx-3 mb-4 flex flex-col gap-3">
-					<div className="flex gap-1.5">
-						<button
-							type="button"
-							data-testid="new-session"
-							onClick={() => void newSession()}
-							className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-base font-medium text-primary-foreground transition-opacity hover:opacity-90"
-						>
-							<PlayIcon className="size-3.5 fill-current" />
-							Start studying
-							<span className="sr-only">: open a new teaching session</span>
-						</button>
-						<Hint label="New practice session" side="bottom">
-							<button
-								type="button"
-								data-testid="new-session-practice"
-								aria-label="New practice session"
-								onClick={() => router.push("/chat/new?mode=practice")}
-								className="flex size-10 items-center justify-center rounded-lg border bg-surface text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
-							>
-								<DumbbellIcon className="size-4" />
-							</button>
-						</Hint>
-					</div>
+					<button
+						type="button"
+						data-testid="new-session"
+						onClick={() => openStart()}
+						className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-base font-medium text-primary-foreground transition-opacity hover:opacity-90"
+					>
+						<PlayIcon className="size-3.5 fill-current" />
+						Start studying
+						<span className="sr-only">: learn, practise or review</span>
+					</button>
 					<nav aria-label="Main" className="flex flex-col gap-0.5">
 						<TodayLink />
 						<NavRow
@@ -1039,12 +1024,14 @@ function SessionsSidebar() {
 export function AppShell({ children }: { children: React.ReactNode }) {
 	return (
 		<SettingsDialogProvider>
+		<StartDialogProvider>
 			<SessionsSidebar />
 			<main className="min-w-0 flex-1">{children}</main>
 			{/* The single document-level keydown listener (keyboard wave A) —
 			    after the content in the tree, but it's window-level so order only
 			    matters for the events it dispatches, never for DOM priority. */}
 			<KeyboardShortcuts />
+		</StartDialogProvider>
 		</SettingsDialogProvider>
 	);
 }

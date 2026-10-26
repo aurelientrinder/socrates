@@ -19,6 +19,7 @@ import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { onSettingsSaved } from "@/components/settings-signal";
 import { Button } from "@/components/ui/button";
 import { PageFrame } from "@/components/page-header";
+import { useStartDialog } from "@/components/start-dialog";
 import { cn } from "@/lib/utils";
 
 /**
@@ -100,6 +101,7 @@ export function TodayShell({
 	const todo = integrations.todo[0];
 	const items = plan?.items ?? [];
 	const first = items[0];
+	const { open: openStart } = useStartDialog();
 	const total = items.reduce((sum, item) => sum + item.minutes, 0);
 	return (
 		<PageFrame
@@ -191,11 +193,9 @@ export function TodayShell({
 								{items.length > 1 ? `Start with ${ACTION_LABEL[first.action].toLowerCase()}` : "Start"} · {first.minutes} min
 							</Button>
 						) : (
-							<Button size="lg" className="h-12 rounded-xl px-6 text-base" asChild>
-								<Link href="/chat/new">
-									<PlayIcon className="size-4 fill-current" />
-									Learn something new
-								</Link>
+							<Button size="lg" className="h-12 rounded-xl px-6 text-base" onClick={() => openStart("learn")} data-testid="today-learn-new">
+								<PlayIcon className="size-4 fill-current" />
+								Learn something new
 							</Button>
 						)}
 						{total > 0 && <span className="text-sm text-muted-foreground">{total} min planned in all</span>}

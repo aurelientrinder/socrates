@@ -37,6 +37,7 @@ import {
 } from "@/src/core";
 import { isDictationActive } from "@/components/dictation";
 import { useSettingsDialog } from "@/components/settings/settings-dialog.tsx";
+import { OPEN_START_EVENT } from "@/components/start-dialog";
 
 // Re-exported for the contract pin (tests/keyboard-toggle-sidebar.test.ts):
 // the dispatcher composes event names through the ONE helper — a second
@@ -117,7 +118,8 @@ export function KeyboardShortcuts() {
 			// ride the window event for the mounted surface to catch.
 			switch (action) {
 				case "new-session":
-					handlersRef.current.router.push("/chat/new");
+					// The Start dialog is the one door (redesign wave).
+					window.dispatchEvent(new CustomEvent(OPEN_START_EVENT));
 					break;
 				case "open-settings":
 					// Settings-app wave: the dialog is the surface, the URL is
