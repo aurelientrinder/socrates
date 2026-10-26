@@ -51,6 +51,12 @@ import { activeCompactionOf, keptIndexFor } from "./compaction.ts";
 export const INTERRUPTED_TEXT =
 	"The question was interrupted — the learner never answered; continue without holding a result for it.";
 
+/** The header an orphaned tool result's text rides under once flattened
+ *  to a user message (toLlmMessages — a result whose call the provider
+ *  never sees, e.g. a question from a turn that errored mid-stream). */
+export const ORPHANED_RESULT_LABEL = (toolName: string) =>
+	`(Result of an interrupted \`${toolName}\` call — the turn that made it failed and was discarded.)`;
+
 // ─── The record's message type ───────────────────────────────────────────────
 
 /**
@@ -506,6 +512,9 @@ function resultIdsFrom(messages: readonly AgentMessage[]): Set<string> {
  * - dangling tool calls (an aborted turn's unanswered questions) get the
  *   synthesized interrupted result — the provider protocol's hard
  *   invariant: a tool call must be followed by its result.
+ * - orphaned tool results (the other half of that invariant: a result
+ *   must answer a call in the assistant message right before it) flatten
+ *   to a user message — see ORPHANED RESULTS below.
  *
  * Contract (pi-agent-core): never throws — an unknown shape passes
  * through untouched rather than killing the loop.
@@ -545,12 +554,45 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 	// context.systemPrompt + context.tools around its projection.
 	const leading =
 		(messages[0] as { role?: string } | undefined)?.role === "system" ? (messages[0] as Message) : null;
+	// ORPHANED RESULTS (the toolu_0179 incident, 2026-10-26): pi-ai's
+	// transformMessages drops every assistant message whose stopReason is
+	// "error" or "aborted" before the wire — but NOT the results that
+	// follow it. A question streamed by a turn that then errored/aborted
+	// still reaches the dock, and the learner's answer (or our own
+	// interrupted synthesis) then names a call the provider never sees:
+	// Anthropic rejects the whole request with a 400, on every later turn
+	// too, so the chat is bricked. The same holds for a result cut off
+	// from its call by a compaction cut or a user message in between.
+	// `openCalls` is the call ids a result may legally answer here: the
+	// last REPLAYABLE assistant message's calls, until a user message
+	// intervenes. Anything else flattens to a user message — the model
+	// keeps the learner's answer, the wire stays protocol-legal, and
+	// existing broken records heal with no rewrite.
+	let openCalls = new Set<string>();
 	const out: Message[] = [];
 	if (leading) out.push(leading);
 	if (head) out.push(head);
 	for (let i = leading ? Math.max(start, 1) : start; i < messages.length; i++) {
 		const m = messages[i]!;
 		const role = (m as { role?: string }).role;
+		if (role === "toolResult") {
+			const result = m as ToolResultMessage;
+			if (!openCalls.has(result.toolCallId)) {
+				openCalls = new Set();
+				const text = result.content
+					.map((b) => (b.type === "text" ? b.text : "(image)"))
+					.join("\n");
+				out.push({
+					role: "user",
+					content: [{ type: "text", text: `${ORPHANED_RESULT_LABEL(result.toolName)}\n${text}` }],
+					timestamp: result.timestamp,
+				});
+				continue;
+			}
+			openCalls.delete(result.toolCallId);
+		} else if (role === "user") {
+			openCalls = new Set();
+		}
 		if (role === "custom") {
 			const marker = m as LhMarkerMessage;
 			// UI-only markers: plan blocks, and problem dismissals (the
@@ -561,6 +603,7 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 			// marker whose cut could not resolve has no head and renders as
 			// its user text — honest degradation.)
 			if (marker.customType === "compaction" && head !== null && marker.id === active!.id) continue;
+			openCalls = new Set();
 			out.push({
 				role: "user",
 				content: [{ type: "text", text: marker.content }],
@@ -576,11 +619,19 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 		// provider rejects unanswered calls outright.
 		if (role === "assistant") {
 			const assistant = m as AssistantMessage;
+			// Never replayed (pi-ai drops it), so its calls answer nothing
+			// and get no synthesized results — those would be orphans too.
+			if (assistant.stopReason === "error" || assistant.stopReason === "aborted") {
+				openCalls = new Set();
+				continue;
+			}
 			const calls = assistant.content.filter((b) => b.type === "toolCall");
+			openCalls = new Set(calls.map((c) => c.id));
 			if (calls.length === 0) continue;
 			const answered = resultIdsFrom(messages.slice(i + 1));
 			for (const call of calls) {
 				if (answered.has(call.id)) continue;
+				openCalls.delete(call.id);
 				out.push({
 					role: "toolResult",
 					toolCallId: call.id,
