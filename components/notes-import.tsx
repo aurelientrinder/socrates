@@ -10,6 +10,8 @@ export interface NotesImportResult {
 	outcome: "completed" | "failed" | "partial" | "aborted" | "busy";
 	stats?: { nodes: number; chains?: number; droppedChains?: number };
 	error?: string;
+	/** A completed import's caveat (a PDF's scanned pages were skipped). */
+	warning?: string;
 	code?: string;
 	missing?: string[];
 	provider?: string;
@@ -31,11 +33,18 @@ export function parseNotesImportResults(body: unknown, files: readonly File[]): 
 		if (r.stats !== undefined && (!r.stats || typeof r.stats !== "object" || !Number.isFinite(r.stats.nodes) || r.stats.nodes < 0 || (r.stats.chains !== undefined && (!Number.isFinite(r.stats.chains) || r.stats.chains < 0)))) throw invalid();
 		if (r.ok && !r.stats) throw invalid();
 		if (!r.ok && typeof r.error !== "string") throw invalid();
-		for (const field of ["error", "code", "provider"] as const) if (r[field] !== undefined && typeof r[field] !== "string") throw invalid();
+		for (const field of ["error", "warning", "code", "provider"] as const) if (r[field] !== undefined && typeof r[field] !== "string") throw invalid();
 		for (const field of ["missing", "slots"] as const) if (r[field] !== undefined && (!Array.isArray(r[field]) || !r[field]!.every((v) => typeof v === "string"))) throw invalid();
 	}
 	return body.results as NotesImportResult[];
 }
+
+/** What the import picker accepts — PDFs are turned into text server-side. */
+export const NOTES_ACCEPT = ".pdf,.md,.markdown,.txt";
+
+/** Mirrors the server's per-file cap (src/server/notes.ts MAX_NOTE_BYTES):
+ *  refuse up front instead of uploading a file the server will refuse. */
+const MAX_NOTE_BYTES = 50 * 1024 * 1024;
 
 export async function postNotesImport(files: readonly File[]): Promise<NotesImportResult[]> {
 	const form = new FormData();
@@ -51,26 +60,32 @@ export async function postNotesImport(files: readonly File[]): Promise<NotesImpo
 	return parseNotesImportResults(body, files);
 }
 
-/** Only error text survives a request; selected Files stay request-local. */
+/** Only error/warning text survives a request; selected Files stay request-local. */
 export function useNotesImport(callbacks: { onStart?: () => void; onFinish?: () => void } = {}) {
 	const [errors, setErrors] = useState<string[]>([]);
+	const [warnings, setWarnings] = useState<string[]>([]);
 	const [importing, setImporting] = useState(false);
 	const pending = useRef(false);
-	const submit = async (files: File[]) => {
-		if (pending.current || files.length === 0) return;
+	const submit = async (picked: File[]) => {
+		if (pending.current || picked.length === 0) return;
+		const tooBig = picked.filter((file) => file.size > MAX_NOTE_BYTES);
+		const files = picked.filter((file) => file.size <= MAX_NOTE_BYTES);
+		const sizeErrors = tooBig.map((file) => `${file.name}: this file is ${Math.round(file.size / 1024 / 1024)} MB, over the 50 MB limit. Split the PDF into smaller parts and import those.`);
+		setErrors(sizeErrors);
+		setWarnings([]);
+		if (files.length === 0) return;
 		pending.current = true;
 		setImporting(true);
-		setErrors([]);
 		try {
 			callbacks.onStart?.();
-			const results = await postNotesImport(files);
-			setErrors(results
+			const results = (await postNotesImport(files)).sort((a, b) => a.requestIndex - b.requestIndex);
+			setErrors([...sizeErrors, ...results
 				.filter((result) => !result.ok)
-				.sort((a, b) => a.requestIndex - b.requestIndex)
-				.map((r) => `${r.filePath}: ${r.error}${r.code ? `\n${r.code}${r.provider ? ` — ${r.provider}` : ""}${r.missing?.length ? ` — ${r.missing.join(", ")}` : ""}${r.slots?.length ? ` — ${r.slots.join(", ")}` : ""}` : ""}`));
+				.map((r) => `${r.filePath}: ${r.error}${r.code ? `\n${r.code}${r.provider ? ` — ${r.provider}` : ""}${r.missing?.length ? ` — ${r.missing.join(", ")}` : ""}${r.slots?.length ? ` — ${r.slots.join(", ")}` : ""}` : ""}`)]);
+			setWarnings(results.filter((r) => r.ok && r.warning).map((r) => `${r.filePath}: ${r.warning}`));
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			setErrors(files.map((file) => `${file.name}: ${message}`));
+			setErrors([...sizeErrors, ...files.map((file) => `${file.name}: ${message}`)]);
 		} finally {
 			pending.current = false;
 			setImporting(false);
@@ -78,13 +93,18 @@ export function useNotesImport(callbacks: { onStart?: () => void; onFinish?: () 
 		}
 	};
 	return {
-		errors, importing,
+		errors, warnings, importing,
 		onImportFiles: (files: FileList | null) => { if (files) void submit(Array.from(files)); },
 	};
 }
 
-export function NotesImportErrors({ errors }: { errors: readonly string[] }) {
-	return <>{errors.map((error, i) => (
-		<p key={i} role="alert" className="max-w-full whitespace-pre-wrap break-words text-xs text-red-400">{error}</p>
-	))}</>;
+export function NotesImportErrors({ errors, warnings = [] }: { errors: readonly string[]; warnings?: readonly string[] }) {
+	return <>
+		{errors.map((error, i) => (
+			<p key={i} role="alert" className="max-w-full whitespace-pre-wrap break-words text-xs text-red-400">{error}</p>
+		))}
+		{warnings.map((warning, i) => (
+			<p key={`w${i}`} role="status" className="max-w-full whitespace-pre-wrap break-words text-xs text-amber-500">{warning}</p>
+		))}
+	</>;
 }

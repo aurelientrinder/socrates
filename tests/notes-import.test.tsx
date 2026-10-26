@@ -25,7 +25,7 @@ async function mount() {
 	root = createRoot(host);
 	function Harness() {
 		current = useNotesImport({ onStart: () => { starts++; }, onFinish: () => { finishes++; } });
-		return <NotesImportErrors errors={current.errors} />;
+		return <NotesImportErrors errors={current.errors} warnings={current.warnings} />;
 	}
 	await act(async () => { root!.render(<Harness />); });
 }
@@ -97,7 +97,7 @@ for (const outcome of ["completed", "failed", "partial", "aborted", "busy"] as c
 	assert.equal(finishes, 1);
 	const html = host!.innerHTML;
 	assert.doesNotMatch(html, /<button|<section|<ul|border|bg-card|rounded|shadow|Retry|Dismiss|Import complete|new propositions|Saved changes|Import stopped|already being imported/);
-	assert.deepEqual(Object.keys(current).sort(), ["errors", "importing", "onImportFiles"], "no retained rows, Files, retry or dismiss API");
+	assert.deepEqual(Object.keys(current).sort(), ["errors", "importing", "onImportFiles", "warnings"], "no retained rows, Files, retry or dismiss API");
 	if (outcome === "completed") {
 		assert.equal(html, "");
 		assert.deepEqual(current.errors, []);
@@ -197,4 +197,21 @@ it("actual attempts clear errors immediately, guard synchronous reentry, preserv
 	assert.equal(starts, 3);
 	assert.equal(finishes, 3);
 	assert.equal(host!.innerHTML, "");
+});
+
+it("a completed import's warning is shown as a status line, and files over 50 MB are refused before upload", async () => {
+	const file = new File(["notes"], "week3.pdf");
+	const huge = new File(["x"], "huge.pdf");
+	Object.defineProperty(huge, "size", { value: 60 * 1024 * 1024 });
+	let sent: string[] = [];
+	globalThis.fetch = async (_url, init) => {
+		sent = [...((init as RequestInit).body as FormData).getAll("files")].map((f) => (f as File).name);
+		return Response.json({ results: [{ ...completed(), filePath: "week3.pdf", warning: "1 of 3 pages have no text" }] });
+	};
+	await mount();
+	await submit([huge, file]);
+	assert.deepEqual(sent, ["week3.pdf"]);
+	assert.deepEqual(current.warnings, ["week3.pdf: 1 of 3 pages have no text"]);
+	assert.equal(current.errors.length, 1);
+	assert.match(current.errors[0]!, /^huge\.pdf: this file is 60 MB, over the 50 MB limit/);
 });

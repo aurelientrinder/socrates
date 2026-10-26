@@ -25,6 +25,7 @@ import type {
 	SessionCheckpoint,
 	TurnUsage,
 	NotesSource,
+	NoteMeta,
 } from "./contracts.ts";
 import type { UserSettings } from "./settings.ts";
 
@@ -220,3 +221,15 @@ export interface AuthStore {
 	deleteAuthVar(name: string): void;
 }
 
+// ─── NotesLibrary — the saved notes files (data/notes) ──────────────────────
+
+/** The read side the tutor's `notes` tool needs (src/store/notes.ts
+ *  notesLibrary implements it, with save/remove for the routes). */
+export interface NotesLibraryReader {
+	/** Every saved note, newest import first. */
+	list(): NoteMeta[];
+	/** A note's plain text (PDFs "--- Page N ---" headed), or null. */
+	text(id: string): string | null;
+	/** Absolute path of the saved original, or null. */
+	originalPath(id: string): string | null;
+}

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode } from "@/src/core";
-import { BrainIcon, DumbbellIcon, GaugeIcon, SunriseIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { BrainIcon, DumbbellIcon, FileTextIcon, GaugeIcon, SunriseIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
@@ -69,6 +69,8 @@ declare global {
 			/** Auto-update channel (Wave C, 2026-10-10): "lh:update-status" pushes once a staged update exists. */
 			onUpdateStatus?: (cb: (status: { status: string; version: string | null }) => void) => () => void;
 			installUpdate?: () => void;
+			/** Open a saved note's original file in the system's default app. */
+			openNote?: (id: string) => Promise<{ ok: boolean; error?: string }>;
 		};
 	}
 }
@@ -762,6 +764,15 @@ function SessionsSidebar() {
 						<span className="sr-only">see how your confidence compares with your accuracy</span>
 					</Link>
 					<ReviewLink />
+					<Link
+						href="/notes"
+						data-testid="open-notes"
+						className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+					>
+						<FileTextIcon className="size-3" />
+						Notes
+						<span className="sr-only">see the notes and PDFs you imported</span>
+					</Link>
 				</div>
 
 				<div className="mx-3 mb-2 flex items-center gap-2">

@@ -23,8 +23,9 @@ import { readTool } from "./tools/read.ts";
 import { lsTool } from "./tools/ls.ts";
 import { findTool } from "./tools/find.ts";
 import { grepTool } from "./tools/grep.ts";
+import { notesToolFor } from "./tools/notes.ts";
 import { healToolRecord } from "./tools/heal.ts";
-import type { GraphStore } from "../core/ports.ts";
+import type { GraphStore, NotesLibraryReader } from "../core/ports.ts";
 
 export { jobTools };
 export type { ProbeDoneContext } from "./tools/probe.ts";
@@ -276,6 +277,8 @@ export interface ProberToolContext extends ProbeDoneContext {
 	 *  master switch AND the agent.graphTools toggle (settings-resolution).
 	 *  Absent = the gate is closed, no map tools (tests drive this seam). */
 	graphStore?: GraphStore;
+	/** The saved notes library: present = the `notes` tool is registered. */
+	notes?: NotesLibraryReader;
 }
 
 /** The prober's tool set: probe quiz (no nodeId) + ask + the learner-fs
@@ -326,6 +329,7 @@ export function createProberTools(
 				ls: lsTool,
 				find: findTool,
 				grep: grepTool,
+				...(ctx.notes ? { notes: notesToolFor(ctx.notes) } : {}),
 				// Job dispatch in the probe phase (owner ruling, 2026-09-20):
 				// research + pdf are ALWAYS available in every phase — the
 				// prober can verify facts or read learner PDFs while assessing.
@@ -400,6 +404,8 @@ export interface TeacherToolContext extends PlanToolContext {
 	spawn: (job: JobRecord, input: ResearchInput | DemoInput | VisualInput | PdfInput) => void;
 	/** Retained search-status seam; research dispatch is available keylessly. */
 	searchAvailable?: () => boolean;
+	/** The saved notes library: present = the `notes` tool is registered. */
+	notes?: NotesLibraryReader;
 }
 
 /**
@@ -457,6 +463,7 @@ export function createTeacherTools(
 			ls: lsTool,
 			find: findTool,
 			grep: grepTool,
+			...(ctx.notes ? { notes: notesToolFor(ctx.notes) } : {}),
 			...planTools(ctx),
 			...jobTools({ chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable }),
 		},

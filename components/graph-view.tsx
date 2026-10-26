@@ -64,7 +64,7 @@
  */
 
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { NotesImportErrors, useNotesImport } from "@/components/notes-import.tsx";
+import { NOTES_ACCEPT, NotesImportErrors, useNotesImport } from "@/components/notes-import.tsx";
 import Link from "next/link";
 import { FileTextIcon, ListTreeIcon, Loader2Icon, SearchIcon, SettingsIcon, UploadIcon, WaypointsIcon } from "lucide-react";
 import { incrementalLayout, propositionSessionHref, type GraphCostSummary, type GraphNode, type GraphSnapshot } from "@/src/core";
@@ -919,7 +919,7 @@ export function GraphChromeRow({
 					ref={fileInputRef}
 					type="file"
 					multiple
-					accept=".md,.markdown,.txt"
+					accept={NOTES_ACCEPT}
 					className="hidden"
 					onChange={(e) => {
 						onImportFiles(e.target.files);
@@ -1621,7 +1621,7 @@ export function GraphView({
 				/>
 			</div>
 
-			<NotesImportErrors errors={notesImport.errors} />
+			<NotesImportErrors errors={notesImport.errors} warnings={notesImport.warnings} />
 			{/* Top-right tail (owner, 2026-09-20): the pipeline cost number —
 			    just a number, hover-highlighted, dropdown breakdown — then
 			    the running-pipeline pills under it. Lives BELOW the actions
