@@ -392,7 +392,9 @@ function ActivityBlobRow({
 	const Icon = blob.process === "extraction" ? WaypointsIcon : (blob.jobKind && KIND_ICON[blob.jobKind]) || BotIcon;
 	const label =
 		blob.process === "extraction"
-			? `Extraction — ${blob.phase ?? "running"}`
+			? blob.phase === "paused"
+				? "Extraction — paused by the model's rate limit, resumes shortly"
+				: `Extraction — ${blob.phase ?? "running"}`
 			: blob.jobKind === "research"
 				? "Researcher"
 				: blob.jobKind === "demo"

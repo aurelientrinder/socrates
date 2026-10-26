@@ -15,6 +15,7 @@ import {
 import type { PiEngine } from "../models.ts";
 import { runSubagent } from "./pi-run.ts";
 import { withBgLlmSlot } from "./bg-llm-semaphore.ts";
+import { rateLimitedUntil } from "../rate-limit.ts";
 import type {
 	AuditVerdicts,
 	CallUsage,
@@ -611,7 +612,7 @@ function runAuditor(
  *  audit+merge critical section is queued behind another job's; the
  *  extractor is done but the auditor may not start until the graph is
  *  stable. */
-export type ExtractionPhase = "queued" | "extracting" | "waiting" | "auditing" | "merging";
+export type ExtractionPhase = "queued" | "extracting" | "waiting" | "auditing" | "merging" | "paused";
 
 /** One in-flight pipeline run. Module-level: one process, one registry.
  *  Exported for the status payload's consumer typing (the dock). */
@@ -681,7 +682,11 @@ function runs(): NonNullable<LhExtractionGlobal["__lhExtractionRuns"]> {
 
 /** In-flight pipeline runs (oldest first) — the /api/graph/status payload. */
 export function extractionStatuses(): RunningExtraction[] {
-	return [...runs().running.values()].sort((a, b) => a.startedAt - b.startedAt);
+	// "paused" (2026-10-26): the run's model call is waiting out a provider
+	// rate limit (rate-limit.ts) — derived from its signal, never stored.
+	return [...runs().running.values()]
+		.map((run) => (rateLimitedUntil(run.controller.signal) ? { ...run, phase: "paused" as const } : run))
+		.sort((a, b) => a.startedAt - b.startedAt);
 }
 
 /** True cancellation of the in-flight run for a chat (the dock's abort
