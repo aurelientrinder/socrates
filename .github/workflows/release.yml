@@ -175,13 +175,13 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             macOS)
-              app="dist/mac-arm64/LearnHarness.app/Contents"
+              app="dist/mac-arm64/Socrates.app/Contents"
               payload="$app/Resources/server/standalone"
-              runtime="$app/MacOS/LearnHarness"
+              runtime="$app/MacOS/Socrates"
               ;;
             Windows)
               payload="dist/win-unpacked/resources/server/standalone"
-              runtime="dist/win-unpacked/LearnHarness.exe"
+              runtime="dist/win-unpacked/Socrates.exe"
               ;;
             Linux)
               payload="dist/linux-unpacked/resources/server/standalone"
@@ -194,11 +194,11 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             macOS)
-              app="dist/mac-arm64/LearnHarness.app/Contents"
-              node scripts/smoke-demo-runtime.mjs --standalone "$app/Resources/server/standalone" --runtime "$app/MacOS/LearnHarness" --browser
+              app="dist/mac-arm64/Socrates.app/Contents"
+              node scripts/smoke-demo-runtime.mjs --standalone "$app/Resources/server/standalone" --runtime "$app/MacOS/Socrates" --browser
               ;;
             Windows)
-              node scripts/smoke-demo-runtime.mjs --standalone dist/win-unpacked/resources/server/standalone --runtime dist/win-unpacked/LearnHarness.exe --browser
+              node scripts/smoke-demo-runtime.mjs --standalone dist/win-unpacked/resources/server/standalone --runtime dist/win-unpacked/Socrates.exe --browser
               ;;
             Linux)
               xvfb-run -a node scripts/smoke-demo-runtime.mjs --standalone dist/linux-unpacked/resources/server/standalone --runtime dist/linux-unpacked/learnharness --browser
@@ -207,7 +207,7 @@ jobs:
       - name: Save installers and update metadata
         uses: actions/upload-artifact@v7
         with:
-          name: learnharness-${{ matrix.platform }}
+          name: socrates-${{ matrix.platform }}
           retention-days: 7
           if-no-files-found: error
           path: |

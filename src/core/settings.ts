@@ -345,7 +345,8 @@ export interface GraphSettings {
  * (owner ruling: on big models the setting rules; on small ones the
  * window rules before the provider overflows).
  *
- * FACTORY DEFAULT 150_000 (owner ruling).
+ * FACTORY DEFAULT 90_000 (Socrates; upstream 150_000): keeps prompts under
+ * the 100k step where Claude Haiku 5.5 bills 5x.
  *
  * FLOOR 32_000 (implementer's call, the chunk-budget discipline): below
  * the kept tail (20k) + a summary the chat would re-compact every turn —
@@ -406,7 +407,7 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
 	},
 	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
-	compaction: { thresholdTokens: 150_000 },
+	compaction: { thresholdTokens: 90_000 },
 };
 
 /** The chunk budget's validated floor (GraphSettings.extractionChunkTokens
