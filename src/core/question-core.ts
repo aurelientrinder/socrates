@@ -468,6 +468,12 @@ export interface QuestionAnswerData {
 	committed?: string; // explain only (rendering): the model's committed answer
 	explanation?: string; // quiz only (rendering)
 	dismissed?: boolean;
+	/** review answers only (spaced repetition): the retention topic key
+	 *  the question tested (`plan:<chatId>:<nodeId>` / `prop:<nodeId>`).
+	 *  Stamped SERVER-side from the review call's own `topicId` argument
+	 *  when the answer persists (input-events.ts) — the client never
+	 *  supplies it. The retention fold keys the answer onto that topic. */
+	topicId?: string;
 	answeredAt: string;
 }
 

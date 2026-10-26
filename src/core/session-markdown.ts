@@ -93,6 +93,7 @@ function toolResultBody(result: ToolResultMessage, ctx?: MarkdownContext): { hea
 	if (
 		result.toolName === "quiz" ||
 		result.toolName === "probe" ||
+		result.toolName === "review" ||
 		result.toolName === "explain" ||
 		result.toolName === "recall"
 	) {
@@ -101,6 +102,8 @@ function toolResultBody(result: ToolResultMessage, ctx?: MarkdownContext): { hea
 				? "Quiz"
 				: result.toolName === "probe"
 					? "Probe"
+					: result.toolName === "review"
+						? "Review"
 					: result.toolName === "recall"
 						? "Recall"
 						: "Recall check"; // explain — the teach free-recall name
