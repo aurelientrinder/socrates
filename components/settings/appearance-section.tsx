@@ -7,9 +7,8 @@
  * variables move IMMEDIATELY (the section's whole point — it must DO
  * something). Hex inputs commit on blur/Enter; the background derives the
  * raised/accent/edge palette in code (components/settings/appearance.tsx).
- * Mode is dark-only this wave: control rendered DISABLED with a note — the
- * light palette is the design wave's work, and a lying control is worse
- * than an honest disabled one.
+ * Mode (light theme wave, 2026-10-26): Light (the default) / Dark / System;
+ * the typeface row swaps the whole font set (Claude-style or classic).
  *
  * Graph graying (owner, 2026-09-20) follows the graph viewer's render-panel
  * convention: the whole row dims when a parent is off (stored values
@@ -39,12 +38,12 @@ import {
 } from "@/src/core";
 import { MenuShell } from "@/components/menu-shell";
 import { Hint } from "@/components/ui/hint";
-import { useAppearance } from "./appearance.tsx";
+import { backgroundMode, DEFAULT_READING_FONT_FOR, useAppearance } from "./appearance.tsx";
 import { FontMenuList } from "./model-menu";
 import { CommitInput, SettingsRow, ThinSelect, Toggle } from "./controls.tsx";
 
-/** The factory reading family — the DEFAULT row's identity (unset =
- *  this). Exported for tests. */
+/** The classic set's reading family (the claude set's is in
+ *  DEFAULT_READING_FONT_FOR). Exported for tests. */
 export const DEFAULT_READING_FONT = "Source Sans 3";
 
 /** The dev-browser fallback list (queryLocalFonts is absent there):
@@ -64,6 +63,12 @@ export const CURATED_FALLBACK_FONTS: readonly string[] = [
 	"Trebuchet MS",
 	"Verdana",
 ];
+
+/** Each mode's factory page color (globals.css :root / .dark). A custom
+ *  background only shows in the mode it suits (appearanceVars). */
+function defaultBackground(mode: "light" | "dark"): string {
+	return mode === "dark" ? "#141414" : "#faf9f5";
+}
 
 /** window.queryLocalFonts' shape as this section consumes it (family is
  *  the only field used; the API returns one FontData per FACE — the
@@ -97,8 +102,10 @@ export function AppearanceSection({
 	/** PUT the whole appearance section; the page re-applies on success. */
 	onSectionChange: (next: AppearanceSettings) => void;
 }) {
-	const { appearance: resolved } = useAppearance();
+	const { appearance: resolved, effectiveMode } = useAppearance();
 	const md = appearance?.mdRendering;
+	const typeface = appearance?.typeface ?? resolved.typeface;
+	const readingDefault = DEFAULT_READING_FONT_FOR[typeface];
 
 	// The font dropdown's open state + its enumeration cache. undefined =
 	// not enumerated yet (desktop: click-bound queryLocalFonts pending);
@@ -129,7 +136,7 @@ export function AppearanceSection({
 					void api()
 						.then((fonts) => {
 							const families = [...new Set(fonts.map((f) => f.family))]
-								.filter((f) => f !== DEFAULT_READING_FONT)
+								.filter((f) => f !== readingDefault)
 								.sort((a, b) => a.localeCompare(b));
 							if (families.length === 0) {
 								// Resolved-but-empty: not a failure the catch sees —
@@ -186,19 +193,49 @@ export function AppearanceSection({
 
 	return (
 		<>
-			<SettingsRow label="Mode" hint="Coming soon" testid="row-mode" dimmed>
-				<ThinSelect value="dark" ariaLabel="mode" onChange={() => {}} testid="select-mode" disabled>
+			<SettingsRow
+				label="Mode"
+				hint={resolved.mode === "system" ? `Following the system (${effectiveMode})` : undefined}
+				testid="row-mode"
+			>
+				<ThinSelect
+					value={resolved.mode}
+					ariaLabel="mode"
+					onChange={(v) => onSectionChange({ ...appearance, mode: v as AppearanceSettings["mode"] })}
+					testid="select-mode"
+				>
+					<option value="light">Light</option>
 					<option value="dark">Dark</option>
+					<option value="system">System</option>
+				</ThinSelect>
+			</SettingsRow>
+			<SettingsRow
+				label="Typeface"
+				hint={typeface === "claude" ? "DM Sans + Source Serif 4" : "JetBrains Mono + Source Sans 3"}
+				testid="row-typeface"
+			>
+				<ThinSelect
+					value={typeface}
+					ariaLabel="typeface"
+					onChange={(v) => onSectionChange({ ...appearance, typeface: v as AppearanceSettings["typeface"] })}
+					testid="select-typeface"
+				>
+					<option value="claude">Claude-style</option>
+					<option value="classic">Classic</option>
 				</ThinSelect>
 			</SettingsRow>
 			<SettingsRow
 				label="Background"
-				hint={`Empty = ${resolved.background ?? "#141414"}`}
+				hint={
+					resolved.background !== null && backgroundMode(resolved.background) !== effectiveMode
+						? `Shows in ${backgroundMode(resolved.background)} mode only`
+						: `Empty = ${resolved.background ?? defaultBackground(effectiveMode)}`
+				}
 				testid="row-background"
 			>
 				<CommitInput
 					value={appearance?.background ?? ""}
-					placeholder="#141414"
+					placeholder={defaultBackground(effectiveMode)}
 					ariaLabel="background hex"
 					testid="input-background"
 					onCommit={(v) => onSectionChange({ ...appearance, background: v === "" ? null : v })}
@@ -206,7 +243,7 @@ export function AppearanceSection({
 			</SettingsRow>
 			<SettingsRow
 				label="Reading font"
-				hint={`Empty = ${DEFAULT_READING_FONT}`}
+				hint={`Empty = ${readingDefault}`}
 				testid="row-font"
 			>
 				<span ref={fontMenuOpen ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
@@ -228,7 +265,7 @@ export function AppearanceSection({
 								onClick={openFontMenu}
 								className="flex h-7 min-w-20 items-center gap-1 rounded-sm border border-border bg-background px-1.5 font-ui text-xs text-foreground transition-colors hover:border-muted-foreground/50"
 							>
-								<span className="min-w-0 flex-1 truncate">{appearance?.fontFamily || DEFAULT_READING_FONT}</span>
+								<span className="min-w-0 flex-1 truncate">{appearance?.fontFamily || readingDefault}</span>
 								<span aria-hidden className="text-muted-foreground">
 									▾
 								</span>
@@ -252,6 +289,7 @@ export function AppearanceSection({
 							<FontMenuList
 								families={localFonts === undefined ? undefined : (localFonts ?? [...CURATED_FALLBACK_FONTS])}
 								effectiveFamily={appearance?.fontFamily ?? null}
+								defaultFamily={readingDefault}
 								onPick={pickFont}
 								footer={
 									localFonts === undefined
@@ -299,7 +337,7 @@ export function AppearanceSection({
 				<CommitInput
 					type="number"
 					value={String(md?.headingWeight ?? "")}
-					placeholder="900"
+					placeholder={String(resolved.mdRendering.headingWeight)}
 					ariaLabel="heading weight"
 					testid="input-heading-weight"
 					onCommit={(v) => {

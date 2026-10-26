@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { appearanceVars, derivedPalette, resolveAppearance, staleVarNames } from "../components/settings/appearance.tsx";
+import { appearanceVars, backgroundMode, derivedPalette, resolveAppearance, staleVarNames } from "../components/settings/appearance.tsx";
 import {
 	PROMPT_IN_USE_HINT,
 	composePromptSwitch,
@@ -26,12 +26,18 @@ import { setupStage } from "../components/setup-dialog.tsx";
 describe("resolveAppearance — delta over factory", () => {
 	it("absent everything = the factory view", () => {
 		const a = resolveAppearance(undefined);
-		assert.equal(a.mode, "dark");
+		assert.equal(a.mode, "light");
+		assert.equal(a.typeface, "claude");
 		assert.equal(a.background, null);
 		assert.equal(a.fontFamily, null);
 		assert.equal(a.proseFontSize, 16);
 		assert.equal(a.sessionNameSerif, true);
-		assert.deepEqual(a.mdRendering, { headingWeight: 900, boldColor: null, italicColor: null });
+		// The Claude set's serif headings default to a semibold, not Black.
+		assert.deepEqual(a.mdRendering, { headingWeight: 600, boldColor: null, italicColor: null });
+	});
+
+	it("the classic typeface keeps the Black heading default", () => {
+		assert.equal(resolveAppearance({ typeface: "classic" }).mdRendering.headingWeight, 900);
 	});
 
 	it("explicit deltas win field-by-field", () => {
@@ -67,14 +73,30 @@ describe("derivedPalette — the dark curve keeps today's relationships", () => 
 	it("3-digit hex expands", () => {
 		assert.equal(derivedPalette("#abc")["--card"], "#b2c3d4"); // aa bb cc each +8
 	});
+
+	it("the light curve darkens the surfaces off a light page", () => {
+		const p = derivedPalette("#faf9f5", "light");
+		assert.equal(p["--card"], "#f3f2ee"); // -7 per channel
+		assert.equal(p["--border"], "#d6d5d1"); // -36 per channel
+		assert.equal(p["--primary-foreground"], "#faf9f5");
+	});
+});
+
+describe("backgroundMode — which theme a page color belongs to", () => {
+	it("dark hexes are dark, light hexes are light", () => {
+		assert.equal(backgroundMode("#141414"), "dark");
+		assert.equal(backgroundMode("#101820"), "dark");
+		assert.equal(backgroundMode("#faf9f5"), "light");
+		assert.equal(backgroundMode("#f0f0f0"), "light");
+	});
 });
 
 describe("appearanceVars — the mapping the provider applies", () => {
 	it("factory appearance: only the always-applied tokens move", () => {
 		const vars = appearanceVars(resolveAppearance(undefined));
 		assert.equal(vars["--lh-prose-size"], "16px");
-		assert.equal(vars["--lh-heading-weight"], "900");
-		assert.equal(vars["--font-prose"], undefined, "no font override at factory");
+		assert.equal(vars["--lh-heading-weight"], "600");
+		assert.equal(vars["--lh-font-prose"], undefined, "no font override at factory");
 		assert.equal(vars["--font-title"], undefined, "CMU stays");
 		assert.equal(vars["--background"], undefined, "factory palette untouched");
 		assert.equal(vars["--lh-ink-strong"], undefined, "default ink");
@@ -89,10 +111,11 @@ describe("appearanceVars — the mapping the provider applies", () => {
 				sessionNameSerif: false,
 				mdRendering: { headingWeight: 700, boldColor: "#ff0000", italicColor: "#00ff00" },
 			}),
+			"dark",
 		);
 		assert.equal(vars["--background"], "#101820");
 		assert.equal(vars["--card"], "#182028", "raised +8 per channel: 10→18, 18→20, 20→28");
-		assert.equal(vars["--font-prose"], `"Georgia", var(--font-sans3), ui-sans-serif, system-ui, sans-serif`);
+		assert.equal(vars["--lh-font-prose"], `"Georgia", var(--lh-font-prose-base)`);
 		assert.equal(vars["--lh-prose-size"], "18px");
 		assert.equal(vars["--font-title"], "var(--font-prose)", "serif off → titles follow the prose font");
 		assert.equal(vars["--lh-heading-weight"], "700");
@@ -116,12 +139,13 @@ describe("staleVarNames — the removal half of application (owner repro: resets
 				sessionNameSerif: false,
 				mdRendering: { headingWeight: 700, boldColor: "#ff0000", italicColor: "#00ff00" },
 			}),
+			"dark",
 		);
 		const applied = Object.keys(fullDelta);
 		const factory = appearanceVars(resolveAppearance(undefined));
 		const stale = staleVarNames(applied, factory);
 		assert.ok(stale.includes("--background"));
-		assert.ok(stale.includes("--font-prose"));
+		assert.ok(stale.includes("--lh-font-prose"));
 		assert.ok(stale.includes("--font-title"), "serif toggle back ON must clear the title override");
 		assert.ok(stale.includes("--lh-ink-strong"));
 		assert.ok(stale.includes("--lh-ink-italic"));

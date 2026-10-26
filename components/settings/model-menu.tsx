@@ -283,7 +283,11 @@ export function ProviderMenuList({
  *  with the default first and a searched list drops it honestly — Enter
  *  can never pick a row that isn't on screen. Pure — exported for
  *  tests. */
-export function fontMenuResults(query: string, families: string[]): Array<string | null> {
+export function fontMenuResults(
+	query: string,
+	families: string[],
+	defaultFamily = "Source Sans 3",
+): Array<string | null> {
 	const scored = families
 		.map((f) => ({ f, s: fuzzyScore(query, f) }))
 		.filter((r) => r.s !== null)
@@ -291,7 +295,7 @@ export function fontMenuResults(query: string, families: string[]): Array<string
 		.map((r) => r.f);
 	// The default row's searchable identity: the factory family + the
 	// word "default" (the suffix it renders with).
-	const defaultScore = fuzzyScore(query, "Source Sans 3", "default");
+	const defaultScore = fuzzyScore(query, defaultFamily, "default");
 	if (query.trim() === "" || defaultScore !== null) return [null, ...scored];
 	return scored;
 }
@@ -300,10 +304,10 @@ export function fontMenuResults(query: string, families: string[]): Array<string
  *  query that matches NO family becomes the "Use '<query>'" custom pick —
  *  a matching family is the better pick, so the action row only exists
  *  when there is nothing else to pick. Exported for tests. */
-export function customFamilyFor(query: string, families: string[]): string | null {
+export function customFamilyFor(query: string, families: string[], defaultFamily?: string): string | null {
 	const trimmed = query.trim();
 	if (trimmed === "") return null;
-	return fontMenuResults(query, families).length === 0 ? trimmed : null;
+	return fontMenuResults(query, families, defaultFamily).length === 0 ? trimmed : null;
 }
 
 /** The reading-font dropdown body — ONE search field (owner ask
@@ -318,12 +322,15 @@ export function FontMenuList({
 	effectiveFamily,
 	onPick,
 	footer,
+	defaultFamily = "Source Sans 3",
 }: {
 	/** Enumerated font families (already deduped/sorted by the caller);
 	 *  undefined while the enumeration runs. */
 	families: string[] | undefined;
-	/** The stored override (null = the factory Source Sans 3). */
+	/** The stored override (null = the typeface set's reading family). */
 	effectiveFamily: string | null;
+	/** The DEFAULT row's family (the typeface set's reading family). */
+	defaultFamily?: string;
 	/** Receives the pick: a family string, or null for the default. */
 	onPick: (family: string | null) => void;
 	/** Quiet footer note under the list. */
@@ -343,10 +350,10 @@ export function FontMenuList({
 		listRef.current?.querySelector(`[data-idx="${menuIdx}"]`)?.scrollIntoView({ block: "nearest" });
 	}, [menuIdx]);
 
-	const results = fontMenuResults(query, families ?? []);
+	const results = fontMenuResults(query, families ?? [], defaultFamily);
 	// The custom-family action row: only when a typed query matches
 	// nothing (a matching family is the better pick). Enter picks it.
-	const customFamily = customFamilyFor(query, families ?? []);
+	const customFamily = customFamilyFor(query, families ?? [], defaultFamily);
 	const walkable: Array<string | null> = customFamily !== null ? ["__custom__"] : results;
 
 	return (
@@ -398,7 +405,7 @@ export function FontMenuList({
 										i === menuIdx ? "bg-accent/40 ring-1 ring-inset ring-border" : ""
 									}${effective && i !== menuIdx ? " bg-muted/60" : ""}`}
 								>
-									<span className="truncate text-card-foreground">{family ?? "Source Sans 3"}</span>
+									<span className="truncate text-card-foreground">{family ?? defaultFamily}</span>
 									<span className="shrink-0 text-muted-foreground">{isDefault ? "default" : effective && <span aria-hidden>✓</span>}</span>
 								</button>
 							</li>

@@ -280,10 +280,20 @@ export interface MdRenderingSettings {
 	italicColor?: string | null;
 }
 
+export type AppearanceMode = "light" | "dark" | "system";
+export const APPEARANCE_MODES: readonly AppearanceMode[] = ["light", "dark", "system"];
+export type AppearanceTypeface = "claude" | "classic";
+export const APPEARANCE_TYPEFACES: readonly AppearanceTypeface[] = ["claude", "classic"];
+
 /** Appearance settings — mode, colors, type, markdown emphasis. */
 export interface AppearanceSettings {
-	/** "dark" | "light" (default dark). */
-	mode?: "dark" | "light";
+	/** "light" | "dark" | "system" (default light). "system" follows the
+	 *  OS preference live (prefers-color-scheme). */
+	mode?: AppearanceMode;
+	/** The type family set: "claude" (default; serif reading text + sans
+	 *  chrome, free stand-ins for the Claude app's look) or "classic"
+	 *  (the original JetBrains Mono chrome + Source Sans 3 prose). */
+	typeface?: AppearanceTypeface;
 	/** The one user-chosen color; everything else derives per-mode in code.
 	 *  null = the mode's default background. */
 	background?: string | null;
@@ -385,7 +395,8 @@ export interface FactorySettings {
 	version: number;
 	general: Required<GeneralSettings>;
 	appearance: {
-		mode: "dark" | "light";
+		mode: AppearanceMode;
+		typeface: AppearanceTypeface;
 		background: string | null;
 		fontFamily: string | null;
 		proseFontSize: number;
@@ -404,9 +415,10 @@ export const FACTORY_SETTINGS: FactorySettings = {
 	version: CURRENT_SETTINGS_VERSION,
 	general: { autoUpdate: true },
 	appearance: {
-		mode: "dark",
-		background: null, // the dark default (#141414) lives in the mode's derivation curve
-		fontFamily: null, // Source Sans 3
+		mode: "light",
+		typeface: "claude",
+		background: null, // each mode's default background lives in globals.css
+		fontFamily: null, // the typeface's reading family
 		proseFontSize: 16,
 		sessionNameSerif: true,
 		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
@@ -558,7 +570,10 @@ function sanitizeMdRendering(raw: unknown): MdRenderingSettings {
 
 function sanitizeAppearance(raw: Record<string, unknown>): AppearanceSettings {
 	const out: AppearanceSettings = {};
-	if (raw.mode === "dark" || raw.mode === "light") out.mode = raw.mode;
+	if (APPEARANCE_MODES.includes(raw.mode as AppearanceMode)) out.mode = raw.mode as AppearanceMode;
+	if (APPEARANCE_TYPEFACES.includes(raw.typeface as AppearanceTypeface)) {
+		out.typeface = raw.typeface as AppearanceTypeface;
+	}
 	if (raw.background !== undefined) out.background = sanitizeHexOrNull(raw.background);
 	if (raw.fontFamily !== undefined) {
 		out.fontFamily = typeof raw.fontFamily === "string" && raw.fontFamily.trim() ? raw.fontFamily : null;

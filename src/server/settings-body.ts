@@ -15,7 +15,9 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { isHexColor, type ChatSettings } from "../core";
 import type {
 	AgentSettings,
+	AppearanceMode,
 	AppearanceSettings,
+	AppearanceTypeface,
 	BackgroundModelRole,
 	CompactionSettings,
 	GeneralSettings,
@@ -23,7 +25,14 @@ import type {
 	ModelsSettings,
 	RoleModelOverride,
 } from "../core/settings.ts";
-import { BACKGROUND_MODEL_ROLES, COMPACTION_THRESHOLD_FLOOR, EXTRACTION_CHUNK_TOKENS_FLOOR, MODEL_SLOTS } from "../core/settings.ts";
+import {
+	APPEARANCE_MODES,
+	APPEARANCE_TYPEFACES,
+	BACKGROUND_MODEL_ROLES,
+	COMPACTION_THRESHOLD_FLOOR,
+	EXTRACTION_CHUNK_TOKENS_FLOOR,
+	MODEL_SLOTS,
+} from "../core/settings.ts";
 import { WRITABLE_TOOL_KEYS } from "../core/pending.ts";
 import { isSearchEngineId } from "../core/search.ts";
 import { DICTATION_LANGUAGES, isDictationEngineId, isDictationLanguage, type DictationEngineId } from "../core/dictation.ts";
@@ -227,17 +236,23 @@ function parseHexOrNull(value: unknown, field: string): { color?: string | null;
 	return { color: value };
 }
 
-/** appearance: { mode?, background?, fontFamily?, proseFontSize?,
+/** appearance: { mode?, typeface?, background?, fontFamily?, proseFontSize?,
  *  sessionNameSerif?, mdRendering? } */
 export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<AppearanceSettings> {
 	const raw = asRecord(body);
 	if (!raw) return { ok: false, error: "Invalid JSON body" };
 	const settings: AppearanceSettings = {};
 	if (raw.mode !== undefined) {
-		if (raw.mode !== "dark" && raw.mode !== "light") {
-			return { ok: false, error: "mode must be \"dark\" or \"light\"" };
+		if (!APPEARANCE_MODES.includes(raw.mode as AppearanceMode)) {
+			return { ok: false, error: "mode must be \"light\", \"dark\" or \"system\"" };
 		}
-		settings.mode = raw.mode;
+		settings.mode = raw.mode as AppearanceMode;
+	}
+	if (raw.typeface !== undefined) {
+		if (!APPEARANCE_TYPEFACES.includes(raw.typeface as AppearanceTypeface)) {
+			return { ok: false, error: "typeface must be \"claude\" or \"classic\"" };
+		}
+		settings.typeface = raw.typeface as AppearanceTypeface;
 	}
 	if (raw.background !== undefined) {
 		const parsed = parseHexOrNull(raw.background, "background");

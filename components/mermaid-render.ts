@@ -9,7 +9,8 @@
  *
  * Engine: Pele (owner request, 2026-10-26) — a small, dependency-free
  * Mermaid renderer that emits SVG themed by CSS variables (the `.pele`
- * palette in globals.css maps them onto the app's dark tokens). Loaded
+ * palette in globals.css maps them onto the app's theme tokens, light or
+ * dark, so a theme switch restyles drawn charts live). Loaded
  * through `pele/lazy` so each diagram type's parser is fetched on first use
  * instead of shipping every type up front.
  */

@@ -116,7 +116,11 @@ describe("the appearance section's font control (thin SSR)", () => {
 			<AppearanceSection appearance={undefined} onSectionChange={() => {}} />,
 		);
 		assert.ok(html.includes('data-testid="font-trigger"'), "the trigger");
-		assert.ok(html.includes(DEFAULT_READING_FONT), "unset shows the factory family");
+		assert.ok(html.includes("Source Serif 4"), "unset shows the Claude set's reading family");
+		const classic = renderToStaticMarkup(
+			<AppearanceSection appearance={{ typeface: "classic" }} onSectionChange={() => {}} />,
+		);
+		assert.ok(classic.includes(DEFAULT_READING_FONT), "classic shows Source Sans 3");
 		assert.ok(html.includes('aria-expanded="false"'), "the collapsed state");
 		// the old CommitInput is retired
 		assert.ok(!html.includes('data-testid="input-font"'));
@@ -140,8 +144,11 @@ describe("the emphasis-ink factory ruling (globals.css)", () => {
 
 	it("both blocks default the inks to the regular text color", () => {
 		const css = fs.readFileSync("app/globals.css", "utf-8");
-		assert.equal((css.match(/--lh-ink-strong: var\(--foreground\)/g) ?? []).length, 2, "both theme blocks");
-		assert.equal((css.match(/--lh-ink-italic: var\(--foreground\)/g) ?? []).length, 2, "both theme blocks");
+		// One declaration on :root covers both themes: it resolves against
+		// whichever palette <html> carries (.dark sits on the same element).
+		assert.equal((css.match(/--lh-ink-strong: var\(--foreground\)/g) ?? []).length, 1);
+		assert.equal((css.match(/--lh-ink-italic: var\(--foreground\)/g) ?? []).length, 1);
+		assert.ok(!/\.dark\s*\{[^}]*--lh-ink-strong/.test(css), "the dark block never re-pins the ink");
 	});
 
 	it("the appearance rows' empty-state labels say 'same as text'", () => {
