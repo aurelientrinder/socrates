@@ -201,7 +201,7 @@ describe("desktop release workflow", () => {
 
 	it("prepares once after gates, never on rehearsals, before parallel packaging", () => {
 		assert.equal(draft.needs, "quality");
-		assert.equal(prepare.if, "github.event_name == 'push'");
+		assert.equal(prepare.if, "startsWith(github.ref, 'refs/tags/v')");
 		assert.deepEqual(packaging.needs, ["quality", "draft"]);
 		assert.equal(workflow.concurrency.group, "release-${{ github.ref }}");
 		assert.equal(workflow.concurrency["cancel-in-progress"], false);

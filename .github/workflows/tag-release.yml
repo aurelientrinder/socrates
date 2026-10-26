@@ -1,0 +1,35 @@
+name: Start a release
+
+# One click from the Actions tab: tags main at package.json's version and
+# runs "Desktop release" on that tag, which builds a DRAFT release. Nothing
+# reaches the app until the draft is published by hand.
+# (Tags pushed with GITHUB_TOKEN don't trigger workflows, so this dispatches
+# the release run explicitly.)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    name: Tag and start the release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create the version tag and dispatch the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v$(node -p 'require("./package.json").version')"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::$tag already exists; bump package.json's version first."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
+          gh workflow run release.yml --ref "$tag"
+          echo "Started Desktop release on $tag"
