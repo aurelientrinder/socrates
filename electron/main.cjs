@@ -41,7 +41,7 @@ const path = require("node:path");
 // renderer owns the number; this is the IPC widen target).
 const SIDEBAR_AUTOCLOSE = 928;
 
-const PRODUCT_NAME = "LearnHarness";
+const PRODUCT_NAME = "Socrates";
 
 // APP NAME → userData (owner, 2026-10-10): the Application Support dir is
 // exactly "LearnHarness" in dev AND packaged. Packaged Electron would
@@ -457,7 +457,7 @@ function checkForUpdates({ manual = false } = {}) {
 			// update-downloaded. Manual checks additionally answer directly.
 			if (!manual) return;
 			const version = result?.updateInfo?.version;
-			if (!version) dialog.showMessageBox({ type: "info", message: "You're up to date.", detail: `LearnHarness ${app.getVersion()} is the latest version.` });
+			if (!version) dialog.showMessageBox({ type: "info", message: "You're up to date.", detail: `Socrates ${app.getVersion()} is the latest version.` });
 		})
 		.catch((err) => {
 			log(`update check failed: ${err?.message ?? err}`);
@@ -486,11 +486,17 @@ function setupAutoUpdater() {
 		log(`auto-update: electron-updater unavailable (${err?.message ?? err}) — updates disabled`);
 		return;
 	}
+	// Socrates: the built-in GitHub feed would need a public repo, and the
+	// upstream LearnHarness feed would replace this build. Update only from
+	// an explicit LH_UPDATE_FEED; otherwise the updater stays off.
 	const feed = process.env.LH_UPDATE_FEED;
-	if (feed) {
-		autoUpdater.setFeedURL({ provider: "generic", url: feed });
-		log(`auto-update: LH_UPDATE_FEED override → ${feed}`);
+	if (!feed) {
+		autoUpdater = null;
+		log("auto-update: no LH_UPDATE_FEED — updates disabled");
+		return;
 	}
+	autoUpdater.setFeedURL({ provider: "generic", url: feed });
+	log(`auto-update: LH_UPDATE_FEED override → ${feed}`);
 	autoUpdater.autoDownload = true;
 	autoUpdater.autoInstallOnAppQuit = true;
 	// Route every updater log line through the shell's own log (userData/
