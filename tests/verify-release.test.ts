@@ -312,10 +312,10 @@ describe("release gate — workflow wiring", () => {
 	const workflow = yaml.load(fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8"));
 	const verify = workflow.jobs.verify;
 
-	it("can see drafts after ALL packaging jobs, only on real tag pushes", () => {
+	it("can see drafts after ALL packaging jobs, only on real tag runs", () => {
 		assert.ok(verify);
 		assert.equal(verify.needs, "package");
-		assert.equal(verify.if, "github.event_name == 'push'");
+		assert.equal(verify.if, "startsWith(github.ref, 'refs/tags/v')");
 		// GitHub's release-list API hides drafts from read-only tokens.
 		assert.deepEqual(verify.permissions, { contents: "write" });
 		assert.equal(verify.env?.GH_TOKEN, undefined);

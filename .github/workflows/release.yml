@@ -3,8 +3,9 @@ name: Desktop release
 on:
   push:
     tags: ["v*"]
-  # Manual runs are artifact-only, unsigned, and NEVER create a release.
-  # Use this for the first Windows/Linux dress rehearsal without secrets.
+  # Manual runs on a branch are artifact-only rehearsals and NEVER create a
+  # release. A manual run on a v* tag (dispatched by tag-release.yml) is a
+  # real release run, same as a tag push.
   workflow_dispatch:
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Tag must match package.json
-        if: github.event_name == 'push'
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           node --input-type=module -e '
             import fs from "node:fs";
@@ -56,7 +57,7 @@ jobs:
       # This job succeeds without creating anything on manual rehearsals.
       # Preparing once avoids the publisher's list-miss/create race between OS jobs.
       - name: Create or reuse the tag's draft
-        if: github.event_name == 'push'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/github-script@v9
         with:
           script: |
@@ -136,23 +137,23 @@ jobs:
       # Socrates has no Apple Developer ID, so tagged mac builds ship
       # unsigned (and so can't self-update on macOS); Windows/Linux update fine.
       - name: Unsigned macOS release → draft
-        if: github.event_name == 'push' && runner.os == 'macOS'
+        if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'macOS'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npx electron-builder ${{ matrix.builder_args }} --publish always -c.mac.notarize=false
       - name: Windows/Linux release → draft
-        if: github.event_name == 'push' && runner.os != 'macOS'
+        if: startsWith(github.ref, 'refs/tags/v') && runner.os != 'macOS'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder ${{ matrix.builder_args }} --publish always
       - name: Unsigned macOS rehearsal (no publish, no notarization)
-        if: github.event_name == 'workflow_dispatch' && runner.os == 'macOS'
+        if: "!startsWith(github.ref, 'refs/tags/v') && runner.os == 'macOS'"
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npx electron-builder ${{ matrix.builder_args }} --publish never -c.mac.notarize=false
       - name: Windows/Linux rehearsal (no publish)
-        if: github.event_name == 'workflow_dispatch' && runner.os != 'macOS'
+        if: "!startsWith(github.ref, 'refs/tags/v') && runner.os != 'macOS'"
         run: npx electron-builder ${{ matrix.builder_args }} --publish never
       - name: Initialize packaged providers offline (host and packaged Electron Node)
         run: |
@@ -212,7 +213,7 @@ jobs:
   verify:
     name: Verify draft release
     needs: package
-    if: github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # GitHub hides drafts from tokens without push access. The commands below
