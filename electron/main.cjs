@@ -678,6 +678,26 @@ async function main() {
 		return subscriptionControl(command, subscriptions);
 	});
 
+	// Notes library (2026-10-26): open a saved note's original (a PDF, a
+	// .txt) in the system's default app. The id is the only input, checked
+	// against the library's id shape; the file must sit directly in that
+	// note's folder, so nothing outside data/notes can be opened this way.
+	ipcMain.handle("lh:notes:open", async (event, id) => {
+		if (!trustedAppWindows.has(BrowserWindow.fromWebContents(event.sender)) || !trustedSender(event, new URL(url).origin, BrowserWindow)) return { ok: false, error: "Untrusted desktop request." };
+		if (typeof id !== "string" || !/^src_[0-9a-f]{12}$/.test(id)) return { ok: false, error: "Invalid note." };
+		const dir = path.join(DATA_DIR(), "notes", id);
+		try {
+			const original = fs.readdirSync(dir).find((name) => name !== "meta.json" && name !== "text.txt");
+			if (!original) return { ok: false, error: "The saved file is missing." };
+			// Documents only: never hand the OS something it would execute.
+			if (!/\.(pdf|md|markdown|txt)$/i.test(original)) return { ok: false, error: "Only PDF and text notes can be opened." };
+			const failure = await shell.openPath(path.join(dir, original));
+			return failure ? { ok: false, error: failure } : { ok: true };
+		} catch {
+			return { ok: false, error: "The saved file is missing." };
+		}
+	});
+
 	installMenu();
 
 	// Auto-update (Wave C): wire the updater before the window so the

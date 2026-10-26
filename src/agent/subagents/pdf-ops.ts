@@ -75,6 +75,41 @@ function itemsToText(items: unknown[]): string {
 	return out;
 }
 
+/** A page's text with its line breaks kept (pdfjs marks a line's last
+ *  item with hasEOL) — the notes library stores this, so the tutor's
+ *  line-wise search over saved notes finds lines, not one page-long blob. */
+function itemsToLines(items: unknown[]): string {
+	let out = "";
+	for (const it of items) {
+		if (!it || typeof it !== "object") continue;
+		const { str, hasEOL } = it as { str?: unknown; hasEOL?: unknown };
+		if (typeof str === "string") out += str;
+		if (hasEOL === true) out += "\n";
+	}
+	return out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Every page's text, in order (index 0 = page 1), from the PDF's bytes —
+ *  the notes import's extraction. A page with no text layer (a scan, a
+ *  photo) comes back as "". Throws on a file pdfjs cannot parse. */
+export async function pdfPageTexts(data: Uint8Array): Promise<string[]> {
+	const pdfjs = await loadPdfjs();
+	// pdfjs takes ownership of (detaches) the buffer: hand it a copy.
+	const task = pdfjs.getDocument({ data: new Uint8Array(data), standardFontDataUrl: standardFontsDir(), verbosity: 0 });
+	try {
+		const doc = await task.promise;
+		const pages: string[] = [];
+		for (let i = 1; i <= doc.numPages; i++) {
+			const page = await doc.getPage(i);
+			const content = await page.getTextContent();
+			pages.push(itemsToLines(content.items as unknown[]));
+		}
+		return pages;
+	} finally {
+		await task.destroy();
+	}
+}
+
 /** Math-flavored char fraction — the skill's heuristic, verbatim ranges. */
 function mathDensity(text: string): number {
 	let mathChars = 0;

@@ -7,13 +7,17 @@
  * source record (the file's provenance + the run's usage), and runs
  * extractor → auditor → merger over the raw text.
  *
+ * PDFs (2026-10-26): every file goes through prepareNote first — a PDF's
+ * text is pulled out locally (pdfjs) and every file is SAVED to the notes
+ * library (data/notes), so the Notes page and the tutor keep the original.
+ *
  * Small concurrency cap: the model calls are the slow part, and a burst of
  * 25 simultaneous runs would trip provider rate limits — a 3-wide worker
  * pool keeps the run registry (the dock's status chips) and the ledgers
  * healthy. The dock's chips + graph refetch track progress live through
  * /api/graph/status, as with session runs.
  */
-import { extraction, NotesImportError } from "@/src/server";
+import { extraction, NotesImportError, prepareNote, SCANNED_PDF_MESSAGE } from "@/src/server";
 import {
 	ModelsNotConfiguredError,
 	PROVIDER_KEY_MISSING_CODE,
@@ -30,6 +34,8 @@ interface ImportResult {
 	ok: boolean;
 	stats?: EmissionStats;
 	error?: string;
+	/** A completed import's caveat (a PDF's scanned pages were skipped). */
+	warning?: string;
 	/** The machine discriminator when ok:false is a config refusal — the
 	 * BYOK models refusal (owner, 2026-09-22) or the provider-key refusal
 	 * (2026-09-25); the client can open the setup/keys flow off it. */
@@ -55,9 +61,13 @@ export async function POST(request: Request) {
 			if (!next) return;
 			const { file, requestIndex } = next;
 			try {
-				const text = await file.text();
-				const stats = await extraction.importNotes({ filePath: file.name, text });
-				results.push({ filePath: file.name, requestIndex, outcome: "completed", ok: true, stats });
+				const note = await prepareNote(file.name, new Uint8Array(await file.arrayBuffer()));
+				if (!note.text) {
+					results.push({ filePath: file.name, requestIndex, outcome: "failed", ok: false, error: SCANNED_PDF_MESSAGE });
+					continue;
+				}
+				const stats = await extraction.importNotes({ filePath: file.name, text: note.text });
+				results.push({ filePath: file.name, requestIndex, outcome: "completed", ok: true, stats, ...(note.warning ? { warning: note.warning } : {}) });
 			} catch (err) {
 				if (err instanceof ModelsNotConfiguredError) {
 					results.push({

@@ -104,6 +104,25 @@ export interface NotesSource {
 	extractions?: ExtractionRunUsage[];
 }
 
+/** One SAVED notes file (2026-10-26): the notes library keeps every
+ *  imported file (src/store/notes.ts) — this is its metadata. The id is
+ *  the file's NotesSource id, so the saved copy and its graph source
+ *  record share one identity. */
+export interface NoteMeta {
+	id: string;
+	/** The imported file's name — its identity and display label. */
+	name: string;
+	kind: "pdf" | "text";
+	/** ISO — the last time this file was imported. */
+	importedAt: string;
+	/** The original file's size in bytes. */
+	bytes: number;
+	/** PDFs: the page count. */
+	pages?: number;
+	/** PDFs: pages with no text layer (scans, photos) — 1-indexed. */
+	emptyPages?: number[];
+}
+
 /** What one cluster-naming refresh did — the namer's ClusterRefreshStats,
  *  contract-shaped so the agent layer needs no contracts import.
  *  Structural twins stay interchangeable. */

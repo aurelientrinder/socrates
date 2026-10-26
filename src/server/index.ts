@@ -9,6 +9,8 @@ export * from "./events-stream.ts";
 export * from "./chats.ts";
 export * from "./review.ts";
 export * from "./graph.ts";
+export * from "./notes.ts";
+export { notesLibrary } from "../store/notes.ts";
 export { NotesImportError } from "../agent/subagents/extraction.ts";
 export * from "./commit-positions.ts";
 export * from "./jobs.ts";

@@ -23,6 +23,10 @@
  *   asks main to kill the server and quit-and-install. Browser builds:
  *   both absent, the banner never renders.
  *
+ *   window.lh.openNote(id) — open a saved note's original file (the notes
+ *   library, data/notes/<id>/) in the system's default app. Main resolves
+ *   the path itself from the id; the renderer never names a path.
+ *
  * Channel names are mirrored in electron/main.cjs — keep them in sync.
  */
 const { contextBridge, ipcRenderer } = require("electron");
@@ -81,4 +85,5 @@ contextBridge.exposeInMainWorld("lh", {
 		}
 	})(),
 	setTheme: (theme) => ipcRenderer.send("lh:theme", theme),
+	openNote: (id) => ipcRenderer.invoke("lh:notes:open", id),
 });
