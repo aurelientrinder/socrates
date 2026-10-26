@@ -206,7 +206,7 @@ export function inputAppends(
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
-			return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+			return [newAnswerResult(input.toolCallId, pending.tool, withReviewTopic(input.answer, pending))];
 		}
 		case "continue":
 			return dismissalConclusion(record);
@@ -241,6 +241,20 @@ export function inputAppends(
 function dismissalConclusion(record: { messages: LhMessage[] }): LhMessage[] {
 	const problemCallId = pendingProblemDismissalOf(record.messages);
 	return problemCallId ? concludedByDismissalPair(problemCallId) : [];
+}
+
+/** The review stamp (spaced repetition): a `review` answer carries the
+ *  topic key its call named, copied from the PERSISTED call arguments —
+ *  never trusted from the client body (any client-sent topicId is
+ *  dropped). Every other tool's answer passes through without one. */
+export function withReviewTopic(
+	answer: QuestionAnswerData,
+	pending: { tool: string; input: unknown },
+): QuestionAnswerData {
+	const { topicId: _client, ...rest } = answer;
+	if (pending.tool !== "review") return rest;
+	const topicId = (pending.input as { topicId?: unknown } | null)?.topicId;
+	return typeof topicId === "string" && topicId.length > 0 ? { ...rest, topicId } : rest;
 }
 
 /** Is this tool name a question tool (dock-owned, answer-gated)? */

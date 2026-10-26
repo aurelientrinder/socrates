@@ -24,8 +24,11 @@ import type { EmissionStats } from "./graph.ts";
 /** The session's kind (practice sessions, owner 2026-10-04): "teach" is
  *  the default and ABSENT on pre-practice records (no migration — absence
  *  reads as teach); "practice" marks an adaptive-practice session — the
- *  practice agent, its two tools, no extraction, no graph writes. */
-export type ChatKind = "teach" | "practice";
+ *  practice agent, its two tools, no extraction, no graph writes;
+ *  "review" marks a spaced-repetition review session — the review agent
+ *  quizzes the due topics listed in its review-context marker (one
+ *  graded question per topic), no extraction, no graph writes. */
+export type ChatKind = "teach" | "practice" | "review";
 
 export interface ChatRecord {
 	id: string;

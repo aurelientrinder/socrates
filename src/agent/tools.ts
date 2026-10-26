@@ -64,7 +64,7 @@ export type { ProbeDoneContext } from "./tools/probe.ts";
  *  again in normalizeOptions (question-core), the same parseOptionsIfString.
  *  Anything unparseable passes through untouched: validation then reports
  *  honestly and the agent retries with a real error to learn from. */
-function prepareQuestionArguments<T extends object>(args: unknown): T {
+export function prepareQuestionArguments<T extends object>(args: unknown): T {
 	if (args && typeof args === "object" && !Array.isArray(args)) {
 		const o = args as { options?: unknown };
 		if (typeof o.options === "string") {

@@ -48,7 +48,7 @@ import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
-import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
+import { ArrowRightIcon, DumbbellIcon, RepeatIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
@@ -56,6 +56,7 @@ import { SessionMessageNavigation } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
+import { ReviewContextCard, type ReviewContextData } from "@/components/review-context-card";
 import { TopBar } from "@/components/top-bar";
 import type { ArtifactPartProps, JobRecord, Phase3, QuestionAnswerData, TurnUsage, SessionPricing } from "@/src/core";
 import type { LhViewMessage } from "@/src/core";
@@ -79,6 +80,7 @@ import {
 import { ReadingThinkingField } from "@/components/reading-thinking";
 import { currentUserThinkingOpen, setAllUserThinkingOpen } from "@/components/thinking-block";
 import { slotsConfigured, type ModelsSettings } from "@/src/core";
+import { reviewTally } from "@/src/core";
 import { useSettingsSaved } from "@/components/settings-signal";
 
 /** One width for everything: transcript, cards, and the bottom blob share this column. */
@@ -209,8 +211,9 @@ export function Chat({
 	initialMessages: LhMessage[];
 	/** The session kind (practice sessions, owner 2026-10-04): practice
 	 *  renders no phase chip (no probe→teach arc applies) and a Practice
-	 *  tag rides the header instead. */
-	kind?: "teach" | "practice";
+	 *  tag rides the header instead. Review sessions (spaced repetition)
+	 *  likewise carry a Review tag with their progress. */
+	kind?: "teach" | "practice" | "review";
 	initialPrompt?: string;
 	/** A teacher turn is running server-side but attached to no client
 	 * (navigated away mid-turn, returned while in flight). */
@@ -453,6 +456,10 @@ export function Chat({
 	const activeProblem = activeProblemOf(nativeMessages);
 	const activeProblemRef = useRef(activeProblem);
 	activeProblemRef.current = activeProblem;
+
+	// THE REVIEW PROGRESS (spaced repetition): which queued topics this
+	// session has answered, and how — the header tag and the queue card.
+	const reviewProgress = useMemo(() => reviewTally(nativeMessages), [nativeMessages]);
 
 	const localStream = status === "submitted" || status === "streaming";
 	const busy = localStream || turnInFlight;
@@ -1295,7 +1302,7 @@ export function Chat({
 					{/* Practice (owner, 2026-10-04): the coverage ring hides —
 				    practice never extracts, so an ever-filling ring with no
 				    run behind it would lie. */}
-					{kind !== "practice" && <CoverageRing chatId={chatId} refreshKey={coverageTick} />}
+					{kind === "teach" && <CoverageRing chatId={chatId} refreshKey={coverageTick} />}
 					{/* Practice sessions: no phase arc — a quiet Practice tag
 					    instead of the phase chip. */}
 					{kind === "practice" ? (
@@ -1307,6 +1314,15 @@ export function Chat({
 						>
 							<DumbbellIcon className="size-3" />
 							Practice
+						</span>
+					) : kind === "review" ? (
+						<span
+							data-testid="phase-chip"
+							data-phase="review"
+							className="pointer-events-none flex shrink-0 select-none items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+						>
+							<RepeatIcon aria-hidden="true" className="size-3" />
+							Review {reviewProgress.done}/{reviewProgress.total}
 						</span>
 					) : (
 						<PhaseChip phase={phases.at(-1) ?? "probe"} />
@@ -1357,6 +1373,8 @@ export function Chat({
 										switch (part.type) {
 											case "data-graph-context":
 												return <GraphContextCard key={pi} data={part.data as GraphContextData} />;
+											case "data-review-context":
+												return <ReviewContextCard key={pi} data={part.data as ReviewContextData} outcomes={reviewProgress.outcomes} />;
 											case "data-compaction":
 												return <CompactionMomentDivider key={pi} data={part.data as CompactionDividerData} />;
 											case "data-compaction-cut":
@@ -1502,6 +1520,7 @@ export function Chat({
 														);
 													case "tool-quiz":
 													case "tool-probe":
+													case "tool-review":
 													case "tool-ask_user_question":
 													case "tool-explain":
 													case "tool-recall": {
@@ -2301,7 +2320,7 @@ function DockOverlay({
 					>
 							{pending ? (
 								<QuestionDock
-									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall"}
+									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall" | "review"}
 									toolCallId={pending.toolCallId}
 									input={pending.input as never}
 									expanded={expanded}
