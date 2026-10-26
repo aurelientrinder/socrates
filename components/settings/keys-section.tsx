@@ -50,6 +50,13 @@ interface KeysResponse {
  *  section can never drift from core/auth-keys.ts again. */
 const TOOL_IDS = AUTH_KEYS.map((k) => k.id) as readonly string[];
 
+/** The non-model key rows, grouped by what they power. */
+const TOOL_GROUPS: readonly { label: string; testid: string; ids: readonly string[] }[] = [
+	{ label: "Dictation", testid: "group-dictation", ids: ["DEEPGRAM_API_KEY"] },
+	{ label: "Search", testid: "group-search", ids: ["TAVILY_API_KEY", "BRAVE_API_KEY"] },
+	{ label: "Calendar & to-do", testid: "group-briefing", ids: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "TODOIST_API_TOKEN"] },
+];
+
 /** The classification driving the table groups. Pure — exported for
  *  tests. OpenRouter is un-pinned (wave-5 owner ruling): no synthesis,
  *  no special row — it rides the same provider classification. */
@@ -459,8 +466,8 @@ export function KeysSection({
 				<SubscriptionConnections />
 			</SettingsGroup>
 
-			{(["Dictation", "Search"] as const).map((label) => <SettingsGroup key={label} label={label} testid={label === "Dictation" ? "group-dictation" : "group-search"}>
-				{toolRows.filter((status) => label === "Dictation" ? status.id === "DEEPGRAM_API_KEY" : status.id !== "DEEPGRAM_API_KEY").map((status) => (
+			{TOOL_GROUPS.map(({ label, testid, ids }) => <SettingsGroup key={label} label={label} testid={testid}>
+				{toolRows.filter((status) => ids.includes(status.id)).map((status) => (
 					<KeyTableRow
 						key={status.id}
 						label={status.info?.label ?? status.id}
