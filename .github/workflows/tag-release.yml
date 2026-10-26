@@ -2,11 +2,17 @@ name: Start a release
 
 # One click from the Actions tab: tags main at package.json's version and
 # runs "Desktop release" on that tag, which builds a DRAFT release. Nothing
-# reaches the app until the draft is published by hand.
+# reaches the app until the draft is published, by hand or, with the
+# "publish" input, automatically once the draft passes verification.
 # (Tags pushed with GITHUB_TOKEN don't trigger workflows, so this dispatches
 # the release run explicitly.)
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the release automatically once it is verified"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -23,6 +29,7 @@ jobs:
       - name: Create the version tag and dispatch the release
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
           tag="v$(node -p 'require("./package.json").version')"
@@ -31,5 +38,5 @@ jobs:
             exit 1
           fi
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
-          gh workflow run release.yml --ref "$tag"
+          gh workflow run release.yml --ref "$tag" -f publish="$PUBLISH"
           echo "Started Desktop release on $tag"
