@@ -245,10 +245,12 @@ describe("render smoke tests", () => {
 		const answer = buildAnswer(quizQD(), { values: ["Venus"] });
 		const html = renderToStaticMarkup(<AnsweredCard answer={answer} />);
 		assert.match(html, /incorrect/);
-		// Tucked for ALL questions (owner, 2026-10-07): the explanation sits
-		// behind the Why toggle — never center stage.
-		assert.ok(html.includes("tucked-explanation"), "the Why toggle mounts");
-		assert.ok(!html.includes("innermost"), "explanation hidden until opened");
+		// Open by default (owner, 2026-10-27): the explanation sits right
+		// under the answer in its own panel, with a Hide toggle.
+		assert.ok(html.includes("tucked-explanation"), "the Why panel mounts");
+		assert.ok(html.includes('data-open="true"'), "it arrives open");
+		assert.ok(html.includes("innermost"), "the explanation text renders");
+		assert.match(html, />Hide</, "it can be folded away");
 		// Glyph-shaped SVG marks (owner preference) — pinned via data-mark.
 		assert.ok(html.includes('data-mark="check"') && html.includes('data-mark="x"'));
 	});
@@ -641,21 +643,20 @@ describe("predict vs check rendering", () => {
 		assert.ok(!html.includes(">Quiz<"), "the generic label is retired");
 	});
 
-	it("a prediction answer SHOWS the verdict but TUCKS the explanation behind a toggle", () => {
+	it("a prediction answer shows the verdict AND the explanation", () => {
 		const qd: QuestionData = { ...quizQD(), questionType: "predict" };
 		const answer = buildAnswer(qd, { values: ["Venus"] }); // wrong on purpose
 		const html = renderToStaticMarkup(<AnsweredCard answer={answer} />);
 		assert.ok(html.includes("Prediction"), "the eyebrow distinguishes the card");
 		assert.ok(/incorrect|wrong|&times;|✗/i.test(html), "the verdict still shows (owner: predictions are graded)");
-		assert.ok(!html.includes("Why:"), "the explanation is not center stage");
-		assert.ok(html.includes("tucked-explanation"), "it sits behind the toggle");
+		assert.ok(html.includes('data-open="true"'), "the explanation is shown by default");
 	});
 
-	it("a check answer tucks the explanation like every question (owner, 2026-10-07)", () => {
+	it("a check answer shows the explanation like every question (owner, 2026-10-27)", () => {
 		const answer = buildAnswer(quizQD(), { values: ["Venus"] });
 		const html = renderToStaticMarkup(<AnsweredCard answer={answer} />);
-		assert.ok(html.includes("tucked-explanation"), "the prediction tuck is now universal");
-		assert.ok(!html.includes("Why:"), "no inline explanation — behind the toggle");
+		assert.ok(html.includes('data-open="true"'), "open by default on every quiz");
+		assert.ok(!html.includes("Why:"), "a labelled panel, not an inline 'Why:' prefix");
 	});
 
 	it("the reading-thinking channel is LIFTED above the card as its own user-side block", () => {

@@ -503,10 +503,22 @@ function restoreDollarMathEscapes(text: string): string {
  */
 const COMMAND_START_CLASS = "[A-Za-z,;:!|]";
 
+/** Doubled literal braces (owner report, 2026-10-27): models write the
+ *  vector/set braces `\{q\}` as `\\{q\\}`, and KaTeX reads each `\\` as
+ *  a forced line break — every braced group in a probe question landed on
+ *  its own line, the braces themselves vanishing into grouping. A row break
+ *  only means something inside an environment (matrix, cases, aligned), so
+ *  outside any `\begin{…}` an even run before `{`/`}` is the doubled brace
+ *  and collapses too. Spans with an environment keep the strict rule. */
+const BRACE_START_CLASS = "[{}]";
+
 /** Collapse even backslash runs before a command start; keep odd runs. */
 function halveOverescapedCommandRuns(inner: string): string {
+	const start = inner.includes("\\begin")
+		? COMMAND_START_CLASS
+		: `(?:${COMMAND_START_CLASS}|${BRACE_START_CLASS})`;
 	return inner.replace(
-		new RegExp("(\\\\+)(?=" + COMMAND_START_CLASS + ")", "g"),
+		new RegExp("(\\\\+)(?=" + start + ")", "g"),
 		(run: string) => (run.length % 2 === 0 ? "\\" : run),
 	);
 }
