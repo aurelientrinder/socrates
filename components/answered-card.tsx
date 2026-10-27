@@ -195,43 +195,6 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 				/>
 			)}
 
-			{isQuiz && answer.explanation && (
-				/* The explanation, OPEN by default (owner, 2026-10-27 — reverses
-				   the 2026-10-07 tuck): the reason sits right under the answer as
-				   the tutor's own panel, a soft blue tint that tells it apart from
-				   the learner's neutral thinking panel above. Full-block markdown
-				   (paragraphs, display math) at full ink — the old 50% fade was
-				   hard to read. "Hide" folds it to a one-line "Show why" row. */
-				<div
-					data-testid="tucked-explanation"
-					data-open={whyOpen ? "true" : "false"}
-					className={cn(
-						"mt-3",
-						whyOpen && "rounded-xl border border-good/15 bg-good-soft/70 px-4 pb-3.5 pt-2.5",
-					)}
-				>
-					<div className="flex items-center justify-between gap-3">
-						<span className={cn("flex items-center gap-1.5 text-xs font-medium", whyOpen ? "text-good-ink" : "text-muted-foreground")}>
-							<LightbulbIcon aria-hidden className="size-3.5" />
-							Why
-						</span>
-						<button
-							type="button"
-							aria-expanded={whyOpen}
-							onClick={() => setWhyOpen((v) => !v)}
-							className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-						>
-							{whyOpen ? "Hide" : "Show why"}
-						</button>
-					</div>
-					{whyOpen && (
-						<MessageResponse className="mt-1.5 text-sm leading-relaxed text-foreground/90">
-							{repairMathForDisplay(answer.explanation)}
-						</MessageResponse>
-					)}
-				</div>
-			)}
-
 			{/* The explain reveal (owner ruling 2026-09-27): the committed answer
 			    — one field, reasoning included — shown on submit; no verdict,
 			    the model's next reply IS the grading. */}
@@ -242,6 +205,38 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 				</div>
 			)}
 		</div>
+		{isQuiz && answer.explanation && (
+			/* The explanation as its OWN card (owner, 2026-10-27 — reverses the
+			   2026-10-07 tuck): a large neutral block under the question card,
+			   open by default. Same white card paint as the question, no tint;
+			   full-block markdown (paragraphs, display math) at full ink — the
+			   old 50% fade was hard to read. "Hide" folds it to its header. */
+			<div
+				data-testid="tucked-explanation"
+				data-open={whyOpen ? "true" : "false"}
+				className="mt-3 rounded-xl border bg-card px-5 py-4 text-card-foreground"
+			>
+				<div className="flex items-center justify-between gap-3">
+					<span className="flex items-center gap-2 text-sm font-medium">
+						<LightbulbIcon aria-hidden className="size-4 text-muted-foreground" />
+						Why
+					</span>
+					<button
+						type="button"
+						aria-expanded={whyOpen}
+						onClick={() => setWhyOpen((v) => !v)}
+						className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+					>
+						{whyOpen ? "Hide" : "Show"}
+					</button>
+				</div>
+				{whyOpen && (
+					<MessageResponse className="mt-2.5 leading-relaxed">
+						{repairMathForDisplay(answer.explanation)}
+					</MessageResponse>
+				)}
+			</div>
+		)}
 		</>
 	);
 }
