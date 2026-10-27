@@ -3,7 +3,8 @@
  * LH_DATA_DIR: a lesson whose check answer has decayed makes its plan
  * node due; starting a review opens a kind:"review" session whose first
  * message is the queue, the node's summary carried as the agent's
- * material. Nothing due → no session.
+ * material. Nothing due → no session. A weak-spot drill opens on a sure
+ * miss that is not even due yet, carrying the missed question.
  */
 
 import assert from "node:assert/strict";
@@ -16,7 +17,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-review-session-"));
 process.env.LH_DATA_DIR = TMP_DATA;
 
 const { chatStore } = await import("../src/store/chats.ts");
-const { reviewStatus, startReviewSession } = await import("../src/server/review.ts");
+const { reviewStatus, startDrillSession, startReviewSession } = await import("../src/server/review.ts");
 const { newAnswerResult } = await import("../src/core/native-messages.ts");
 const { reviewTopicsOf } = await import("../src/core/review.ts");
 
@@ -70,5 +71,49 @@ describe("starting a review session", () => {
 		assert.equal(topic!.title, "Chain rule");
 		assert.equal(topic!.summary, "Differentiate a composition: outer slope times inner slope.");
 		assert.equal(topic!.sourceTitle, "Derivatives");
+	});
+});
+
+describe("starting a weak-spot drill", () => {
+	it("drills a sure miss that is not due, with the missed question as its target", () => {
+		const lesson = chatStore.createChat("Limits");
+		chatStore.saveTree(lesson.id, {
+			nodes: [{ id: "squeeze", title: "Squeeze theorem", summary: "Bound a function between two with the same limit." }],
+			edges: [],
+			version: 1,
+		});
+		const at = NOW - 60 * 60 * 1000;
+		chatStore.saveMessages(lesson.id, [
+			{
+				id: "m1",
+				role: "assistant",
+				content: [{ type: "toolCall", id: "call_q", name: "quiz", arguments: { type: "check", nodeId: "squeeze" } }],
+				timestamp: at,
+			} as never,
+			newAnswerResult("call_q", "quiz", {
+				kind: "quiz",
+				questionText: "Why does sin(x)/x tend to 1?",
+				dontKnow: false,
+				answers: [],
+				correct: false,
+				confidence: 90,
+				answeredAt: new Date(at).toISOString(),
+			}),
+		]);
+		const key = `plan:${lesson.id}:squeeze`;
+
+		assert.equal(startDrillSession(["plan:nope:x"], NOW), null, "an unknown key drills nothing");
+		const started = startDrillSession([key], NOW);
+		assert.ok(started, "a sure miss opens a drill");
+		assert.equal(started.title, "Drill · 1 weak spot");
+		const record = chatStore.getChat(started.id)!;
+		assert.equal(record.kind, "review");
+		const [topic] = reviewTopicsOf(record.messages);
+		assert.equal(topic!.key, key);
+		assert.deepEqual(topic!.missed, ["Why does sin(x)/x tend to 1?"]);
+		const marker = record.messages[0] as { content: string; details: { mode?: string } };
+		assert.equal(marker.details.mode, "drill");
+		assert.match(marker.content, /weak-spot drill/);
+		assert.match(marker.content, /recently missed: "Why does sin\(x\)\/x tend to 1\?"/);
 	});
 });

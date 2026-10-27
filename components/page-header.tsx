@@ -51,10 +51,11 @@ export function SectionHeading({ children, className }: { children: React.ReactN
 	return <h2 className={cn("text-lg font-semibold text-foreground", className)}>{children}</h2>;
 }
 
-/** The Progress page's three views. Memory and Calibration render inside
- *  /progress; Map is the knowledge map at /map, under the same header. */
+/** The Progress page's views. Memory, Weak spots and Calibration render
+ *  inside /progress; Map is the knowledge map at /map, under the same header. */
 export const PROGRESS_TABS = [
 	{ id: "memory", label: "Memory", href: "/progress" },
+	{ id: "weak-spots", label: "Weak spots", href: "/progress?tab=weak-spots" },
 	{ id: "calibration", label: "Calibration", href: "/progress?tab=calibration" },
 	{ id: "map", label: "Map", href: "/map" },
 ];

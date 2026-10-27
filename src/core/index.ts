@@ -60,6 +60,8 @@ export * from "./reply-language.ts";
 export * from "./briefing.ts";
 // Spaced-repetition review sessions: the queue marker + progress tally. Pure.
 export * from "./review.ts";
+// The weak-spot report: per-topic overconfidence + fading, joined on the retention key. Pure.
+export * from "./weak-spots.ts";
 export * from "./context-usage.ts";
 export type { ChatGPTStatus, ChatGPTControlBridge } from "./contracts/chatgpt.ts";
 export { NATIVE_SUBSCRIPTIONS } from "./contracts/subscriptions.ts";

@@ -1,9 +1,16 @@
 import { parseTopicKey } from "../core/retention.ts";
-import { newReviewContextMessage, pickReviewTopics, REVIEW_SESSION_SIZE, type ReviewStatus, type ReviewTopic } from "../core/review.ts";
+import {
+	newReviewContextMessage,
+	pickReviewTopics,
+	REVIEW_SESSION_SIZE,
+	type ReviewMode,
+	type ReviewStatus,
+	type ReviewTopic,
+} from "../core/review.ts";
 import type { TopicRetention } from "../core/retention.ts";
 import type { GraphNode } from "../core/contracts.ts";
 import { readSettings as readSettingsRecord } from "../store/settings.ts";
-import { createChat, getChat, listChats, retentionAcrossSessions } from "./chats.ts";
+import { createChat, getChat, listChats, retentionAcrossSessions, weakSpotsAcrossSessions } from "./chats.ts";
 import { stores } from "./stores.ts";
 
 /**
@@ -27,7 +34,22 @@ function topicSummary(topic: Pick<TopicRetention, "key">, nodes: ReadonlyMap<str
 
 /** The queue one review session would take right now, weakest first. */
 export function reviewQueue(now: number = Date.now(), limit: number = REVIEW_SESSION_SIZE): ReviewTopic[] {
-	const picked = pickReviewTopics(retentionAcrossSessions(now).due, limit);
+	return toReviewTopics(pickReviewTopics(retentionAcrossSessions(now).due, limit));
+}
+
+/** The queue a weak-spot drill would take: the asked topics that are
+ *  still weak spots, in the report's order (worst first), capped like a
+ *  review. No keys = the worst few. Not-yet-due topics are fine: a drill
+ *  is an early review, and the fold schedules it like any other. */
+export function drillQueue(keys: readonly string[] | undefined, now: number = Date.now(), limit: number = REVIEW_SESSION_SIZE): ReviewTopic[] {
+	const spots = weakSpotsAcrossSessions(now).spots;
+	const asked = keys ? new Set(keys) : null;
+	const picked = spots.filter((s) => !asked || asked.has(s.key)).slice(0, Math.max(0, limit));
+	const missed = new Map(picked.map((s) => [s.key, s.missedQuestions]));
+	return toReviewTopics(picked).map((t) => (missed.get(t.key)?.length ? { ...t, missed: missed.get(t.key) } : t));
+}
+
+function toReviewTopics(picked: readonly TopicRetention[]): ReviewTopic[] {
 	if (picked.length === 0) return [];
 	const nodes = new Map(stores.graphStore.readNodes().map((n) => [n.id, n]));
 	return picked.map((t) => {
@@ -71,7 +93,19 @@ export function reviewStatus(now: number = Date.now()): ReviewStatus {
 export function startReviewSession(now: number = Date.now()): { id: string; title: string; topics: number } | null {
 	const topics = reviewQueue(now);
 	if (topics.length === 0) return null;
-	const chat = createChat(`Review · ${topics.length} ${topics.length === 1 ? "topic" : "topics"}`, "review");
+	return openReviewSession(`Review · ${topics.length} ${topics.length === 1 ? "topic" : "topics"}`, topics, "review");
+}
+
+/** Open a weak-spot drill (a review session on weak spots, due or not);
+ *  null when none of the asked topics is a weak spot any more. */
+export function startDrillSession(keys?: readonly string[], now: number = Date.now()): { id: string; title: string; topics: number } | null {
+	const topics = drillQueue(keys, now);
+	if (topics.length === 0) return null;
+	return openReviewSession(`Drill · ${topics.length} weak ${topics.length === 1 ? "spot" : "spots"}`, topics, "drill");
+}
+
+function openReviewSession(title: string, topics: ReviewTopic[], mode: ReviewMode): { id: string; title: string; topics: number } {
+	const chat = createChat(title, "review");
 	const strong = readSettingsRecord()?.models?.strong;
 	if (strong?.model) {
 		stores.chatStore.saveSettings(chat.id, {
@@ -79,6 +113,6 @@ export function startReviewSession(now: number = Date.now()): { id: string; titl
 			thinkingLevel: strong.thinkingLevel,
 		});
 	}
-	stores.chatStore.saveMessages(chat.id, [newReviewContextMessage(topics)]);
+	stores.chatStore.saveMessages(chat.id, [newReviewContextMessage(topics, mode)]);
 	return { id: chat.id, title: chat.title, topics: topics.length };
 }

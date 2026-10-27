@@ -3,7 +3,8 @@ import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
 import { titleFromPrompt } from "../core/contracts.ts";
 import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
-import { propositionNames, recallEvents, retentionReport, type RetentionReport } from "../core/retention.ts";
+import { propositionNames, recallEvents, retentionReport, type RecallEvent, type RetentionReport } from "../core/retention.ts";
+import { weakSpotReport, type WeakSpotReport } from "../core/weak-spots.ts";
 import { studyMinutesByDay, weekStartOf } from "../core/study-time.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
@@ -185,10 +186,19 @@ export function studyWeek(now: Date = new Date()): number[] {
 /** The review view's report: every tested recall across sessions, folded
  *  into per-topic memory state, estimated retention, and what is due. */
 export function retentionAcrossSessions(now: number = Date.now()): RetentionReport {
+	return retentionReport(recallEventsAcrossSessions(), now);
+}
+
+/** The weak-spot tab's report: the same recalls, read per topic for
+ *  overconfidence (stated confidence vs right) as well as fading. */
+export function weakSpotsAcrossSessions(now: number = Date.now()): WeakSpotReport {
+	return weakSpotReport(recallEventsAcrossSessions(), now);
+}
+
+function recallEventsAcrossSessions(): RecallEvent[] {
 	const names = propositionNames(stores.graphStore.readNodes());
-	const events = listChats().flatMap((summary) => {
+	return listChats().flatMap((summary) => {
 		const record = getChat(summary.id);
 		return record ? recallEvents(record, (id) => names.get(id)) : [];
 	});
-	return retentionReport(events, now);
 }
