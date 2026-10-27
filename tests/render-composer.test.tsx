@@ -51,10 +51,10 @@ describe("Composer", () => {
 		assert.ok(idleStop.includes('aria-label="Stop"'), "empty composer: stop replaces send while streaming");
 	});
 
-	it("send button radius is 10px = 25% of the 40px button (concentric with the shell)", () => {
+	it("send button radius is 16px, concentric with the rounder shell", () => {
 		const html = render();
-		assert.ok(html.includes("rounded-[10px]"), "send radius = shell radius − row padding");
-		assert.ok(html.includes("size-10"), "40px send button (10px = 25%)");
+		assert.ok(html.includes("rounded-[16px]"), "send radius = shell radius − row padding");
+		assert.ok(html.includes("size-10"), "40px send button");
 	});
 
 	it("disabled when nothing to send", () => {
@@ -66,7 +66,7 @@ describe("Composer", () => {
 		const html = render({ canSend: false, nextProblem: true });
 		assert.ok(html.includes('data-testid="next-problem-button"'), "the morphed button");
 		assert.match(html, /Next problem/, "the label");
-		assert.ok(html.includes("bg-green-600"), "green — the correct-answer register");
+		assert.ok(html.includes("bg-primary"), "the primary button register (redesign follow-up)");
 		assert.ok(!html.includes('aria-label="Send"'), "the square send is gone in the pause");
 	});
 

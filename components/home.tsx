@@ -10,9 +10,8 @@ import { ComposerActions, NodePickerControl } from "@/components/composer-action
 import { useStrongKeyless, useZeroKeys, ZeroKeysPill } from "@/components/setup-cta";
 import { DictationBar, joinDictation, useDictation } from "@/components/dictation";
 import { useFieldCycle } from "@/components/field-cycle";
-import { SidebarToggle } from "@/components/sidebar";
 import { StatsBar } from "@/components/stats-bar";
-import { FloatingTabs, PROGRESS_TABS } from "@/components/page-header";
+import { PageHead, PageTabs, PROGRESS_TABS } from "@/components/page-header";
 import type { TurnUsage } from "@/src/core";
 
 /**
@@ -158,21 +157,21 @@ export function Home({
 	};
 
 	return (
-		<div className="relative h-dvh">
-			{/* Window-drag strip (merged chrome, owner 2026-09-17): a dedicated
-			    mask element, deliberately FIRST in the DOM. Electron's app-region
-			    mask resolves by DOM order — a no-drag element subtracts only drag
-			    regions that came EARLIER in the tree — not by z-index, so the
-			    header's old inline drag region (after <main>) re-added itself over
-			    the graph chrome row's carve-out and the buttons dragged the window.
-			    Placed first, every carved control (chrome row, node detail card,
-			    the toggle) comes later and subtracts correctly. Pure mask: it
-			    never needs to receive events — the mask routes the pixels. */}
-			<div className="lh-drag absolute inset-x-0 top-0 h-13" aria-hidden="true" />
+		<div className="flex h-dvh flex-col">
+			{/* Progress → Map (redesign follow-up, 2026-10-27): the map sits
+			    under the SAME header as Memory and Calibration — title, then
+			    the underlined tabs — so switching tabs never moves the tab
+			    bar. The header is first in the DOM and is the window-drag band
+			    (Electron's app-region subtraction resolves by DOM order: the
+			    graph chrome's carve-outs come later and stick); its links
+			    carve themselves out, so the tabs stay clickable. */}
+			<div className="mx-auto flex w-full max-w-4xl shrink-0 flex-col gap-8 px-6 pt-8 sm:px-10">
+				<PageHead title="Progress" />
+				<PageTabs tabs={PROGRESS_TABS} active="map" />
+			</div>
 
-			{/* The main view — full-bleed (owner, graph-view round 1): no
-			    padding on any side; it runs from the sidebar to the right edge
-			    and from the bottom to the top, under everything else. With
+			<div className="relative min-h-0 flex-1">
+			{/* The map fills the rest of the column, edge to edge. With
 			    rendering OFF (graph.rendering, owner 2026-10-06) it is the
 			    MINIMAL HOME — a quiet knowledge-base summary + the graph
 			    chrome's survivors; data, extraction, and the pick flow are
@@ -194,22 +193,6 @@ export function Home({
 					/>
 				)}
 			</main>
-
-			{/* Header floats over the graph — pointer-events-none except the
-			    toggle, so the canvas stays draggable/hoverable around it. Carries
-			    no app-region of its own: the strip's drag comes from the mask
-			    div above, and the toggle's lh-no-drag subtracts from it (it is
-			    later in the tree, so the subtraction sticks). */}
-			<header className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 px-3 py-2">
-				<div className="pointer-events-auto">
-					<SidebarToggle />
-				</div>
-				{/* The map is Progress → Map since the redesign wave: the tabs
-				    float here so the other two views stay one click away. */}
-				<div className="pointer-events-auto">
-					<FloatingTabs tabs={PROGRESS_TABS} active="map" />
-				</div>
-			</header>
 
 			{/* New session — same floating blob as the chat composer, docked
 			    OVER the graph (no gradient: the graph runs clean under it to the
@@ -287,7 +270,7 @@ export function Home({
 						type="submit"
 						aria-label="Start session"
 						disabled={(!topic.trim() && !dictation.active) || busy}
-						className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40"
+						className="flex size-10 shrink-0 items-center justify-center rounded-[16px] bg-primary text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40"
 					>
 						<CornerDownLeftIcon className="size-5" />
 					</button>
@@ -308,20 +291,21 @@ export function Home({
 										data-testid={`home-mode-${m}`}
 										onClick={() => setMode(m)}
 										className={
-											"flex items-center gap-1 rounded-sm px-2 py-0.5 text-[11px] uppercase tracking-wider transition-colors " +
+											"flex items-center gap-1 rounded-sm px-2 py-0.5 text-[11px] transition-colors " +
 											(mode === m
 												? "bg-accent text-foreground"
 												: "text-muted-foreground hover:text-foreground")
 										}
 									>
 										{m === "practice" ? <DumbbellIcon aria-hidden="true" className="size-3" /> : null}
-										{m === "teach" ? "Teach" : "Practice"}
+										{m === "teach" ? "Learn" : "Practice"}
 									</button>
 								))}
 							</div>
 						}
 					/>
 				</div>
+			</div>
 			</div>
 
 			{/* First-run setup (unconfigured): the CTA's target and the send

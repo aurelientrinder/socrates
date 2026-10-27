@@ -146,7 +146,7 @@ describe("render smoke tests", () => {
 		// The learner's voice: a labeled "Your thinking" composer-twin lives
 		// INSIDE the dock — never called optional, inviting the dump.
 		assert.ok(html.includes('data-testid="thinking-field"'), "thinking field present");
-		assert.match(html, /YOUR THINKING/, "labeled as the learner's voice (all caps, owner round 3)");
+		assert.match(html, /Your thinking/, "labeled as the learner's voice (sentence case since the redesign follow-up)");
 		assert.match(html, /Why this answer\? Whatever comes to mind/, "placeholder invites, not apologizes (owner, placeholder round 2026-10-07)");
 		assert.ok(!html.includes("optional"), "the field is never called optional");
 		assert.match(html, /Submit answer/, "send becomes Submit answer");
@@ -175,7 +175,7 @@ describe("render smoke tests", () => {
 		assert.ok(html.includes('role="radio"'), "Other row keeps the option role");
 		assert.match(html, /aria-checked="false"/, "circle starts unfilled");
 		assert.ok(html.includes('data-testid="thinking-field"'), "thinking field coexists with Other");
-		assert.match(html, /YOUR THINKING/, "ask select-mode also gets the learner's voice");
+		assert.match(html, /Your thinking/, "ask select-mode also gets the learner's voice");
 	});
 
 	it("multi-select ask renders checkbox rows and the select-all hint", () => {
@@ -294,20 +294,17 @@ describe("render smoke tests", () => {
 		});
 		const html = renderToStaticMarkup(<AnsweredCard answer={answer} />);
 		assert.ok(html.includes('data-testid="your-thinking"'), "the thinking row exists");
-		assert.match(html, /YOUR THINKING/, "labeled as the learner's voice (all caps, owner round 3)");
+		assert.match(html, /Your thinking/, "labeled as the learner's voice (sentence case since the redesign follow-up)");
 		// COLLAPSED ARRIVAL (owner round 2, 2026-10-05): the SSR output is the
 		// trigger row only — the thinking text is one click away, never loud.
 		assert.ok(html.includes('data-testid="your-thinking-trigger"'), "the trigger row");
 		assert.ok(html.includes('aria-expanded="false"'), "arrives collapsed");
-		// ONE GEOMETRY, NO BAND IN CARDS (owner round five, 2026-10-07): the
-		// accent lift read too light — rail only, heights match everywhere.
-		const yourRow = html.slice(html.indexOf('data-testid="your-thinking"'));
-		assert.ok(!yourRow.slice(0, 400).includes("bg-card") && !yourRow.slice(0, 400).includes("bg-accent"), "no band inside the card");
-		// THE RAIL GROUPS (owner correction): the label sits INSIDE the rail —
-		// ownership readable from the rail alone, collapsed or expanded.
-		const railAt = html.indexOf("border-l-[calc(3ch-14px)]");
+		// In a card the learner's thinking is a soft rounded panel (redesign
+		// follow-up, 2026-10-27): no rail band; the label sits inside it.
+		const panelAt = html.indexOf("rounded-xl bg-accent/50");
 		const trigAt = html.indexOf("your-thinking-trigger");
-		assert.ok(railAt !== -1 && railAt < trigAt, "the rail opens before the label (same quote)");
+		assert.ok(panelAt !== -1 && panelAt < trigAt, "the panel opens before the label");
+		assert.ok(!html.includes("border-l-[calc(3ch-14px)]"), "no rail band");
 		assert.ok(!html.includes("brightness isn&#x27;t distance"), "the text is hidden until expanded");
 		assert.ok(!html.includes("Note:"), "no longer a muted 'Note:' footnote");
 		// The thinking sits ABOVE the verdict's explanation — the dialogue of
@@ -675,7 +672,7 @@ describe("predict vs check rendering", () => {
 		const cardAt = html.indexOf("answered-card");
 		assert.ok(blockAt !== -1, "the lifted block renders");
 		assert.ok(blockAt < cardAt, "it sits ABOVE the answered card");
-		assert.ok(html.includes("YOUR THINKING"), "the plain label");
+		assert.ok(html.includes("Your thinking"), "the plain label");
 		assert.ok(!html.includes("Your thinking while reading"), "the old verbose label is gone");
 		assert.ok(!html.includes("your-reading-thinking"), "the in-card inset is gone");
 		// EXPANDED ARRIVAL (owner round two, 2026-10-07): transcript rows

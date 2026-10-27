@@ -304,6 +304,15 @@ describe("composeInstructions: override honoring + the byte-identical source pat
 		}
 	});
 
+	it("a chosen reply language appends its LANGUAGE line; automatic leaves the prompt alone", () => {
+		const engine = fauxEngine();
+		const french = createTeacherAgent(undefined, { engine, replyLanguage: "fr" });
+		assert.match(french.state.systemPrompt, /LANGUAGE: always write to the learner in French/);
+		const auto = createTeacherAgent(undefined, { engine });
+		assert.doesNotMatch(auto.state.systemPrompt, /LANGUAGE: always write/);
+		assert.doesNotMatch(createTeacherAgent(undefined, { engine, replyLanguage: "xx" }).state.systemPrompt, /LANGUAGE:/);
+	});
+
 	it("promptSwitches threads through agent construction into the system prompt", () => {
 		promptOverrides.writeOverride("system-prompt.md", "TOTALLY CUSTOM BASE");
 		try {

@@ -19,6 +19,7 @@ import { reviewTools, type ReviewToolContext } from "./tools/review.ts";
 import { healToolRecord } from "./tools/heal.ts";
 import { quizInputObject, quizInputProblems } from "../core/question-core.ts";
 import { QUESTION_TOOLS, type EnabledTools } from "../core/pending.ts";
+import { replyLanguageInstruction } from "../core/reply-language.ts";
 import { toLlmMessages, nativeInputCause } from "../core/native-messages.ts";
 import type { ChatGPTRequestCycle } from "./chatgpt-request-cycle.ts";
 import { usageWasAdmitted } from "./subscription-request-cycle.ts";
@@ -122,6 +123,10 @@ export interface AgentBuildOptions {
 	 *  fresh per turn, honoring enabled overrides (switch on + file
 	 *  exists); absent → the cached pure-source composition. */
 	promptSwitches?: Record<string, boolean>;
+	/** The tutor's reply language (settings agent.replyLanguage): a chosen
+	 *  code appends its LANGUAGE line to the system prompt; absent =
+	 *  automatic, the prompt unchanged. */
+	replyLanguage?: string;
 	/** Native conversation identity: the existing persisted chat id, reused
 	 * across reconstructed prober, teacher, and practice Agents.
 	 * Debug: when set AND LH_PROVIDER_EVENTS=1, raw provider stream events
@@ -177,9 +182,11 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	// ("practice" is not a ModelRole) honest about that.
 	const engine = opts.engine ?? piEngineFor(kind as "prober" | "teacher");
 	const stopper = makeQuestionStopper();
-	const systemPrompt = opts.promptSwitches
+	const basePrompt = opts.promptSwitches
 		? composeInstructions(kind, opts.promptSwitches)
 		: composedInstructions[kind]!;
+	const languageLine = replyLanguageInstruction(opts.replyLanguage);
+	const systemPrompt = languageLine ? `${basePrompt}\n\n---\n\n${languageLine}` : basePrompt;
 	// Debug recorder (owner, 2026-10-04): raw provider events when
 	// LH_PROVIDER_EVENTS=1 and the caller handed a chatId; undefined is
 	// the normal no-observer path (tests, env-off).

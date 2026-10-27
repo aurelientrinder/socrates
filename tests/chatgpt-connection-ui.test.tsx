@@ -512,7 +512,10 @@ test("real main/control bridge: immediate pending, actual cancellation, verified
   await mount(); await begin(); assert.equal((await service.status()).pending, true); await click(button("Cancel", byTest("chatgpt-account-dialog"))); assert.equal((await service.status()).pending, false); assert.equal(tokenCalls, 0);
   await click(byTest("chatgpt-login")); await click(toggle()); await click(byTest("chatgpt-proceed"));
   const callback = new URL(authorize.searchParams.get("redirect_uri")!); callback.search = new URLSearchParams({ state: authorize.searchParams.get("state")!, code: "fixture-code", client_id: "oaiapp_ui_fixture" }).toString();
-  await act(async () => { const response = await originalFetch(callback); await response.text(); for (let i = 0; i < 100 && (saved.allowBackgroundUse !== false || (await service.status()).pending); i++) await new Promise((r) => setImmediate(r)); });
+  await act(async () => { const response = await originalFetch(callback); await response.text(); // Wait on the persisted outcome by time, not by a fixed tick count: on a
+  // loaded runner the token exchange + consent write can take more than 100
+  // setImmediate turns (the CI flake this replaced).
+  const deadline = Date.now() + 5000; while (Date.now() < deadline && (saved?.allowBackgroundUse !== false || (await service.status()).pending)) await new Promise((r) => setTimeout(r, 5)); });
   assert.equal(tokenCalls, 1); assert.equal(saved.allowBackgroundUse, false); assert.equal(saved.registrations[0].background, undefined);
   assert(!document.querySelector('[data-testid="chatgpt-account-dialog"]')); assert(button("Manage…"));
  } finally { await act(async () => service.close()); }

@@ -54,6 +54,8 @@ export * from "./calibration.ts";
 export * from "./retention.ts";
 // Minutes studied per day, from transcript timestamps (Today's "This week"). Pure, browser-safe.
 export * from "./study-time.ts";
+// The tutor's reply language (settings → agent.replyLanguage). Pure, browser-safe.
+export * from "./reply-language.ts";
 // The daily briefing planner (calendar + to-do + retention). Pure, browser-safe.
 export * from "./briefing.ts";
 // Spaced-repetition review sessions: the queue marker + progress tally. Pure.

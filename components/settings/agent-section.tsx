@@ -69,6 +69,8 @@ import {
 	DICTATION_ENGINES,
 	DICTATION_LANGUAGES,
 	dictationLanguageLabel,
+	REPLY_LANGUAGES,
+	replyLanguageLabel,
 	type DictationEngineId,
 	type GraphSettings,
 	type ModelCatalogEntry,
@@ -183,6 +185,15 @@ export function composeSearchEngine(
 		return { ...rest } as AgentSettings;
 	}
 	return { ...agent, search: { engine } };
+}
+
+/** Compose: the tutor's reply language. null = automatic (the key is
+ *  removed). Pure — exported for tests. */
+export function composeReplyLanguage(agent: AgentSettings | undefined, code: string | null): AgentSettings {
+	const next: AgentSettings = { ...agent };
+	if (code === null) delete next.replyLanguage;
+	else next.replyLanguage = code;
+	return next;
 }
 
 /** Compose: one dictation preference (engine pin or language). null =
@@ -354,7 +365,7 @@ export function AgentSection({
 	/** One open dropdown for the whole section: which slot (or the search
 	 *  row), which kind. */
 	const [openMenu, setOpenMenu] = useState<{
-		target: ModelSlotName | "search" | "dictation" | "dictation-language";
+		target: ModelSlotName | "search" | "dictation" | "dictation-language" | "reply-language";
 		kind: "model" | "thinking" | "engine";
 	} | null>(null);
 	const menuAnchorRef = useRef<HTMLSpanElement>(null);
@@ -590,7 +601,7 @@ export function AgentSection({
 				{open && (
 					<div className="mt-1 flex flex-col gap-2">
 						<div>
-							<p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground/70">Source</p>
+							<p className="mb-1 text-xs text-muted-foreground/70">Source</p>
 							<textarea
 								readOnly
 								value={info.sourceText}
@@ -599,7 +610,7 @@ export function AgentSection({
 							/>
 						</div>
 						<div>
-							<p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground/70">Override</p>
+							<p className="mb-1 text-xs text-muted-foreground/70">Override</p>
 							<textarea
 								value={segmentDraft[info.path] ?? info.overrideText ?? ""}
 								onChange={(e) => setSegmentDraft({ ...segmentDraft, [info.path]: e.target.value })}
@@ -981,6 +992,53 @@ export function AgentSection({
 				})()}
 			</SettingsGroup>
 
+			{/* The tutor's language (2026-10-27): what the tutor writes in.
+			    Automatic = the learner's own language, as before. */}
+			<SettingsGroup label="Language" testid="group-language">
+				{(() => {
+					const language = agent?.replyLanguage ?? null;
+					const open = openMenu?.target === "reply-language";
+					return (
+						<SettingsRow
+							label="Tutor's language"
+							hint="The language Socrates writes to you in. Automatic answers in the language you write in"
+							testid="reply-language-row"
+						>
+							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
+								<MenuTrigger
+									value={replyLanguageLabel(language) ?? ""}
+									emptyLabel="Automatic"
+									ariaLabel="Tutor's language"
+									testid="reply-language-trigger"
+									open={open}
+									onClick={() => setOpenMenu(open ? null : { target: "reply-language", kind: "engine" })}
+									widthClass="min-w-20"
+								/>
+								{open && (
+									<MenuShell
+										preferredSide="down"
+										anchorTestid="reply-language-trigger"
+										testid="reply-language-menu"
+										menuClass="flex w-44 flex-col gap-0.5 rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
+									>
+										{engineOption("reply-language-auto", "Automatic", language === null, null, () => {
+											onSectionChange(composeReplyLanguage(agent, null));
+											setOpenMenu(null);
+										})}
+										{REPLY_LANGUAGES.map((l) =>
+											engineOption(`reply-language-${l.code}`, l.label, language === l.code, null, () => {
+												onSectionChange(composeReplyLanguage(agent, l.code));
+												setOpenMenu(null);
+											}),
+										)}
+									</MenuShell>
+								)}
+							</span>
+						</SettingsRow>
+					);
+				})()}
+			</SettingsGroup>
+
 			<SettingsGroup label="Context" testid="group-context">
 				<SettingsRow
 					label="Compaction threshold"
@@ -1025,7 +1083,7 @@ export function AgentSection({
 						    order. */}
 						{sectionedSegments(prompts).map((section) => (
 							<div key={section.id} data-testid={`prompt-section-${section.id}`}>
-								<p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground/70">
+								<p className="mb-1 text-xs text-muted-foreground/70">
 									{section.label}
 								</p>
 								{section.hint && (

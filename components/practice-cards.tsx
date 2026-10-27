@@ -64,7 +64,7 @@ export function ProblemCard({ part }: ArtifactPartProps) {
 	const statement = typeof input.statement === "string" ? input.statement : "";
 	return (
 		<div data-testid="problem-card" className="lh-card-enter my-1 rounded-xl border bg-card p-4">
-			<div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Problem</div>
+			<div className="mb-1 text-xs font-medium text-muted-foreground">Problem</div>
 			<div className="lh-prose text-[15px]">
 				<MessageResponse>{repairMathForDisplay(statement)}</MessageResponse>
 			</div>
@@ -86,8 +86,8 @@ const OUTCOME_LABEL: Record<string, string> = {
  * cost), surrendered red (the problem beat the learner), moved on muted
  * (the agent's call, not a verdict against him). */
 const OUTCOME_CHIP: Record<string, string> = {
-	solved: "bg-green-500/15 text-green-500",
-	solvedWithHints: "bg-amber-500/15 text-amber-500",
+	solved: "bg-good-soft text-good",
+	solvedWithHints: "bg-warn-soft text-warn-ink",
 	movedOn: "bg-muted text-muted-foreground",
 	surrendered: "bg-red-500/15 text-red-500",
 	dismissed: "bg-muted text-muted-foreground",
@@ -121,7 +121,7 @@ export function ConcludeCard({ part }: ArtifactPartProps) {
 			{/* The heading row (owner round 3, 2026-10-05): plain 'Concluded'
 			    eyebrow + the outcome in the quiz cards' EXACT chip register —
 			    no more two same-weight headings stacked. */}
-			<div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+			<div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
 				Concluded
 				{(OUTCOME_LABEL[outcome] ?? "") !== "" && outcome !== "dismissed" && (
 					<span className={cn("rounded px-1.5 py-0.5", OUTCOME_CHIP[outcome] ?? OUTCOME_CHIP.movedOn)}>
@@ -142,7 +142,7 @@ export function ConcludeCard({ part }: ArtifactPartProps) {
 				<>
 					<div className="my-3 border-t" />
 					<div>
-						<div className="mb-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Model solution</div>
+						<div className="mb-0.5 text-xs font-medium text-muted-foreground">Model solution</div>
 						<div className="lh-prose text-[15px]">
 							<MessageResponse>{repairMathForDisplay(reveal)}</MessageResponse>
 						</div>
@@ -237,7 +237,7 @@ function MetadataPopover({
 					});
 				}}
 				aria-expanded={open}
-				className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+				className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
 			>
 				Metadata
 			</button>
@@ -294,5 +294,5 @@ export function ThinkingCard({ data }: { data: PracticeThinkingData }) {
 	// 50%-italic quote block on expand. Legacy records' commit flag is
 	// deliberately unread (one lane now). A TRANSCRIPT row (owner round,
 	// 2026-10-07): full-width band + rail, arriving expanded.
-	return <ThinkingBlock testId="thinking-card" label="YOUR THINKING" text={data.text} defaultOpen />;
+	return <ThinkingBlock testId="thinking-card" label="Your thinking" text={data.text} defaultOpen />;
 }

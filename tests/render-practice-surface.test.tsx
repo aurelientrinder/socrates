@@ -55,7 +55,7 @@ describe("PracticeDock", () => {
 		assert.match(html, /Problem/);
 		// The measured column cap (the old fixed 40vh is only the fallback).
 		assert.match(html, /--dock-max-h/);
-		assert.match(html, /YOUR THINKING/);
+		assert.match(html, /Your thinking/);
 		assert.match(html, /data-testid="practice-send"/);
 		assert.ok(!html.includes("practice-nudge") && !html.includes("practice-commit"), "the two-lane buttons are gone");
 		// The buttons carry their lane in the disabled gate; both start
@@ -178,16 +178,15 @@ describe("the practice transcript cards", () => {
 
 	it("ThinkingCard: one label, right side, expanded arrival (owner round, 2026-10-07)", () => {
 		const trace = renderToStaticMarkup(<ThinkingCard data={{ problemCallId: "c", commit: false, text: "stuck at step two" }} />);
-		assert.match(trace, /YOUR THINKING/);
+		assert.match(trace, /Your thinking/);
 		// Transcript rows arrive EXPANDED (clearly conveyed as sent) as
 		// full-width card-color bands with the 6px rail (the document,
 		// all-in — owner round two, 2026-10-07).
 		assert.match(trace, /aria-expanded="true"/);
 		assert.ok(trace.includes("stuck at step two"), "the text is visible on arrival");
-		assert.ok(trace.includes("bg-card"), "the card-color band");
-		assert.ok(trace.includes("border-l-[calc(3ch-14px)]"), "narrow rail inside the 3ch inset");
+		assert.ok(trace.includes("ml-auto") && trace.includes("rounded-[22px]"), "the learner's bubble on the right");
 		const legacy = renderToStaticMarkup(<ThinkingCard data={{ problemCallId: "c", commit: true, text: "It is 42." }} />);
-		assert.match(legacy, /YOUR THINKING/);
+		assert.match(legacy, /Your thinking/);
 		assert.doesNotMatch(legacy, /Your solution/);
 	});
 });
