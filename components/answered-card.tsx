@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { LightbulbIcon } from "lucide-react";
 import { ConfidenceRail } from "@/components/confidence-rail";
 import { GlyphMark } from "@/components/ui/glyph-mark";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { cn } from "@/lib/utils";
 import { MessageResponse } from "@/components/ai-elements/message";
 import type { QuestionAnswerData } from "@/src/core";
-import { parseAskInput, parseQuizInput } from "@/src/core";
+import { parseAskInput, parseQuizInput, repairMathForDisplay } from "@/src/core";
 
 /**
  * Static rendering of an answered question (tool part in `output-available`).
@@ -20,7 +21,7 @@ import { parseAskInput, parseQuizInput } from "@/src/core";
  * the explanation, with NO verdict chips (owner ruling 2026-09-27).
  */
 export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; input?: unknown }) {
-	const [whyOpen, setWhyOpen] = useState(false); // the tucked explanation (predictions, owner 2026-10-03)
+	const [whyOpen, setWhyOpen] = useState(true); // open by default (owner, 2026-10-27)
 	if (answer.dismissed) {
 		return (
 			<div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
@@ -88,7 +89,7 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 					))}
 			</div>
 			<div className="mb-3 font-medium">
-				<MessageResponse>{answer.questionText}</MessageResponse>
+				<MessageResponse>{repairMathForDisplay(answer.questionText)}</MessageResponse>
 			</div>
 			{parsedDetails && (
 				// The details line, same paint as the pending dock (owner,
@@ -133,7 +134,7 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 									</span>
 								)}
 								<span className={cn(!sel && "text-muted-foreground")}>
-									<MessageResponse>{opt.label}</MessageResponse>
+									<MessageResponse>{repairMathForDisplay(opt.label)}</MessageResponse>
 									{descByIndex.get(opt.index) && (
 										// Ask-option subtext (owner, 2026-10-12): same markdown path
 										// as the pending dock — LaTeX included. Quiz options carry
@@ -194,43 +195,48 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 				/>
 			)}
 
-			{/* px-3→removed: card p-4 + box px-3 double-inset sat the "Why" label deeper
-			    than the option box edges (owner, round 3). Sides flush with everything
-			    else; py-2 stays for vertical air. */}
-			{isQuiz && answer.explanation && (
-				/* The TUCKED explanation — ALL questions (owner, 2026-10-07): the
-				   verdict shows, the explanation sits collapsed behind the Why
-				   toggle — viewable, never center stage. Identical to the
-				   prediction pattern it generalizes (owner, 2026-10-03). */
-				<div className="mt-2" data-testid="tucked-explanation">
-					<button
-						type="button"
-						onClick={() => setWhyOpen((v) => !v)}
-						className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-					>
-						{whyOpen ? "Hide why" : "Why"}
-					</button>
-					{whyOpen && (
-						<div className="mt-1.5 rounded-lg bg-muted py-2 text-sm text-foreground/50">
-							<span className="font-medium text-muted-foreground">Why: </span>
-							{/* The markdown wrapper must go truly inline — a block <p> after the
-							   "Why:" label created the oversized leading gap (owner's fix list). */}
-							<MessageResponse className="inline [&_p]:inline [&_p]:m-0">{answer.explanation}</MessageResponse>
-						</div>
-					)}
-				</div>
-			)}
-
 			{/* The explain reveal (owner ruling 2026-09-27): the committed answer
 			    — one field, reasoning included — shown on submit; no verdict,
 			    the model's next reply IS the grading. */}
 			{isExplain && answer.committed && (
 				<div className="mt-3 rounded-lg bg-muted py-2 text-sm text-muted-foreground">
 					<span className="font-medium text-foreground">The answer: </span>
-					<MessageResponse className="inline [&_p]:inline [&_p]:m-0">{answer.committed}</MessageResponse>
+					<MessageResponse className="inline [&_p]:inline [&_p]:m-0">{repairMathForDisplay(answer.committed)}</MessageResponse>
 				</div>
 			)}
 		</div>
+		{isQuiz && answer.explanation && (
+			/* The explanation as its OWN card (owner, 2026-10-27 — reverses the
+			   2026-10-07 tuck): a large neutral block under the question card,
+			   open by default. Same white card paint as the question, no tint;
+			   full-block markdown (paragraphs, display math) at full ink — the
+			   old 50% fade was hard to read. "Hide" folds it to its header. */
+			<div
+				data-testid="tucked-explanation"
+				data-open={whyOpen ? "true" : "false"}
+				className="mt-3 rounded-xl border bg-card px-5 py-4 text-card-foreground"
+			>
+				<div className="flex items-center justify-between gap-3">
+					<span className="flex items-center gap-2 text-sm font-medium">
+						<LightbulbIcon aria-hidden className="size-4 text-muted-foreground" />
+						Why
+					</span>
+					<button
+						type="button"
+						aria-expanded={whyOpen}
+						onClick={() => setWhyOpen((v) => !v)}
+						className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+					>
+						{whyOpen ? "Hide" : "Show"}
+					</button>
+				</div>
+				{whyOpen && (
+					<MessageResponse className="mt-2.5 leading-relaxed">
+						{repairMathForDisplay(answer.explanation)}
+					</MessageResponse>
+				)}
+			</div>
+		)}
 		</>
 	);
 }

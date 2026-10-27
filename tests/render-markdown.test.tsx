@@ -395,6 +395,23 @@ describe("over-escaped command heal — doubled backslashes in tool args (owner 
 		assert.equal(healOverescapedCommands(aligned), aligned);
 	});
 
+	it("heals doubled literal braces — the line-per-group probe bug (2026-10-27)", () => {
+		// `[M]\\{\\ddot q\\}`: KaTeX read each `\\` as a forced line break.
+		assert.equal(
+			healOverescapedCommands("$[M]\\\\{\\ddot{q}\\\\} + [K]\\\\{q\\\\} = \\\\{0\\\\}$"),
+			"$[M]\\{\\ddot{q}\\} + [K]\\{q\\} = \\{0\\}$",
+		);
+		assert.equal(
+			healOverescapedCommands("$\\\\{\\phi_j\\\\}^T[K]\\\\{\\phi_i\\\\}$"),
+			"$\\{\\phi_j\\}^T[K]\\{\\phi_i\\}$",
+		);
+	});
+
+	it("KEEPS a row break before a brace inside an environment", () => {
+		const cases = "$\\begin{cases} a \\\\{b} \\end{cases}$";
+		assert.equal(healOverescapedCommands(cases), cases);
+	});
+
 	it("KEEPS odd runs — a row break plus a real command cell", () => {
 		// 3 real backslashes then a letter: \\ row break + \\nabla command.
 		const cell = "$a \\\\\\nabla b$";
