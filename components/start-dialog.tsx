@@ -9,7 +9,7 @@ import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { startDraftSession } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
 import { REVIEW_SESSION_SIZE } from "@/src/core";
-import { DEFAULT_SESSION_LENGTH, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
+import { DEFAULT_SESSION_LENGTH, QUICK_SESSION_MINUTES, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 export type StartMode = "learn" | "practice" | "review";
 
-const StartDialogContext = createContext<{ open: (mode?: StartMode) => void }>({ open: () => {} });
+const StartDialogContext = createContext<{ open: (mode?: StartMode, minutes?: number) => void }>({ open: () => {} });
 
 /** Open the Start dialog from anywhere under the app shell. */
 export function useStartDialog() {
@@ -36,16 +36,24 @@ export const OPEN_START_EVENT = "lh:open-start";
 
 export function StartDialogProvider({ children }: { children: React.ReactNode }) {
 	const [mode, setMode] = useState<StartMode | null>(null);
-	const open = useCallback((m: StartMode = "learn") => setMode(m), []);
+	const [minutes, setMinutes] = useState<number>(DEFAULT_SESSION_LENGTH);
+	const open = useCallback((m: StartMode = "learn", length: number = DEFAULT_SESSION_LENGTH) => {
+		setMinutes(length);
+		setMode(m);
+	}, []);
 	useEffect(() => {
-		const onOpen = () => setMode((m) => m ?? "learn");
+		const onOpen = () =>
+			setMode((m) => {
+				if (m === null) setMinutes(DEFAULT_SESSION_LENGTH);
+				return m ?? "learn";
+			});
 		window.addEventListener(OPEN_START_EVENT, onOpen);
 		return () => window.removeEventListener(OPEN_START_EVENT, onOpen);
 	}, []);
 	return (
 		<StartDialogContext.Provider value={{ open }}>
 			{children}
-			{mode !== null && <StartDialog initialMode={mode} onClose={() => setMode(null)} />}
+			{mode !== null && <StartDialog initialMode={mode} initialMinutes={minutes} onClose={() => setMode(null)} />}
 		</StartDialogContext.Provider>
 	);
 }
@@ -60,13 +68,24 @@ export function notePrompt(mode: "learn" | "practice", name: string): string {
 	return mode === "practice" ? `Give me practice problems on my notes "${name}".` : `Teach me what is in my notes "${name}".`;
 }
 
-function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose: () => void }) {
+/** Turn 1 of a five-minute session (2026-10-27): the learner's words plus
+ *  the scope, so the tutor keeps it tiny and stops on time. The words alone
+ *  stay the session's title. */
+export function quickSessionPrompt(mode: "learn" | "practice", text: string): string {
+	const scope =
+		mode === "practice"
+			? "I only have 5 minutes: give me one or two short problems on this, check my answers, and stop there."
+			: "I only have 5 minutes: teach me the single most important idea here, ask me one question to check it, and stop there.";
+	return `${text.trim()}\n\n(${scope})`;
+}
+
+function StartDialog({ initialMode, initialMinutes, onClose }: { initialMode: StartMode; initialMinutes: number; onClose: () => void }) {
 	const router = useRouter();
 	const [mode, setMode] = useState<StartMode>(initialMode);
 	const [topic, setTopic] = useState("");
 	const [due, setDue] = useState<number | null>(null);
 	const [notes, setNotes] = useState<NoteChip[]>([]);
-	const [minutes, setMinutes] = useState<number>(DEFAULT_SESSION_LENGTH);
+	const [minutes, setMinutes] = useState<number>(initialMinutes);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const backdropDismiss = useBackdropDismiss(() => {
@@ -115,7 +134,9 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 				if (!res.ok || !body.id) throw new Error(body.error ?? "Could not start the review.");
 				target = `/chat/${body.id}?prompt=${encodeURIComponent(REVIEW_START_PROMPT)}`;
 			} else {
-				target = await startDraftSession(text, fetch, mode === "practice" ? "practice" : undefined);
+				const kind = mode === "practice" ? "practice" : "learn";
+				const firstMessage = minutes === QUICK_SESSION_MINUTES ? quickSessionPrompt(kind, text) : undefined;
+				target = await startDraftSession(text, fetch, kind === "practice" ? "practice" : undefined, undefined, firstMessage);
 				if (target) setSessionBudget(target, minutes);
 			}
 			if (!target) {
