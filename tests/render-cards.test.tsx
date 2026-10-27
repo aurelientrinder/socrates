@@ -299,15 +299,12 @@ describe("render smoke tests", () => {
 		// trigger row only — the thinking text is one click away, never loud.
 		assert.ok(html.includes('data-testid="your-thinking-trigger"'), "the trigger row");
 		assert.ok(html.includes('aria-expanded="false"'), "arrives collapsed");
-		// ONE GEOMETRY, NO BAND IN CARDS (owner round five, 2026-10-07): the
-		// accent lift read too light — rail only, heights match everywhere.
-		const yourRow = html.slice(html.indexOf('data-testid="your-thinking"'));
-		assert.ok(!yourRow.slice(0, 400).includes("bg-card") && !yourRow.slice(0, 400).includes("bg-accent"), "no band inside the card");
-		// THE RAIL GROUPS (owner correction): the label sits INSIDE the rail —
-		// ownership readable from the rail alone, collapsed or expanded.
-		const railAt = html.indexOf("border-l-[calc(3ch-14px)]");
+		// In a card the learner's thinking is a soft rounded panel (redesign
+		// follow-up, 2026-10-27): no rail band; the label sits inside it.
+		const panelAt = html.indexOf("rounded-xl bg-accent/50");
 		const trigAt = html.indexOf("your-thinking-trigger");
-		assert.ok(railAt !== -1 && railAt < trigAt, "the rail opens before the label (same quote)");
+		assert.ok(panelAt !== -1 && panelAt < trigAt, "the panel opens before the label");
+		assert.ok(!html.includes("border-l-[calc(3ch-14px)]"), "no rail band");
 		assert.ok(!html.includes("brightness isn&#x27;t distance"), "the text is hidden until expanded");
 		assert.ok(!html.includes("Note:"), "no longer a muted 'Note:' footnote");
 		// The thinking sits ABOVE the verdict's explanation — the dialogue of

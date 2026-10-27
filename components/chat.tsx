@@ -1467,19 +1467,16 @@ export function Chat({
 										    Rendered WITHOUT the Message wrapper — that is the bubble. */
 											<div
 										data-testid="user-message"
-										/* THE DOCUMENT, ALL-IN (owner rounds two+three, 2026-10-07):
-										    no chat side — the user message is a full-width card-color
-										    BAND, the IDENTICAL geometry as the thinking rows: 5px band
-										    padding, the left gap matches it, the rail fills the 3ch
-										    inset (the band is the authorship mark against the agent's
-										    transparent prose). The "You" label stays — one register
-										    with the thinking labels. */
-										className="my-2 w-full border-l-[calc(3ch-14px)] border-muted-foreground/30 bg-card py-1 pl-[14px] pr-4 font-ui text-xs"
+										/* THE LEARNER'S BUBBLE (redesign follow-up, owner 2026-10-27):
+										    the old full-width grey band with a rail and a tiny "You"
+										    label read as a log line. The learner's words now sit in a
+										    rounded bubble on the right, in the prose font, so the
+										    transcript reads as a conversation: tutor on the left as
+										    open prose, learner on the right. User text renders plain —
+										    the model's LaTeX pipeline is not applied to learner text. */
+										className="my-4 ml-auto w-fit max-w-[85%] rounded-[22px] rounded-br-md bg-accent px-4 py-2.5"
 									>
-												{/* The rail GROUPS (owner round 4, 2026-10-05): the YOU heading
-												    sits INSIDE the rail, same mono-xs register and same 1ch
-												    rail as the thinking rows — one quote geometry. */}
-												<div className="font-medium text-muted-foreground">You</div>
+												<span className="sr-only">You: </span>
 												<div className="lh-prose whitespace-pre-wrap text-foreground">
 													{m.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")}
 												</div>

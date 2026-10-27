@@ -109,8 +109,14 @@ export function ThinkingBlock({
 				// chevron law); the rail narrows (14px gap), padding 4px, pr-4
 				// keeps the text off the band's right edge. In-card rows take
 				// NO band — the accent lift read too light; rail only.
-				"lh-card-enter my-2 w-full border-l-[calc(3ch-14px)] border-muted-foreground/30 py-1 pl-[14px] pr-4 font-ui text-xs",
-				inCard ? "" : "bg-card",
+				// The learner's side (redesign follow-up, owner 2026-10-27): the
+				// rail band is gone. In the transcript the learner's thinking is a
+				// lighter twin of their message bubble, on the right; inside a
+				// card it is a soft rounded panel.
+				"lh-card-enter my-2 font-ui text-xs",
+				inCard
+					? "w-full rounded-xl bg-accent/50 px-3.5 py-2"
+					: "ml-auto w-fit min-w-48 max-w-[85%] rounded-[22px] rounded-br-md border border-border/70 px-4 py-2.5",
 			)}
 		>
 			<button
@@ -127,7 +133,7 @@ export function ThinkingBlock({
 				<ChevronDownIcon className={cn("size-4 shrink-0 transition-transform", open ? "rotate-180" : "rotate-0")} />
 			</button>
 			{open && (
-				<span className="lh-prose mt-1.5 block whitespace-pre-wrap text-[15px] italic text-foreground/50">{text}</span>
+				<span className="lh-prose mt-1.5 block whitespace-pre-wrap text-[15px] italic text-foreground/70">{text}</span>
 			)}
 		</div>
 	);
