@@ -69,6 +69,8 @@ import {
 	DICTATION_ENGINES,
 	DICTATION_LANGUAGES,
 	dictationLanguageLabel,
+	REPLY_LANGUAGES,
+	replyLanguageLabel,
 	type DictationEngineId,
 	type GraphSettings,
 	type ModelCatalogEntry,
@@ -183,6 +185,15 @@ export function composeSearchEngine(
 		return { ...rest } as AgentSettings;
 	}
 	return { ...agent, search: { engine } };
+}
+
+/** Compose: the tutor's reply language. null = automatic (the key is
+ *  removed). Pure — exported for tests. */
+export function composeReplyLanguage(agent: AgentSettings | undefined, code: string | null): AgentSettings {
+	const next: AgentSettings = { ...agent };
+	if (code === null) delete next.replyLanguage;
+	else next.replyLanguage = code;
+	return next;
 }
 
 /** Compose: one dictation preference (engine pin or language). null =
@@ -354,7 +365,7 @@ export function AgentSection({
 	/** One open dropdown for the whole section: which slot (or the search
 	 *  row), which kind. */
 	const [openMenu, setOpenMenu] = useState<{
-		target: ModelSlotName | "search" | "dictation" | "dictation-language";
+		target: ModelSlotName | "search" | "dictation" | "dictation-language" | "reply-language";
 		kind: "model" | "thinking" | "engine";
 	} | null>(null);
 	const menuAnchorRef = useRef<HTMLSpanElement>(null);
@@ -970,6 +981,53 @@ export function AgentSection({
 										{DICTATION_LANGUAGES.map((l) =>
 											engineOption(`language-${l.code}`, l.label, language === l.code, null, () => {
 												onSectionChange(composeDictation(agent, "language", l.code));
+												setOpenMenu(null);
+											}),
+										)}
+									</MenuShell>
+								)}
+							</span>
+						</SettingsRow>
+					);
+				})()}
+			</SettingsGroup>
+
+			{/* The tutor's language (2026-10-27): what the tutor writes in.
+			    Automatic = the learner's own language, as before. */}
+			<SettingsGroup label="Language" testid="group-language">
+				{(() => {
+					const language = agent?.replyLanguage ?? null;
+					const open = openMenu?.target === "reply-language";
+					return (
+						<SettingsRow
+							label="Tutor's language"
+							hint="The language Socrates writes to you in. Automatic answers in the language you write in"
+							testid="reply-language-row"
+						>
+							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
+								<MenuTrigger
+									value={replyLanguageLabel(language) ?? ""}
+									emptyLabel="Automatic"
+									ariaLabel="Tutor's language"
+									testid="reply-language-trigger"
+									open={open}
+									onClick={() => setOpenMenu(open ? null : { target: "reply-language", kind: "engine" })}
+									widthClass="min-w-20"
+								/>
+								{open && (
+									<MenuShell
+										preferredSide="down"
+										anchorTestid="reply-language-trigger"
+										testid="reply-language-menu"
+										menuClass="flex w-44 flex-col gap-0.5 rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
+									>
+										{engineOption("reply-language-auto", "Automatic", language === null, null, () => {
+											onSectionChange(composeReplyLanguage(agent, null));
+											setOpenMenu(null);
+										})}
+										{REPLY_LANGUAGES.map((l) =>
+											engineOption(`reply-language-${l.code}`, l.label, language === l.code, null, () => {
+												onSectionChange(composeReplyLanguage(agent, l.code));
 												setOpenMenu(null);
 											}),
 										)}

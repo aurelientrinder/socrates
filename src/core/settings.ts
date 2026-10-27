@@ -33,6 +33,7 @@ import type { ModelRole } from "../../config.ts";
 import type { ChatSettings } from "./contracts/chat.ts";
 import { isSearchEngineId, type SearchEngineId } from "./search.ts";
 import { isDictationEngineId, isDictationLanguage, type DictationEngineId } from "./dictation.ts";
+import { isReplyLanguage } from "./reply-language.ts";
 
 /** The schema version this code understands. Bump ONLY for breaking shape
  *  changes (a field renamed/meaning changed); pure additions never bump. */
@@ -254,6 +255,9 @@ export interface AgentSettings {
 	 *  search — a key is enough, the pin only chooses between keyed
 	 *  engines) + the spoken language (absent = automatic). */
 	dictation?: { engine?: DictationEngineId; language?: string };
+	/** The language the tutor writes to the learner in (2026-10-27): a
+	 *  REPLY_LANGUAGES code; absent = automatic (the learner's own). */
+	replyLanguage?: string;
 	/** Prober graph tools (wave 7, owner ruling 2026-09-23): read-only
 	 *  knowledge-graph views for the prober agent — a session list +
 	 *  per-session propositions with understanding levels. Its SUBJECT
@@ -545,6 +549,7 @@ function sanitizeAgent(raw: Record<string, unknown>): AgentSettings {
 		if (isDictationLanguage(d.language)) dictation.language = d.language;
 		out.dictation = dictation;
 	}
+	if (isReplyLanguage(raw.replyLanguage)) out.replyLanguage = raw.replyLanguage;
 	// Prober graph tools (wave 7): its own agent-section subsection —
 	// lenient read side (a bad shape drops the key and the default ON
 	// resumes; the write side's parser is strict).

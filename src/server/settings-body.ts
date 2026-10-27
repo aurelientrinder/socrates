@@ -36,6 +36,7 @@ import {
 import { WRITABLE_TOOL_KEYS } from "../core/pending.ts";
 import { isSearchEngineId } from "../core/search.ts";
 import { DICTATION_LANGUAGES, isDictationEngineId, isDictationLanguage, type DictationEngineId } from "../core/dictation.ts";
+import { isReplyLanguage, REPLY_LANGUAGES } from "../core/reply-language.ts";
 
 /** Parsed-or-rejected — `ok: false` carries the 400's error message. */
 export type SettingsBodyResult<T> =
@@ -211,6 +212,14 @@ export function parseAgentSettingsBody(body: unknown): SettingsBodyResult<AgentS
 			out.language = dictation.language;
 		}
 		settings.dictation = out;
+	}
+	// The tutor's reply language: a code from the list, or null to go back
+	// to automatic (the key is dropped).
+	if (raw.replyLanguage !== undefined && raw.replyLanguage !== null) {
+		if (!isReplyLanguage(raw.replyLanguage)) {
+			return { ok: false, error: `replyLanguage must be one of: ${REPLY_LANGUAGES.map((l) => l.code).join(", ")}` };
+		}
+		settings.replyLanguage = raw.replyLanguage;
 	}
 	// Prober graph tools (wave 7, owner ruling 2026-09-23): an agent-section
 	// subsection, not a tool-toggles key — the mechanism is agent capability

@@ -83,6 +83,8 @@ export interface EffectiveSettings {
 		/** Dictation preferences as stored (passthrough delta; resolution
 		 *  lives in server/dictation.ts, where keys are visible). */
 		dictation: { engine?: DictationEngineId; language?: string };
+		/** The tutor's reply language code, or undefined (automatic). */
+		replyLanguage?: string;
 		/** Prober graph tools (wave 7): passthrough delta as stored —
 		 * absent/undefined enabled = ON; consumers use graphToolsEnabled. */
 		graphTools: { enabled?: boolean };
@@ -186,6 +188,7 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 			prompts: agent.prompts ?? {},
 			search: agent.search ?? {},
 			dictation: agent.dictation ?? {},
+			...(agent.replyLanguage ? { replyLanguage: agent.replyLanguage } : {}),
 			graphTools: agent.graphTools ?? {},
 		},
 		models: {
