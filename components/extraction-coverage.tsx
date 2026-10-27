@@ -361,7 +361,7 @@ export function CoverageRingGlyph({ fill, running }: { fill: number; running: bo
 export function CoverageRingDetail({ coverage, chunkTokens }: { coverage: SessionCoverage; chunkTokens: number }) {
 	return (
 		<>
-			<div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+			<div className="mb-2 text-xs font-medium text-muted-foreground">
 				Extraction coverage
 			</div>
 			<div className="flex flex-col gap-1 text-muted-foreground">

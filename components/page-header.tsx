@@ -26,14 +26,23 @@ export function PageFrame({
 	return (
 		<div data-testid={testId} className="h-full overflow-y-auto">
 			<div className={cn("mx-auto flex flex-col gap-8 px-6 pb-14 pt-8 sm:px-10", width)}>
-				<header className="flex flex-wrap items-center gap-3">
-					<SidebarToggle />
-					<h1 className="lh-page-title min-w-0 flex-1 text-[34px] leading-tight">{title}</h1>
-					{actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
-				</header>
+				<PageHead title={title} actions={actions} />
 				{children}
 			</div>
 		</div>
+	);
+}
+
+/** The page's title row: the sidebar toggle when the sidebar is closed,
+ *  the serif title, actions on the right. A window-drag band in the
+ *  desktop app (its buttons and links carve themselves out). */
+export function PageHead({ title, actions }: { title: string; actions?: React.ReactNode }) {
+	return (
+		<header className="lh-drag flex flex-wrap items-center gap-3">
+			<SidebarToggle />
+			<h1 className="lh-page-title min-w-0 flex-1 text-[34px] leading-tight">{title}</h1>
+			{actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+		</header>
 	);
 }
 
@@ -43,35 +52,12 @@ export function SectionHeading({ children, className }: { children: React.ReactN
 }
 
 /** The Progress page's three views. Memory and Calibration render inside
- *  /progress; Map is the full-bleed knowledge map at /map. */
+ *  /progress; Map is the knowledge map at /map, under the same header. */
 export const PROGRESS_TABS = [
 	{ id: "memory", label: "Memory", href: "/progress" },
 	{ id: "calibration", label: "Calibration", href: "/progress?tab=calibration" },
 	{ id: "map", label: "Map", href: "/map" },
 ];
-
-/** The same tabs as a floating pill, for the map, which has no page
- *  header to sit under. */
-export function FloatingTabs({ tabs, active }: { tabs: { id: string; label: string; href: string }[]; active: string }) {
-	return (
-		<nav aria-label="Progress views" className="flex gap-0.5 rounded-xl border bg-surface/95 p-1 shadow-sm backdrop-blur">
-			{tabs.map((t) => (
-				<Link
-					key={t.id}
-					href={t.href}
-					data-testid={`tab-${t.id}`}
-					aria-current={t.id === active ? "page" : undefined}
-					className={cn(
-						"rounded-lg px-3 py-1.5 text-sm transition-colors",
-						t.id === active ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
-					)}
-				>
-					{t.label}
-				</Link>
-			))}
-		</nav>
-	);
-}
 
 /** Underlined tabs as links (?tab=…), so each tab is a real address. */
 export function PageTabs({ tabs, active }: { tabs: { id: string; label: string; href: string }[]; active: string }) {

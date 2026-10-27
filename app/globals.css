@@ -38,7 +38,11 @@
 	--radius: 8px;
 	--background: #faf9f5;
 	--foreground: #1f1e1d;
-	--card: #f3f1ea;
+	/* Cards are the raised white surface since the redesign follow-up
+	   (2026-10-27): one card colour across Today, Progress and the chat.
+	   The sidebar keeps the old warm grey as its own token. */
+	--card: #fffefb;
+	--lh-sidebar: #f3f1ea;
 	--card-foreground: #1f1e1d;
 	--popover: #fdfcf9;
 	--popover-foreground: #1f1e1d;
@@ -111,6 +115,7 @@ html[data-typeface="claude"] {
 	--background: #141414;
 	--foreground: #e6e6e6;
 	--card: #1c1c1c;
+	--lh-sidebar: #1c1c1c;
 	--card-foreground: #e6e6e6;
 	--popover: #1c1c1c;
 	--popover-foreground: #e6e6e6;
@@ -337,9 +342,9 @@ body {
 @source "../node_modules/streamdown/dist/*.js";
 
 /* Token the streamdown utilities reference (code-block/mermaid chrome uses
- * bg-sidebar / border-sidebar): map it onto the app's card surface. */
+ * bg-sidebar / border-sidebar): map it onto the sidebar's warm grey. */
 @theme inline {
-	--color-sidebar: var(--card);
+	--color-sidebar: var(--lh-sidebar);
 	--color-good: var(--lh-good);
 	--color-good-ink: var(--lh-good-ink);
 	--color-good-soft: var(--lh-good-soft);
