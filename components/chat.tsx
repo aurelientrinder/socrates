@@ -52,13 +52,13 @@ import { MermaidOverlay, SessionMermaidContext } from "@/components/session-over
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
 import { ArrowRightIcon, DumbbellIcon, RepeatIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
-import { QuestionDock } from "@/components/question-dock";
+import { QuestionDock, type WarmupStep } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
 import { SessionMessageNavigation } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
-import { ReviewContextCard, type ReviewContextData } from "@/components/review-context-card";
+import { ReviewContextCard, WarmupDoneDivider, type ReviewContextData } from "@/components/review-context-card";
 import { TopBar } from "@/components/top-bar";
 import type { ArtifactPartProps, JobRecord, Phase3, QuestionAnswerData, TurnUsage, SessionPricing } from "@/src/core";
 import type { LhViewMessage } from "@/src/core";
@@ -82,7 +82,7 @@ import {
 import { ReadingThinkingField } from "@/components/reading-thinking";
 import { currentUserThinkingOpen, setAllUserThinkingOpen } from "@/components/thinking-block";
 import { slotsConfigured, type ModelsSettings } from "@/src/core";
-import { reviewTally } from "@/src/core";
+import { reviewTally, warmupActive, type WarmupDoneData } from "@/src/core";
 import { useSettingsSaved } from "@/components/settings-signal";
 
 /** One width for everything: transcript, cards, and the bottom blob share this column. */
@@ -467,6 +467,9 @@ export function Chat({
 	// THE REVIEW PROGRESS (spaced repetition): which queued topics this
 	// session has answered, and how — the header tag and the queue card.
 	const reviewProgress = useMemo(() => reviewTally(nativeMessages), [nativeMessages]);
+	// WARM-UP RECALL: a learn or practice session that opened with a few
+	// earlier topics — the same tally reads its progress while it runs.
+	const warmingUp = kind !== "review" && warmupActive(nativeMessages);
 
 	const localStream = status === "submitted" || status === "streaming";
 	const busy = localStream || turnInFlight;
@@ -1333,7 +1336,16 @@ export function Chat({
 					{kind === "teach" && <CoverageRing chatId={chatId} refreshKey={coverageTick} />}
 					{/* Practice sessions: no phase arc — a quiet Practice tag
 					    instead of the phase chip. */}
-					{kind === "practice" ? (
+					{warmingUp ? (
+						<span
+							data-testid="phase-chip"
+							data-phase="warmup"
+							className="pointer-events-none flex shrink-0 select-none items-center gap-1 text-xs font-medium text-muted-foreground"
+						>
+							<RepeatIcon aria-hidden="true" className="size-3" />
+							Warm-up {reviewProgress.done}/{reviewProgress.total}
+						</span>
+					) : kind === "practice" ? (
 						<span
 							data-testid="phase-chip"
 							data-phase="practice"
@@ -1404,6 +1416,8 @@ export function Chat({
 												return <GraphContextCard key={pi} data={part.data as GraphContextData} />;
 											case "data-review-context":
 												return <ReviewContextCard key={pi} data={part.data as ReviewContextData} outcomes={reviewProgress.outcomes} />;
+											case "data-warmup-done":
+												return <WarmupDoneDivider key={pi} data={part.data as WarmupDoneData} />;
 											case "data-compaction":
 												return <CompactionMomentDivider key={pi} data={part.data as CompactionDividerData} />;
 											case "data-compaction-cut":
@@ -1554,7 +1568,12 @@ export function Chat({
 														// transcript; answered ones render as graded records.
 														if (part.state === "output-available") {
 															return (
-																<AnsweredCard key={pi} answer={part.output as QuestionAnswerData} input={part.input} />
+																<AnsweredCard
+																	key={pi}
+																	answer={part.output as QuestionAnswerData}
+																	input={part.input}
+																	label={kind !== "review" && part.type === "tool-review" ? "Warm-up" : undefined}
+																/>
 															);
 														}
 														return null;
@@ -1658,6 +1677,15 @@ export function Chat({
 					dictationSlot={<DictationBar dictation={dictation} />}
 					dictationCancel={dictation.cancel}
 					queuedSteers={visibleQueuedSteers(steerQueue, nativeMessages)}
+					warmup={
+						warmingUp
+							? {
+									step: Math.min(reviewProgress.done + 1, reviewProgress.total),
+									total: reviewProgress.total,
+									onSkip: () => confirmAbort("question"),
+								}
+							: undefined
+					}
 					setupCta={
 						zeroKeys ? (
 							<ZeroKeysPill onOpen={() => setSetupOpen(true)} />
@@ -1887,8 +1915,11 @@ function DockOverlay({
 	dictationCancel,
 	setupCta,
 	queuedSteers,
+	warmup,
 }: {
 	pending: ReturnType<typeof findPendingToolCall>;
+	/** The pending question's warm-up step, when it is one (warm-up recall). */
+	warmup?: WarmupStep;
 	/** Compaction running for this chat (round 14) — the docks' submit
 	 *  affordance gate (the server's registry is the real one). */
 	compactionRunning: boolean;
@@ -2358,6 +2389,7 @@ function DockOverlay({
 									onEscape={dictationCancel}
 									dictationClaim={!revealPending}
 									compactionRunning={compactionRunning}
+									warmup={pending.tool === "review" ? warmup : undefined}
 								/>
 							) : practice ? (
 								<PracticeDock

@@ -1,5 +1,14 @@
 import { parseTopicKey } from "../core/retention.ts";
-import { newReviewContextMessage, pickReviewTopics, REVIEW_SESSION_SIZE, type ReviewStatus, type ReviewTopic } from "../core/review.ts";
+import {
+	newReviewContextMessage,
+	newWarmupContextMessage,
+	pickReviewTopics,
+	REVIEW_SESSION_SIZE,
+	WARMUP_SIZE,
+	type ReviewStatus,
+	type ReviewTopic,
+} from "../core/review.ts";
+import type { LhMarkerMessage } from "../core/native-messages.ts";
 import type { TopicRetention } from "../core/retention.ts";
 import type { GraphNode } from "../core/contracts.ts";
 import { readSettings as readSettingsRecord } from "../store/settings.ts";
@@ -52,8 +61,10 @@ export function reviewStatus(now: number = Date.now()): ReviewStatus {
 	const due = retentionAcrossSessions(now).due.length;
 	const dayStart = startOfLocalDay(now);
 	let reviewedToday = 0;
+	// Any session kind: a learn or practice session's warm-up answers are
+	// reviews too.
 	for (const summary of listChats()) {
-		if (summary.kind !== "review" || Date.parse(summary.updatedAt) < dayStart) continue;
+		if (Date.parse(summary.updatedAt) < dayStart) continue;
 		const record = getChat(summary.id);
 		if (!record) continue;
 		for (const m of record.messages) {
@@ -81,4 +92,12 @@ export function startReviewSession(now: number = Date.now()): { id: string; titl
 	}
 	stores.chatStore.saveMessages(chat.id, [newReviewContextMessage(topics)]);
 	return { id: chat.id, title: chat.title, topics: topics.length };
+}
+
+/** A new learn or practice session's warm-up: the WARMUP_SIZE weakest due
+ *  topics as a warm-up review-context marker; null when nothing is due
+ *  (no warm-up — the memory model says every tested topic still holds). */
+export function warmupContextMessage(now: number = Date.now()): LhMarkerMessage | null {
+	const topics = reviewQueue(now, WARMUP_SIZE);
+	return topics.length > 0 ? newWarmupContextMessage(topics) : null;
 }

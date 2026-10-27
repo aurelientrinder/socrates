@@ -20,7 +20,16 @@ import { parseAskInput, parseQuizInput, repairMathForDisplay } from "@/src/core"
  * client — the card reveals his answer, the committed correct answer, and
  * the explanation, with NO verdict chips (owner ruling 2026-09-27).
  */
-export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; input?: unknown }) {
+export function AnsweredCard({
+	answer,
+	input,
+	label,
+}: {
+	answer: QuestionAnswerData;
+	input?: unknown;
+	/** Overrides the tool's name in the header (a session's warm-up). */
+	label?: string;
+}) {
 	const [whyOpen, setWhyOpen] = useState(true); // open by default (owner, 2026-10-27)
 	if (answer.dismissed) {
 		return (
@@ -66,7 +75,7 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 				{/* The tool's OWN name first (owner 2026-10-09): probe-phase
 			    cards label Probe/Recall — the phase boundary visible in the
 			    transcript. No `tool` on old records: kind labels as before. */}
-				{answer.tool === "probe"
+				{label ?? (answer.tool === "probe"
 					? "Probe"
 					: answer.tool === "review"
 						? "Review"
@@ -78,7 +87,7 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 									: "Check"
 									: isExplain
 										? "Explain"
-											: "Question"}
+											: "Question")}
 				{isQuiz &&
 					(answer.dontKnow ? (
 						<span className="rounded bg-muted px-1.5 py-0.5">didn't know</span>

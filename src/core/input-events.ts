@@ -39,6 +39,7 @@ import {
 	pendingProblemDismissalOf,
 } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
+import { warmupDoneAppends } from "./review.ts";
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
@@ -144,7 +145,8 @@ export function dismissAppends(record: { messages: LhMessage[] }, input: Dismiss
 	if (input.answer.kind !== toolQuestionKind(pending.tool)) {
 		throw new ChatInputError("dismiss input's answer kind does not match the question");
 	}
-	return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+	const result = newAnswerResult(input.toolCallId, pending.tool, input.answer);
+	return [result, ...warmupDoneAppends([...record.messages, result])];
 }
 
 /** A malformed input event (the honest 400 — the orphan-trap discipline). */
@@ -206,7 +208,8 @@ export function inputAppends(
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
-			return [newAnswerResult(input.toolCallId, pending.tool, withReviewTopic(input.answer, pending))];
+			const result = newAnswerResult(input.toolCallId, pending.tool, withReviewTopic(input.answer, pending));
+			return [result, ...warmupDoneAppends([...record.messages, result])];
 		}
 		case "continue":
 			return dismissalConclusion(record);

@@ -90,6 +90,17 @@ export interface QuestionDockProps {
 	 *  and say so in the hint row. The server registry is the real gate;
 	 *  this is the affordance. */
 	compactionRunning?: boolean;
+	/** A learn or practice session's warm-up question (warm-up recall):
+	 *  the header names the step and offers a Skip that ends the whole
+	 *  warm-up. */
+	warmup?: WarmupStep;
+}
+
+export interface WarmupStep {
+	/** This question's place in the warm-up, from 1. */
+	step: number;
+	total: number;
+	onSkip: () => void;
 }
 
 export function QuestionDock({
@@ -104,6 +115,7 @@ export function QuestionDock({
 	phase = "probe",
 	dictationClaim = true,
 	compactionRunning = false,
+	warmup,
 }: QuestionDockProps) {
 	// The probe-phase names (owner, 2026-10-09) canonicalize onto their
 	// teach twins for every dock concern — parse dispatch, labels, kinds:
@@ -114,7 +126,9 @@ export function QuestionDock({
 	// The chip's display name carries the tool's OWN name (owner
 	// 2026-10-09): probe-phase questions label Probe/Recall in the
 	// composer; teach tools keep the standing labels.
-	const toolLabel = toolName === "probe" ? "Probe" : toolName === "recall" ? "Recall" : toolName === "review" ? "Review" : undefined;
+	const toolLabel = warmup
+		? "Warm-up"
+		: toolName === "probe" ? "Probe" : toolName === "recall" ? "Recall" : toolName === "review" ? "Review" : undefined;
 	// Parse, don't cast (src/core/tool-parts.ts): the model authored this
 	// input, and only the schema the tool declared vouches for its shape.
 	// The dock mounts on input-available parts (already validated at the
@@ -158,6 +172,7 @@ export function QuestionDock({
 					onEscape={onEscape}
 					dictationClaim={dictationClaim}
 					compactionRunning={compactionRunning}
+					warmup={warmup}
 				/>
 			</div>
 		</>
@@ -253,6 +268,7 @@ function QuestionDockForm({
 	onEscape,
 	dictationClaim = true,
 	compactionRunning = false,
+	warmup,
 }: Omit<QuestionDockProps, "expanded" | "onExpand" | "reveal">) {
 	const kind = toolQuestionKind(toolName);
 
@@ -545,8 +561,11 @@ function QuestionDockForm({
 			    Capped by the measured column (--dock-max-h; the old fixed 55dvh cut
 			    long questions short — owner round, 2026-10-05). */}
 			<div data-session-find-root="" className="max-h-[var(--dock-max-h,55dvh)] overflow-y-auto px-4 pt-3">
-				<div className="mb-1 text-xs font-medium text-muted-foreground">
-					{toolName === "probe"
+				<div className="mb-1 flex items-baseline gap-2 text-xs font-medium text-muted-foreground">
+					<span className="min-w-0 flex-1">
+					{warmup
+						? `Warm-up · ${warmup.step} of ${warmup.total}`
+						: toolName === "probe"
 						? "Probe"
 						: toolName === "review"
 							? "Review"
@@ -560,6 +579,17 @@ function QuestionDockForm({
 										? "Explain"
 											: "Question"}
 					{qd.mode === "multi-select" && " · select all that apply"}
+					</span>
+					{warmup && (
+						<button
+							type="button"
+							data-testid="warmup-skip"
+							onClick={warmup.onSkip}
+							className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+						>
+							Skip warm-up
+						</button>
+					)}
 				</div>
 				<div className="mb-3 font-medium">
 					<MessageResponse>{qd.question}</MessageResponse>

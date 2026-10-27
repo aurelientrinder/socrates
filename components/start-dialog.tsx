@@ -8,7 +8,7 @@ import { BookOpenIcon, DumbbellIcon, Loader2Icon, PlayIcon, RotateCcwIcon, XIcon
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { startDraftSession } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
-import { REVIEW_SESSION_SIZE } from "@/src/core";
+import { REVIEW_SESSION_SIZE, WARMUP_SIZE } from "@/src/core";
 import { DEFAULT_SESSION_LENGTH, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +67,7 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 	const [due, setDue] = useState<number | null>(null);
 	const [notes, setNotes] = useState<NoteChip[]>([]);
 	const [minutes, setMinutes] = useState<number>(DEFAULT_SESSION_LENGTH);
+	const [warmup, setWarmup] = useState<boolean>(readWarmupPreference);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const backdropDismiss = useBackdropDismiss(() => {
@@ -115,7 +116,7 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 				if (!res.ok || !body.id) throw new Error(body.error ?? "Could not start the review.");
 				target = `/chat/${body.id}?prompt=${encodeURIComponent(REVIEW_START_PROMPT)}`;
 			} else {
-				target = await startDraftSession(text, fetch, mode === "practice" ? "practice" : undefined);
+				target = await startDraftSession(text, fetch, mode === "practice" ? "practice" : undefined, undefined, { warmup });
 				if (target) setSessionBudget(target, minutes);
 			}
 			if (!target) {
@@ -142,6 +143,11 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 				error={error}
 				onMode={setMode}
 				onMinutes={setMinutes}
+				warmup={warmup}
+				onWarmup={(on) => {
+					setWarmup(on);
+					writeWarmupPreference(on);
+				}}
 				onTopic={setTopic}
 				onStart={() => void go(topic)}
 				onNote={(name) => void go(notePrompt(mode === "practice" ? "practice" : "learn", name))}
@@ -158,6 +164,26 @@ const MODES: { id: StartMode; label: string; desc: string; icon: React.ReactNode
 	{ id: "review", label: "Review", desc: "Quick recall on the topics you are starting to forget.", icon: <RotateCcwIcon className="size-4" /> },
 ];
 
+/** The warm-up switch is remembered per device (warm-up recall): on
+ *  unless the learner turned it off. */
+const WARMUP_PREFERENCE_KEY = "lh:warmup";
+
+function readWarmupPreference(): boolean {
+	try {
+		return window.localStorage.getItem(WARMUP_PREFERENCE_KEY) !== "off";
+	} catch {
+		return true;
+	}
+}
+
+function writeWarmupPreference(on: boolean): void {
+	try {
+		window.localStorage.setItem(WARMUP_PREFERENCE_KEY, on ? "on" : "off");
+	} catch {
+		// Private windows: the switch still works for this session.
+	}
+}
+
 /** The dialog's pure body: the render-test seam (state lives in the wrapper). */
 export function StartDialogBody({
 	mode,
@@ -169,6 +195,8 @@ export function StartDialogBody({
 	error,
 	onMode,
 	onMinutes,
+	warmup = true,
+	onWarmup,
 	onTopic,
 	onStart,
 	onNote,
@@ -186,6 +214,9 @@ export function StartDialogBody({
 	error: string | null;
 	onMode: (mode: StartMode) => void;
 	onMinutes: (minutes: number) => void;
+	/** Open Learn and Practice with a warm-up on due topics (warm-up recall). */
+	warmup?: boolean;
+	onWarmup?: (on: boolean) => void;
 	onTopic: (text: string) => void;
 	onStart: () => void;
 	onNote: (name: string) => void;
@@ -321,6 +352,24 @@ export function StartDialogBody({
 						))}
 					</div>
 				</div>
+			)}
+
+			{mode !== "review" && due !== null && due > 0 && onWarmup && (
+				<label data-testid="start-warmup" className="flex cursor-pointer items-start gap-2.5 text-sm">
+					<input
+						type="checkbox"
+						checked={warmup}
+						onChange={(e) => onWarmup(e.target.checked)}
+						className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary"
+					/>
+					<span>
+						<span className="font-semibold">Warm up first</span>
+						<span className="text-foreground/70">
+							{" "}
+							· {Math.min(due, WARMUP_SIZE)} quick {Math.min(due, WARMUP_SIZE) === 1 ? "question" : "questions"} on earlier topics you are starting to forget
+						</span>
+					</span>
+				</label>
 			)}
 
 			<div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-5">

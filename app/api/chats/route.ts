@@ -1,7 +1,7 @@
 import { chainsForSelection, formatChainLine } from "@/src/core";
 import { newGraphContextMessage, type GraphContextPick } from "@/src/core";
-import { compactionInFlight, createChat, isTurnRunning, listChats, readSettingsRecord, stores, titleFromPrompt } from "@/src/server";
-import type { ChatListItem } from "@/src/core";
+import { compactionInFlight, createChat, isTurnRunning, listChats, readSettingsRecord, stores, titleFromPrompt, warmupContextMessage } from "@/src/server";
+import type { ChatListItem, LhMessage } from "@/src/core";
 
 /** The session picker's list: record-derived summaries (phase, pending
  *  question) + live liveness — a running turn marks the session busy
@@ -20,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-	const body = (await req.json().catch(() => ({}))) as { title?: unknown; kind?: unknown; graphContext?: unknown };
+	const body = (await req.json().catch(() => ({}))) as { title?: unknown; kind?: unknown; graphContext?: unknown; warmup?: unknown };
 	const title = typeof body.title === "string" ? body.title : "";
 	// Practice sessions (owner, 2026-10-04): kind "practice" marks the
 	// record — the practice agent + its tools from turn 1, no extraction.
@@ -59,13 +59,21 @@ export async function POST(req: Request) {
 					)
 					.slice(0, 64)
 			: [];
+	const opening: LhMessage[] = [];
 	if (picks.length > 0) {
 		const byId = new Map(stores.graphStore.readNodes().map((n) => [n.id, n]));
 		const pickedNodes = picks.map((p) => byId.get(p.id)).filter((n) => n !== undefined);
 		const chainLines = chainsForSelection(pickedNodes, stores.graphStore.readChains()).map((c) =>
 			formatChainLine(c, Object.fromEntries(byId)),
 		);
-		stores.chatStore.saveMessages(chat.id, [newGraphContextMessage(picks, chainLines)]);
+		opening.push(newGraphContextMessage(picks, chainLines));
 	}
+	// WARM-UP RECALL: unless the learner turned it off for this session
+	// (warmup: false), a learn or practice session opens with the weakest
+	// due topics from earlier sessions — the review agent asks them before
+	// the session's own agent starts on the learner's request.
+	const warmup = body.warmup === false ? null : warmupContextMessage();
+	if (warmup) opening.push(warmup);
+	if (opening.length > 0) stores.chatStore.saveMessages(chat.id, opening);
 	return Response.json({ id: chat.id, title: chat.title });
 }
