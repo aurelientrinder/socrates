@@ -29,6 +29,9 @@ export const PATHS = {
 	/** The saved-notes library (src/store/notes.ts): one folder per
 	 *  imported notes file — the original, its plain text, its metadata. */
 	notes: path.join(DATA_ROOT, "notes"),
+	/** Flashcard decks made from notes (src/store/flashcards.ts): one JSON
+	 *  file per notes source, cards + their review history. */
+	flashcards: path.join(DATA_ROOT, "flashcards"),
 	/** Debug artifacts (env-gated): data/debug/provider-events/<chatId>.jsonl
 	 * raw provider stream recordings (src/agent/provider-events.ts). */
 	debug: path.join(DATA_ROOT, "debug"),

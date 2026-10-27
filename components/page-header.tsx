@@ -56,6 +56,7 @@ export function SectionHeading({ children, className }: { children: React.ReactN
 export const PROGRESS_TABS = [
 	{ id: "memory", label: "Memory", href: "/progress" },
 	{ id: "calibration", label: "Calibration", href: "/progress?tab=calibration" },
+	{ id: "cards", label: "Flashcards", href: "/progress?tab=cards" },
 	{ id: "map", label: "Map", href: "/map" },
 ];
 

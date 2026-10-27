@@ -1,4 +1,5 @@
 import { CalibrationView } from "@/components/calibration-view";
+import { FlashcardReview } from "@/components/flashcard-review";
 import { PageFrame, PageTabs, PROGRESS_TABS } from "@/components/page-header";
 import { ReviewView } from "@/components/review-view";
 import { calibrationAcrossSessions, retentionAcrossSessions, reviewStatus } from "@/src/server";
@@ -11,18 +12,21 @@ export const dynamic = "force-dynamic";
  * PROGRESS (redesign wave, 2026-10-26): how you are doing, in one place.
  * Memory is the old Review page (what is fading, the Start review panel),
  * Calibration the old Calibration page (how sure you felt vs how right you
- * were). The Map tab links to the knowledge map at /map. /review and
+ * were), Flashcards the cards made from imported notes (2026-10-27).
+ * The Map tab links to the knowledge map at /map. /review and
  * /calibration redirect here.
  */
-export default async function ProgressPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-	const { tab } = await searchParams;
-	const active = tab === "calibration" ? "calibration" : "memory";
+export default async function ProgressPage({ searchParams }: { searchParams: Promise<{ tab?: string; deck?: string }> }) {
+	const { tab, deck } = await searchParams;
+	const active = tab === "calibration" || tab === "cards" ? tab : "memory";
 	const now = Date.now();
 	return (
 		<PageFrame title="Progress" testId="progress-page">
 			<PageTabs tabs={PROGRESS_TABS} active={active} />
 			{active === "calibration" ? (
 				<CalibrationView report={calibrationAcrossSessions()} />
+			) : active === "cards" ? (
+				<FlashcardReview key={deck ?? "all"} deck={deck} />
 			) : (
 				<ReviewView report={retentionAcrossSessions(now)} status={reviewStatus(now)} />
 			)}
