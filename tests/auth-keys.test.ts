@@ -15,7 +15,7 @@ describe("the catalog", () => {
 	it("is exactly the CURATED app-service keys (provider keys live in the provider table)", () => {
 		assert.deepEqual(
 			AUTH_KEYS.map((k) => k.id),
-			["DEEPGRAM_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "TODOIST_API_TOKEN"],
+			["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "TODOIST_API_TOKEN"],
 		);
 		for (const k of AUTH_KEYS) {
 			assert.ok(k.label.length > 0, `${k.id} has a label`);
@@ -31,9 +31,9 @@ describe("the catalog", () => {
 	});
 
 	it("isKnownAuthKey: catalog yes, everything else no", () => {
-		assert.ok(isKnownAuthKey("DEEPGRAM_API_KEY"));
-		assert.ok(isKnownAuthKey("TAVILY_API_KEY"));
-		assert.ok(isKnownAuthKey("BRAVE_API_KEY"));
+		assert.ok(isKnownAuthKey("GOOGLE_OAUTH_CLIENT_ID"));
+		assert.ok(isKnownAuthKey("TODOIST_API_TOKEN"));
+		for (const retired of ["DEEPGRAM_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY"]) assert.ok(!isKnownAuthKey(retired), `${retired} is retired`);
 		assert.ok(!isKnownAuthKey("OPENROUTER_API_KEY"));
 		assert.ok(!isKnownAuthKey("OPENAI_API_KEY"), "provider vars are a separate surface");
 		assert.ok(!isKnownAuthKey("FUTURE_PLANS_TOKEN"));
@@ -42,33 +42,28 @@ describe("the catalog", () => {
 });
 
 describe("validateKeyShape (the 400 gate — curated keys)", () => {
-	it("Tavily: tvly- prefix required, length floor past it", () => {
-		assert.ok(validateKeyShape("TAVILY_API_KEY", "tvly-abc123def456ghi78").ok);
-		assert.ok(!validateKeyShape("TAVILY_API_KEY", "sk-or-v1-abcdefghij").ok, "wrong family");
-		assert.ok(!validateKeyShape("TAVILY_API_KEY", "tvly-").ok, "prefix alone is a truncation");
-		assert.ok(!validateKeyShape("TAVILY_API_KEY", "  ").ok, "empty fails");
+	it("Google OAuth client ID: must end with the googleusercontent suffix", () => {
+		assert.ok(validateKeyShape("GOOGLE_OAUTH_CLIENT_ID", `${"1".repeat(30)}.apps.googleusercontent.com`).ok);
+		assert.ok(!validateKeyShape("GOOGLE_OAUTH_CLIENT_ID", "1".repeat(50)).ok, "wrong family");
 	});
 
-	it("Brave: no public format — a ≥20-char truncation guard, no whitespace", () => {
-		assert.ok(validateKeyShape("BRAVE_API_KEY", "b".repeat(40)).ok);
-		assert.ok(!validateKeyShape("BRAVE_API_KEY", "b".repeat(19)).ok, "truncated paste");
-		assert.ok(!validateKeyShape("BRAVE_API_KEY", "has whitespace here").ok);
-	});
-
-	it("Deepgram: no public format — a ≥20-char truncation guard, no whitespace", () => {
-		assert.ok(validateKeyShape("DEEPGRAM_API_KEY", "a".repeat(40)).ok);
-		assert.ok(!validateKeyShape("DEEPGRAM_API_KEY", "a".repeat(19)).ok, "truncated paste");
-		assert.ok(!validateKeyShape("DEEPGRAM_API_KEY", "a b c d e f g h i j k l m n o p q r s").ok, "whitespace");
+	it("Todoist: the 40-hex token", () => {
+		assert.ok(validateKeyShape("TODOIST_API_TOKEN", "a".repeat(40)).ok);
+		assert.ok(!validateKeyShape("TODOIST_API_TOKEN", "a".repeat(39)).ok, "truncated paste");
 	});
 
 	it("trims surrounding paste whitespace before checking", () => {
-		assert.ok(validateKeyShape("DEEPGRAM_API_KEY", `  ${"d".repeat(40)}  `).ok);
+		assert.ok(validateKeyShape("TODOIST_API_TOKEN", `  ${"d".repeat(40)}  `).ok);
+	});
+
+	it("a retired key id is rejected like any unknown one", () => {
+		assert.ok(!validateKeyShape("TAVILY_API_KEY", "tvly-abc123def456ghi78").ok);
 	});
 
 	it("unknown ids are rejected with the supported list", () => {
 		const r = validateKeyShape("SOMETHING_ELSE", "whatever");
 		assert.ok(!r.ok);
-		if (!r.ok) assert.match(r.error, /SOMETHING_ELSE.*DEEPGRAM_API_KEY/);
+		if (!r.ok) assert.match(r.error, /SOMETHING_ELSE.*GOOGLE_OAUTH_CLIENT_ID/);
 	});
 });
 

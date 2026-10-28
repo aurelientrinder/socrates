@@ -569,7 +569,7 @@ function researcherModel(): PiEngine {
 function stubSearch(): SearchProvider & { queries: string[] } {
 	const queries: string[] = [];
 	return {
-		id: "tavily",
+		id: "gemini",
 		async search(query: string, count: number) {
 			queries.push(`${query} (${count})`);
 			return [{ title: "sigma.js", url: "https://www.sigmajs.org/", snippet: "v3 released" }];

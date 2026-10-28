@@ -3,7 +3,7 @@
  *
  * Sign-in is the installed-app OAuth flow Google documents for desktop
  * clients: authorization code + PKCE (S256) with a loopback redirect on a
- * one-shot 127.0.0.1 listener (the same shape as electron/chatgpt.cjs). It
+ * one-shot 127.0.0.1 listener. It
  * deliberately does NOT redirect into the app's own /api surface: that
  * surface requires the per-launch desktop capability header, which a
  * browser redirect never carries.

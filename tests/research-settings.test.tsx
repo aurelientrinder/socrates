@@ -6,14 +6,13 @@ import { parseHTML } from "linkedom";
 import { AgentSection } from "../components/settings/agent-section.tsx";
 import type { AgentSettings } from "../src/core/index.ts";
 
-it("keyless settings keep Research interactive while search-engine setup retains its own disabled state", async () => {
+it("keyless settings keep Research interactive while the keyless dictation hint stays separate", async () => {
 	const dom = parseHTML("<html><body><div id='root'></div></body></html>");
 	const globals = globalThis as Record<string, unknown>;
 	const previous = new Map<string, PropertyDescriptor | undefined>();
-	const reason = "No search engine is configured.";
+	const reason = "no dictation engine — set a Gemini (Google) model key";
 	const bodies: Record<string, unknown> = {
-		"/api/search": { available: false, engine: null, reason },
-		"/api/keys": { keys: [{ id: "TAVILY_API_KEY", present: false }, { id: "BRAVE_API_KEY", present: false }] },
+		"/api/stt": { available: false, engine: null, reason },
 		"/api/models": { models: [], slots: { strong: null, cheap: null, vision: null } },
 		"/api/settings/prompts": { prober: [], teacher: [] },
 	};
@@ -52,14 +51,10 @@ it("keyless settings keep Research interactive while search-engine setup retains
 		assert.equal(toggle.hasAttribute("disabled"), false);
 		assert.equal(toggle.getAttribute("aria-checked"), "true");
 		assert.ok(!row.className.includes("opacity-40"));
-		assert.ok(!row.textContent?.includes(reason), "search setup hint is no longer a research-disable hint");
+		assert.ok(!row.textContent?.includes(reason), "the keyless hint is not a research-disable hint");
 		act(() => { toggle.click(); });
 		assert.equal(written?.tools?.research, false, "the keyless toggle emits the same stored boolean");
-		const engine = document.querySelector<HTMLButtonElement>('[data-testid="search-engine-trigger"]')!;
-		assert.ok(engine.className.includes("cursor-not-allowed"), "search engine preference retains its own key gate");
-		act(() => { engine.click(); });
-		assert.equal(document.querySelector('[data-testid="search-engine-menu"]'), null, "keyless engine preference does not open");
-		assert.ok(document.querySelector('[data-testid="search-engine-row"]')?.textContent?.includes(reason));
+		assert.ok(document.querySelector('[data-testid="dictation-language-row"]')?.textContent?.includes(reason));
 	} finally {
 		act(() => { root.unmount(); });
 		for (const [key, descriptor] of previous) {

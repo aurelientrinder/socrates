@@ -2,7 +2,7 @@ import { Agent, type AgentEvent, type AgentMessage, type AgentTool } from "@eare
 import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
 import { randomUUID } from "node:crypto";
 import { APP_IDENTITY, piEngineFor, type PiEngine } from "../models.ts";
-import { usageWasAdmitted } from "../subscription-request-cycle.ts";
+import { usageWasAdmitted } from "../unadmitted-usage.ts";
 import { providerEventObserver } from "../provider-events.ts";
 import type { ModelRole } from "../../../config.ts";
 import { MAX_RATE_LIMIT_RETRIES, noteRateLimit, rateLimitCooling, rateLimitDelayMs, rateLimitFailure, isRateLimitError, waitForRateLimit } from "../rate-limit.ts";

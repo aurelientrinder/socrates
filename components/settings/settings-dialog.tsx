@@ -49,8 +49,6 @@ import { KeysSection } from "./keys-section.tsx";
 import { Hint } from "@/components/ui/hint";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
 import { KeyboardSection } from "./keyboard-section.tsx";
-import { ChatGPTUIProvider } from "./chatgpt-connection.tsx";
-import { NativeSubscriptionUIProvider } from "./subscription-connections.tsx";
 
 /** Owner (2026-09-20): hints earn their place — mechanics-explaining
  *  prose is out; only the keyboard note stays (storage location is a
@@ -67,8 +65,8 @@ type SectionId = (typeof SECTIONS)[number]["id"];
 
 /** `open(section?, row?)` — the optional ROW deep-links into the Keys
  *  section with that row unfolded (zero-keys wave: the dictation error's
- *  click lands on the Deepgram row). `row` is the KEY ID (the env-var
- *  name, e.g. DEEPGRAM_API_KEY — KeysSection's openRow state), not the
+ *  click lands on the Gemini row). `row` is the KEY ID (the env-var
+ *  name, e.g. GEMINI_API_KEY — KeysSection's openRow state), not the
  *  row's testid. */
 const DialogContext = createContext<{ open: (section?: string, row?: string) => void }>({ open: () => {} });
 
@@ -93,12 +91,12 @@ export function SettingsDialogProvider({
 		setShow(true);
 	}, []);
 	return (
-		<ChatGPTUIProvider><NativeSubscriptionUIProvider><DialogContext.Provider value={{ open }}>
+		<DialogContext.Provider value={{ open }}>
 			{children}
 			{show && (
 				<SettingsDialog onClose={() => setShow(false)} initialSection={landOn} initialRow={landOnRow} />
 			)}
-		</DialogContext.Provider></NativeSubscriptionUIProvider></ChatGPTUIProvider>
+		</DialogContext.Provider>
 	);
 }
 

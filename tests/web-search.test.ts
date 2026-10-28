@@ -15,7 +15,7 @@ import type { SearchHit, SearchProvider } from "../src/core/search.ts";
 
 function stubProvider(hits: SearchHit[] = [{ title: "t", url: "https://e.com/", snippet: "s" }]): SearchProvider {
 	return {
-		id: "tavily",
+		id: "gemini",
 		async search() {
 			return hits;
 		},
@@ -28,7 +28,7 @@ describe("web_search on the injected port (web.ts)", () => {
 		assert.ok(web_search, "web_search is still exposed without a provider");
 		const out = await web_search!.execute!("c1", { query: "anything" });
 		const missing = "web_search is not available: no search engine is configured. " +
-			"Set a Tavily or Brave search API key in settings. Report in your brief that web search is unavailable.";
+			"Set a Gemini (Google) model key in settings. Report in your brief that web search is unavailable.";
 		assert.equal(out.details, missing);
 		assert.deepEqual(out.content, [{ type: "text", text: missing }]);
 		assert.notEqual(out.isError, true, "missing keys remain ordinary recoverable text, not a native error");
@@ -37,7 +37,7 @@ describe("web_search on the injected port (web.ts)", () => {
 	it("a live provider returns its hits (count defaults to 5)", async () => {
 		const seen: Array<{ query: string; count: number }> = [];
 		const provider: SearchProvider = {
-			id: "tavily",
+			id: "gemini",
 			async search(query, count) {
 				seen.push({ query, count });
 				return [{ title: "sigma.js", url: "https://www.sigmajs.org/", snippet: "v3 released" }];
@@ -51,14 +51,14 @@ describe("web_search on the injected port (web.ts)", () => {
 
 	it("provider errors surface as error strings, never thrown", async () => {
 		const provider: SearchProvider = {
-			id: "brave",
+			id: "gemini",
 			async search() {
-				throw new Error("Brave search API 429: rate limited");
+				throw new Error("Gemini search API 429: rate limited");
 			},
 		};
 		const { web_search } = createWebTools(() => provider);
 		const out = await web_search!.execute!("c1", { query: "q" });
-		assert.match(String(out.details), /web_search failed: Brave search API 429: rate limited/);
+		assert.match(String(out.details), /web_search failed: Gemini search API 429: rate limited/);
 	});
 
 	it("the resolution is FRESH per call — a key appearing mid-session takes effect", async () => {

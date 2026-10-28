@@ -68,7 +68,6 @@ import { NOTES_ACCEPT, NotesImportErrors, useNotesImport } from "@/components/no
 import Link from "next/link";
 import { FileTextIcon, ListTreeIcon, Loader2Icon, SearchIcon, SettingsIcon, UploadIcon, WaypointsIcon } from "lucide-react";
 import { incrementalLayout, propositionSessionHref, type GraphCostSummary, type GraphNode, type GraphSnapshot } from "@/src/core";
-import { planCostLabel } from "@/components/usage-format";
 import { GraphCanvasRenderer, type GraphRenderSettings } from "./graph-canvas.ts";
 import { usePopoverDismiss } from "@/components/popover-dismiss";
 import { useActivity } from "@/components/activity-dock";
@@ -296,18 +295,12 @@ function timeAgo(startedAt: number): string {
 
 /** Run/stage cost at 3 decimals (pipeline pennies are real money at this
  *  scale); headline totals use 2. Null (unpriced model) renders "—". */
-function fmtRunCost(dollars: number | null, providers: readonly string[] = []): string {
-	return planCostLabel(dollars, providers, (value) => `$${value.toFixed(3)}`);
-}
-function graphProviders(value: { subscriptionRuns?: number; subscriptionProviders?: string[] }): string[] {
-	return value.subscriptionProviders ?? ((value.subscriptionRuns ?? 0) > 0 ? ["ChatGPT"] : []);
+function fmtRunCost(dollars: number | null): string {
+	return dollars === null ? "—" : `$${dollars.toFixed(3)}`;
 }
 function graphUsageLabel(costs: Pick<GraphCostSummary, "stages">): string {
-	const stages = [costs.stages.extraction, costs.stages.audit];
-	const providers = [...new Set(stages.flatMap(graphProviders))];
-	const priced = stages.some((stage) => stage.runs - stage.unpricedRuns - (stage.subscriptionRuns ?? 0) > 0);
-	const dollars = displayCostTotals(costs).totalDollars;
-	return planCostLabel(priced ? dollars : null, providers, (value) => `$${value.toFixed(2)}`);
+	const priced = [costs.stages.extraction, costs.stages.audit].some((stage) => stage.runs - stage.unpricedRuns > 0);
+	return priced ? `$${displayCostTotals(costs).totalDollars.toFixed(2)}` : "—";
 }
 
 /**
@@ -409,8 +402,8 @@ function GraphCostPanel({ costs }: { costs: GraphCostSummary }) {
 					<div key={label} className="flex items-baseline justify-between gap-2 text-[11px]">
 						<span className="shrink-0 text-muted-foreground">{label}</span>
 						<span className="min-w-0 text-right tabular-nums">
-							{fmtRunCost(stage.runs - stage.unpricedRuns - (stage.subscriptionRuns ?? 0) <= 0 ? null : stage.dollars, graphProviders(stage))}
-							{stage.unpricedRuns > 0 && (stage.runs - stage.unpricedRuns - (stage.subscriptionRuns ?? 0) > 0 || (stage.subscriptionRuns ?? 0) > 0) && (
+							{fmtRunCost(stage.runs - stage.unpricedRuns <= 0 ? null : stage.dollars)}
+							{stage.unpricedRuns > 0 && stage.runs - stage.unpricedRuns > 0 && (
 								<span className="text-muted-foreground"> +{stage.unpricedRuns} unpriced</span>
 							)}
 							<span className="text-muted-foreground">
@@ -434,7 +427,7 @@ function GraphCostPanel({ costs }: { costs: GraphCostSummary }) {
 									</span>
 								)}
 							</span>
-							<span className="shrink-0 tabular-nums">{fmtRunCost(run.dollars, graphProviders(run))}{run.dollars === null && run.subscriptionRuns === 1 ? " +1 unpriced" : ""}</span>
+							<span className="shrink-0 tabular-nums">{fmtRunCost(run.dollars)}</span>
 						</div>
 					))}
 			</div>
