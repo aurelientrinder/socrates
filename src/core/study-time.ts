@@ -4,7 +4,8 @@
  * the transcripts alone (no timer state, so it holds on every device):
  * within one session, the time between two consecutive messages counts
  * when it is short enough to be one sitting; a longer pause is a break and
- * counts nothing. Each stretch is credited to the day it started on, in
+ * counts nothing. Flashcard answers count like messages (one deck = one
+ * session) and a mock exam counts from start to submit. Each stretch is credited to the day it started on, in
  * the server's local time. Pure, browser-safe.
  */
 
@@ -21,7 +22,14 @@ export function weekStartOf(now: Date): Date {
 /** Whole minutes studied on each of `days` days from local midnight
  *  `start` (seven by default: a week, Monday first). `sessions` holds each
  *  session's message timestamps (ms), in any order. */
-export function studyMinutesByDay(sessions: readonly (readonly number[])[], start: Date, days = 7): number[] {
+export function studyMinutesByDay(
+	sessions: readonly (readonly number[])[],
+	start: Date,
+	days = 7,
+	/** Stretches known to be study from start to end (ms), e.g. a mock
+	 *  exam sitting; credited whole to the day they started on. */
+	spans: readonly (readonly [number, number])[] = [],
+): number[] {
 	const ms = Array.from({ length: days }, () => 0);
 	const dayStarts = Array.from({ length: days + 1 }, (_, i) => {
 		const d = new Date(start);
@@ -37,6 +45,11 @@ export function studyMinutesByDay(sessions: readonly (readonly number[])[], star
 			const day = dayStarts.findIndex((dayStart, k) => k < days && from >= dayStart && from < dayStarts[k + 1]!);
 			if (day >= 0) ms[day]! += gap;
 		}
+	}
+	for (const [from, to] of spans) {
+		if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) continue;
+		const day = dayStarts.findIndex((dayStart, k) => k < days && from >= dayStart && from < dayStarts[k + 1]!);
+		if (day >= 0) ms[day]! += to - from;
 	}
 	return ms.map((v) => Math.round(v / 60_000));
 }

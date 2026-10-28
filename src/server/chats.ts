@@ -7,7 +7,9 @@ import { propositionNames, recallEvents, retentionReport, type RecallEvent, type
 import { weakSpotReport, type WeakSpotReport } from "../core/weak-spots.ts";
 import { STREAK_LOOKBACK_DAYS, daysBackStart, studyMinutesByDay, studyStreak, weekStartOf, type StudyStreak } from "../core/study-time.ts";
 import { examCalibrationAnswers, examRecallEvents } from "../core/exam.ts";
+import { chatDigests, forgetChatDigest } from "./chat-digests.ts";
 import { examStore } from "../store/exams.ts";
+import { flashcardStore } from "../store/flashcards.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -115,6 +117,9 @@ export async function deleteChatSession(chatId: string, mode: ChatDeleteMode): P
 	const stats = deleteChatTraces(stores.graphStore, chatId, mode);
 	const jobsRemoved = stores.jobStore.deleteJobsForChat(chatId);
 	stores.chatStore.deleteChat(chatId);
+	// "preserve-graph" keeps what the session proved about the learner's
+	// memory (see chat-digests.ts); erasing the topics erases it too.
+	if (mode === "delete-nodes") forgetChatDigest(chatId);
 	return { ok: true, mode, stats, jobsRemoved, graphRevision: graphRevision() };
 }
 
@@ -169,10 +174,7 @@ export function sessionCoverage(chatId: string): SessionCoverage | null {
  *  and every rated mock-exam part, folded into stated confidence vs
  *  actual accuracy. */
 export function calibrationAcrossSessions(): CalibrationReport {
-	const answers = listChats().flatMap((summary) => {
-		const record = getChat(summary.id);
-		return record ? calibrationAnswers(record) : [];
-	});
+	const answers = chatDigests().flatMap((d) => d.calibration);
 	return calibrationReport([...answers, ...examStore.list().flatMap(examCalibrationAnswers)]);
 }
 
@@ -183,12 +185,23 @@ export function studyRecord(now: Date = new Date()): { week: number[]; streak: S
 	const weekStart = weekStartOf(now);
 	const streakStart = daysBackStart(now, STREAK_LOOKBACK_DAYS);
 	const since = Math.min(weekStart.getTime(), streakStart.getTime());
-	const sessions = listChats()
-		.filter((summary) => Date.parse(summary.updatedAt) >= since)
-		.map((summary) => (getChat(summary.id)?.messages ?? []).map((m) => (m as { timestamp?: number }).timestamp ?? NaN));
+	const sessions = chatDigests()
+		.map((d) => d.stamps.filter((t) => t >= since))
+		.filter((stamps) => stamps.length > 0);
+	// Flashcard rounds (one deck = one session of answer times) and mock
+	// exam sittings count as study too, not only chat messages.
+	for (const deck of flashcardStore.list()) {
+		const stamps = deck.cards.flatMap((c) => c.reviews.map((r) => r.at)).filter((t) => t >= since);
+		if (stamps.length > 0) sessions.push(stamps);
+	}
+	const spans = examStore.list().flatMap((e): [number, number][] => {
+		const from = e.startedAt ? Date.parse(e.startedAt) : NaN;
+		const to = e.submittedAt ? Date.parse(e.submittedAt) : NaN;
+		return from >= since && to > from ? [[from, to]] : [];
+	});
 	return {
-		week: studyMinutesByDay(sessions, weekStart),
-		streak: studyStreak(studyMinutesByDay(sessions, streakStart, STREAK_LOOKBACK_DAYS)),
+		week: studyMinutesByDay(sessions, weekStart, 7, spans),
+		streak: studyStreak(studyMinutesByDay(sessions, streakStart, STREAK_LOOKBACK_DAYS, spans)),
 	};
 }
 
@@ -206,10 +219,11 @@ export function weakSpotsAcrossSessions(now: number = Date.now()): WeakSpotRepor
 
 function recallEventsAcrossSessions(): RecallEvent[] {
 	const names = propositionNames(stores.graphStore.readNodes());
-	const events = listChats().flatMap((summary) => {
-		const record = getChat(summary.id);
-		return record ? recallEvents(record, (id) => names.get(id)) : [];
-	});
+	const events = chatDigests().flatMap((d) =>
+		// Practice targets are named by the graph, which can be renamed
+		// after the digest was written.
+		d.events.map((e) => (e.kind === "proposition" && !e.review && names.has(e.topicId) ? { ...e, title: names.get(e.topicId)! } : e)),
+	);
 	// Graded mock exams test topics too (as reviews: core/exam.ts).
 	return [...events, ...examStore.list().flatMap(examRecallEvents)];
 }

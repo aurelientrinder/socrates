@@ -373,6 +373,19 @@ export function SettingsDialogBody({
 											}
 										/>
 									</SettingsRow>
+									<SettingsRow
+										label="Export your data"
+										hint="Sessions, map, flashcards, exams and settings as one JSON file (no API keys). A copy is also saved daily in the data folder's backups."
+										testid="row-export-data"
+									>
+										<a
+											href="/api/export"
+											download
+											className="shrink-0 rounded-sm border border-border px-3 py-1 text-xs hover:bg-muted"
+										>
+											Export
+										</a>
+									</SettingsRow>
 								</SettingsSection>
 							)}
 							{active === "keys" && (
