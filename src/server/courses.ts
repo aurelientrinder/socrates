@@ -21,6 +21,7 @@ import {
 	courseGroupFor,
 	courseOf,
 	courseKeyFor,
+	foldSessionKeys,
 	suggestCourses,
 	type CourseGroup,
 	type CourseLinks,
@@ -65,6 +66,14 @@ const strings = (v: unknown): string[] | undefined =>
 	Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : undefined;
 
 export function readCourseLinks(): CourseLinks {
+	const links = readStoredLinks();
+	// Groups made while CM, TD and TP counted as different courses fold into one.
+	const folded = foldSessionKeys(links);
+	if (Object.keys(folded).length !== Object.keys(links).length) writeCourseLinks(folded);
+	return folded;
+}
+
+function readStoredLinks(): CourseLinks {
 	const raw = readJson<Record<string, Partial<CourseGroup>>>(COURSES_FILE);
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
 	const out: CourseLinks = {};

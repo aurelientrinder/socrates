@@ -12,7 +12,7 @@
  * is core/briefing.ts courseGroupFor.
  */
 
-import { classifyEvent, courseGroupFor, courseOf, type CourseLinks, type StudyEvent } from "./briefing.ts";
+import { classifyEvent, courseGroupFor, courseOf, sessionTypeOf, type CourseLinks, type SessionType, type StudyEvent } from "./briefing.ts";
 
 /** A title with no class word must come back this often to be suggested. */
 export const REPEAT_MIN = 3;
@@ -30,6 +30,8 @@ export interface CourseSuggestion {
 	label: string;
 	/** Classes of it in the window the calendar was read for. */
 	classes: number;
+	/** How many of them are lectures, tutorials and labs (CM, TD, TP): one course, told apart. */
+	sessions: Record<SessionType, number>;
 	exams: number;
 	/** The next one, for "next class Tuesday". */
 	nextStart: number | null;
@@ -53,7 +55,7 @@ export function suggestCourses(
 	now: number,
 ): CourseSuggestion[] {
 	const skip = new Set(dismissed);
-	const byKey = new Map<string, { labels: Map<string, number>; titles: Set<string>; classes: number; exams: number; repeats: number; next: number | null; code: boolean }>();
+	const byKey = new Map<string, { sessions: Record<SessionType, number>; labels: Map<string, number>; titles: Set<string>; classes: number; exams: number; repeats: number; next: number | null; code: boolean }>();
 	for (const e of events) {
 		if (e.source !== "calendar") continue;
 		const kind = e.kind ?? classifyEvent(e.title, e.source);
@@ -61,10 +63,14 @@ export function suggestCourses(
 		const course = courseOf(e.title);
 		if (course.key.length < 2 || skip.has(course.key) || courseGroupFor(groups, course.key)) continue;
 		if (kind === "other" && (e.allDay || NOT_A_CLASS_RE.test(e.title))) continue;
-		const entry = byKey.get(course.key) ?? { labels: new Map(), titles: new Set(), classes: 0, exams: 0, repeats: 0, next: null, code: course.label !== course.label.toLowerCase() && /\d/.test(course.label) };
+		const entry = byKey.get(course.key) ?? { sessions: { lecture: 0, tutorial: 0, lab: 0 }, labels: new Map(), titles: new Set(), classes: 0, exams: 0, repeats: 0, next: null, code: course.label !== course.label.toLowerCase() && /\d/.test(course.label) };
 		entry.labels.set(course.label, (entry.labels.get(course.label) ?? 0) + 1);
 		entry.titles.add(e.title);
-		if (kind === "class") entry.classes++;
+		if (kind === "class") {
+			entry.classes++;
+			const type = sessionTypeOf(e.title);
+			if (type) entry.sessions[type]++;
+		}
 		else if (kind === "exam") entry.exams++;
 		else entry.repeats++;
 		if (e.end >= now && (entry.next === null || e.start < entry.next)) entry.next = e.start;
@@ -78,12 +84,13 @@ export function suggestCourses(
 		if (!ok) continue;
 		const label = [...e.labels.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]![0];
 		const parts: string[] = [];
-		if (total > 0) parts.push(`${total} ${e.classes > 0 ? "class" : "event"}${total === 1 ? "" : e.classes > 0 ? "es" : "s"}`);
+		if (total > 0) parts.push(`${total} ${e.classes > 0 ? "class" : "event"}${total === 1 ? "" : e.classes > 0 ? "es" : "s"}${sessionMix(e.sessions)}`);
 		if (e.exams > 0) parts.push(`${e.exams} exam${e.exams === 1 ? "" : "s"}`);
 		out.push({
 			key,
 			label,
 			classes: total,
+			sessions: e.sessions,
 			exams: e.exams,
 			nextStart: e.next,
 			examples: [...e.titles].slice(0, 3),
@@ -92,6 +99,14 @@ export function suggestCourses(
 		});
 	}
 	return out.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+}
+
+/** "(4 lectures, 4 tutorials, 2 labs)": what meets, when a course meets in more than one way. */
+function sessionMix(sessions: Record<SessionType, number>): string {
+	const parts = (Object.entries(sessions) as [SessionType, number][])
+		.filter(([, n]) => n > 0)
+		.map(([type, n]) => `${n} ${type === "lecture" ? "lecture" : type === "tutorial" ? "tutorial" : "lab"}${n === 1 ? "" : "s"}`);
+	return parts.length > 1 ? ` (${parts.join(", ")})` : "";
 }
 
 /** The key a hand-made group is stored under: what courseOf would make of
