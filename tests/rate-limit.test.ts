@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { createFauxCore, fauxAssistantMessage, normalizeContext } from "@earendil-works/pi-ai";
 import { isDailyQuota, learnRequestLimit, pacedStream, parseRequestLimit, parseRetryDelayMs, rateLimitDelayMs, rateLimitedUntil, requestBudget, requestSlotDelayMs, waitForRequestSlot } from "../src/agent/rate-limit.ts";
 import { runSubagent } from "../src/agent/subagents/pi-run.ts";
 
@@ -106,13 +106,13 @@ it("pacedStream learns from a refused request and ends an aborted wait without s
 	let sent = 0;
 	const inner = ((...args: Parameters<typeof faux.streamSimple>) => { sent++; return faux.streamSimple(...args); }) as typeof faux.streamSimple;
 	const stream = pacedStream(key, () => true, inner);
-	const first = await stream(faux.getModel(), { messages: [] }, {}).result();
+	const first = await stream(faux.getModel(), normalizeContext({ messages: [] }), {}).result();
 	assert.equal(first.stopReason, "error");
 	assert.equal(sent, 1);
 	assert.ok(requestSlotDelayMs(key, true) > 0, "the limit named in the 429 now paces this model");
 
 	const controller = new AbortController();
-	const pending = stream(faux.getModel(), { messages: [] }, { signal: controller.signal });
+	const pending = stream(faux.getModel(), normalizeContext({ messages: [] }), { signal: controller.signal });
 	setTimeout(() => controller.abort(), 20);
 	const second = await pending.result();
 	assert.equal(second.stopReason, "aborted");
