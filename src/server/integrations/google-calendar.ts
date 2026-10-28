@@ -303,7 +303,7 @@ async function accessToken(): Promise<string> {
 	return body.access_token;
 }
 
-async function api<T>(pathAndQuery: string, init?: { method?: string; body?: unknown }): Promise<T> {
+export async function api<T>(pathAndQuery: string, init?: { method?: string; body?: unknown }): Promise<T> {
 	const token = await accessToken();
 	const res = await fetch(`${CALENDAR_API}${pathAndQuery}`, {
 		method: init?.method ?? "GET",
@@ -315,11 +315,12 @@ async function api<T>(pathAndQuery: string, init?: { method?: string; body?: unk
 		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 	});
 	if (res.status === 401) state().access = undefined;
-	if (!res.ok) throw new Error(`Google Calendar request failed (${res.status}).`);
+	if (!res.ok) throw Object.assign(new Error(`Google Calendar request failed (${res.status}).`), { status: res.status });
+	if (res.status === 204) return undefined as T;
 	return (await res.json()) as T;
 }
 
-interface GoogleCalendarListEntry {
+export interface GoogleCalendarListEntry {
 	id: string;
 	summary?: string;
 	selected?: boolean;

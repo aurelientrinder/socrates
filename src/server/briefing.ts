@@ -39,6 +39,7 @@ import { calibrationAcrossSessions, listChats, retentionAcrossSessions } from ".
 import { courseMaterial, readCourseLinks } from "./courses.ts";
 import { stores } from "./stores.ts";
 import { createStudyBlock, googleCalendarStatus, listCalendarEvents, type GoogleCalendarStatus } from "./integrations/google-calendar.ts";
+import { syncReminders } from "./reminders.ts";
 import { TASK_PROVIDERS } from "./integrations/todoist.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -273,6 +274,8 @@ export async function getBriefing(opts: { refresh?: boolean; now?: number } = {}
 					b.pushed = saved.pushed;
 					writeJson(dayFile(day), b);
 				}
+				// Keep the phone/laptop alerts in step with the fresh plan (no-op while reminders are off).
+				void syncReminders(b.plan).catch(() => undefined);
 				return b;
 			})
 			.finally(() => {
