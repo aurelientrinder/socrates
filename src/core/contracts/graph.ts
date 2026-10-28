@@ -102,6 +102,10 @@ export interface NotesSource {
 	/** The run's usage log — same append-only discipline as
 	 *  ChatRecord.extractions, idempotent per startedAt. */
 	extractions?: ExtractionRunUsage[];
+	/** An import that stopped part-way (a used-up quota, a failure, an
+	 *  abort): the fingerprints of the chunks it already merged. Importing
+	 *  the same text again skips them; a completed import removes this. */
+	resume?: { chunks: string[] };
 }
 
 /** One SAVED notes file (2026-10-26): the notes library keeps every

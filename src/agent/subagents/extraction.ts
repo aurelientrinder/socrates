@@ -15,7 +15,7 @@ import {
 import type { PiEngine } from "../models.ts";
 import { runSubagent } from "./pi-run.ts";
 import { withBgLlmSlot } from "./bg-llm-semaphore.ts";
-import { rateLimitedUntil } from "../rate-limit.ts";
+import { isDailyQuota, rateLimitedUntil } from "../rate-limit.ts";
 import type {
 	AuditVerdicts,
 	CallUsage,
@@ -1303,7 +1303,21 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 	// The notes auditor is the SAME identity-linker as the chat one (one
 	// schema now that attribution is gone) — audit() above, verbatim.
 
-	async function runNotesExtraction(input: { id: string; filePath: string; text: string; importedAt: string }): Promise<EmissionStats> {
+	/** A chunk's identity for resuming: its text, hashed. */
+	function chunkFingerprint(chunk: string): string {
+		return crypto.createHash("sha256").update(chunk).digest("hex").slice(0, 16);
+	}
+
+	/** Record which chunks of an unfinished import are merged (or clear the
+	 *  record once the whole file made it). */
+	function saveResume(id: string, chunks: string[] | undefined): void {
+		const current = graphStore.readSources().find((source) => source.id === id);
+		if (!current) return;
+		const { resume: _previous, ...rest } = current;
+		graphStore.upsertSource(chunks && chunks.length > 0 ? { ...rest, resume: { chunks } } : rest);
+	}
+
+	async function runNotesExtraction(input: { id: string; filePath: string; text: string; importedAt: string; resumeChunks: ReadonlySet<string> }): Promise<EmissionStats> {
 		const { id } = input;
 		// importNotes owns the source exclusion, including metadata and cleanup.
 		const t0 = performance.now();
@@ -1330,8 +1344,23 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 			// process-wide; audits serialize through the gate as before. The
 			// part rides the registry entry (feed suffix "· i/N") only when
 			// the file actually chunked.
+			// RESUME (2026-10-27): on free API tiers a long file can run out of
+			// quota part-way. The chunks an unfinished import already merged
+			// are skipped when the SAME text is imported again, so a retry
+			// spends requests only on what is missing. A completed import
+			// clears the record, so a later re-import still redoes the whole
+			// file (the every-explicit-import-runs rule).
+			const fingerprints = chunks.map(chunkFingerprint);
+			const done = fingerprints.filter((fp) => input.resumeChunks.has(fp));
+			if (done.length > 0)
+				console.info(`[extraction ${id}] resuming: ${done.length} of ${chunks.length} chunk(s) already merged by the unfinished import`);
 			const settled: PromiseSettledResult<EmissionStats>[] = [];
 			for (const [chunkIndex, chunk] of chunks.entries()) {
+				const fingerprint = fingerprints[chunkIndex]!;
+				if (input.resumeChunks.has(fingerprint)) {
+					settled.push({ status: "fulfilled", value: { nodes: 0, chains: 0 } });
+					continue;
+				}
 				const part = chunks.length > 1 ? { i: chunkIndex + 1, n: chunks.length } : undefined;
 				// Keep the actual signal after runJob tears down its registry row:
 				// usage persistence can throw and mask the body's AbortError.
@@ -1370,6 +1399,9 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 								// snapshot fetch reflects every finished chunk.
 								settleGraphLayout(graphStore);
 								console.info(`[extraction ${jobKey}] merged: ${merged.nodes} nodes, ${merged.chains ?? 0} chains`);
+								// Checkpoint for a resume, should a later chunk fail.
+								done.push(fingerprint);
+								saveResume(id, done);
 								return merged;
 							});
 						}),
@@ -1386,8 +1418,10 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 					}
 					settled.push({ status: "rejected", reason: failure });
 					// Same source-wide-abort law as the chat door: stop the
-					// run; isolated failures keep going.
+					// run; isolated failures keep going. A used-up daily quota
+					// stops it too: every later chunk would be refused the same.
 					if (failure instanceof Error && failure.name === "AbortError") break;
+					if (failure instanceof Error && isDailyQuota(failure.message)) break;
 				}
 			}
 			const stats = aggregateJobs(id, settled);
@@ -1397,9 +1431,11 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 			if (rejected.length > 0 || settled.length !== chunks.length) {
 				const aborted = rejected.some((r) => r.reason instanceof Error && r.reason.name === "AbortError");
 				const outcome = aborted ? "aborted" : settled.some((r) => r.status === "fulfilled") ? "partial" : "failed";
-				const details = rejected.map((r) => r.reason instanceof Error ? r.reason.message : String(r.reason)).join("; ");
-				throw new NotesImportError(outcome, mergedStats, details || "Notes import did not complete");
+				const details = [...new Set(rejected.map((r) => r.reason instanceof Error ? r.reason.message : String(r.reason)))].join("; ");
+				const resumable = done.length > 0 ? ` ${done.length} of ${chunks.length} parts are already on your map; importing the file again picks up where it stopped.` : "";
+				throw new NotesImportError(outcome, mergedStats, (details || "Notes import did not complete") + resumable);
 			}
+			saveResume(id, undefined);
 			console.info(
 				`[extraction ${id}] merged: ${stats.nodes} nodes, ${stats.chains ?? 0} chains ` +
 					`(${Math.round(performance.now() - t0)}ms total, ${chunks.length} chunk job(s))`,
@@ -1424,8 +1460,10 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 		inFlight.add(id);
 		try {
 			const importedAt = new Date().toISOString();
-			graphStore.upsertSource({ id, filePath: input.filePath, importedAt });
-			return await runNotesExtraction({ id, ...input, importedAt });
+			const resume = graphStore.readSources().find((source) => source.id === id)?.resume;
+			graphStore.upsertSource({ id, filePath: input.filePath, importedAt, ...(resume ? { resume } : {}) });
+			const resumeChunks = new Set(Array.isArray(resume?.chunks) ? resume.chunks.filter((c) => typeof c === "string") : []);
+			return await runNotesExtraction({ id, ...input, importedAt, resumeChunks });
 		} catch (err) {
 			if (err instanceof NotesImportError || err instanceof ModelsNotConfiguredError || err instanceof ProviderKeyMissingError) throw err;
 			throw new NotesImportError("failed", { nodes: 0, chains: 0 }, err instanceof Error ? err.message : String(err), { cause: err });
