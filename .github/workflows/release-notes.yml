@@ -1,0 +1,37 @@
+name: Update release notes
+
+# Rewrites a still-unpublished draft's body from docs/release-notes/<tag>.md on
+# main. Published releases are never touched.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag whose draft to update (default: v<package.json version>)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    name: Update the draft's notes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Write the notes onto the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-v$(node -p 'require("./package.json").version')}"
+          file="docs/release-notes/$tag.md"
+          [ -f "$file" ] || { echo "::error::$file does not exist."; exit 1; }
+          draft=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+            --jq ".[] | select(.tag_name == \"$tag\") | .draft")
+          [ "$draft" = "true" ] || { echo "::error::No unpublished draft for $tag."; exit 1; }
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file "$file"
+          echo "Updated the notes on the $tag draft."
