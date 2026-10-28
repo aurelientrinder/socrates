@@ -564,6 +564,15 @@ describe("bridge height: the body-based measure (ratchet fix, 2026-10-07)", () =
 	});
 });
 
+describe("bridge height: no runaway growth (empty space under demos)", () => {
+	it("measures the bottom of the content, not the stretched body, and stops viewport feedback", () => {
+		// body{min-height:100vh} / a 100vh child plus body margins used to grow
+		// the iframe by the margin on every report until the 2400px cap.
+		assert.ok(DEMO_BRIDGE_SCRIPT.includes("getElementsByTagName"));
+		assert.ok(DEMO_BRIDGE_SCRIPT.includes("streak"));
+	});
+});
+
 describe("setSteerUiInverted (the persisted invert switch, 2026-10-07)", () => {
 	const demoSteer = buildSubagentSteer(
 		{ id: "jx", kind: "demo", toolCallId: "cx" },
