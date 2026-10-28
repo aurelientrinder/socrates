@@ -16,11 +16,11 @@ import * as path from "node:path";
 import { PATHS, SETTINGS_FILE } from "../../config.ts";
 
 /** Folders under data/ that hold the learner's own work. */
-const DATA_FOLDERS = ["chats", "graph", "flashcards", "exams", "digests", "briefing"] as const;
+export const DATA_FOLDERS = ["chats", "graph", "flashcards", "exams", "digests", "briefing"] as const;
 const KEEP_SNAPSHOTS = 5;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-function backupsDir(): string {
+export function backupsDir(): string {
 	return path.join(PATHS.data, "backups");
 }
 
@@ -71,7 +71,7 @@ export interface DataExport {
 	files: Record<string, string>;
 }
 
-function collect(dir: string, rel: string, out: Record<string, string>): void {
+export function collect(dir: string, rel: string, out: Record<string, string>): void {
 	let entries: fs.Dirent[];
 	try {
 		entries = fs.readdirSync(dir, { withFileTypes: true });
