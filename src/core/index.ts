@@ -100,3 +100,5 @@ export * from "./coverage.ts";
 // ONE session→markdown formatter — the extractor's view and the user-facing
 // export share it. Pure, browser-safe.
 export * from "./session-markdown.ts";
+// Which gentle reminders to schedule on the Socrates calendar. Pure, browser-safe.
+export * from "./reminders.ts";

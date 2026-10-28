@@ -62,3 +62,5 @@ export {
 	type GoogleCalendarStatus,
 } from "./integrations/google-calendar.ts";
 export { TASK_PROVIDERS } from "./integrations/todoist.ts";
+// Reminder alerts on the Socrates calendar (phone + laptop).
+export * from "./reminders.ts";

@@ -23,6 +23,7 @@ import { QUICK_SESSION_MINUTES, setSessionBudget } from "@/components/session-ti
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { onSettingsSaved } from "@/components/settings-signal";
 import { Button } from "@/components/ui/button";
+import { RemindersCard } from "@/components/reminders-card";
 import { PageFrame } from "@/components/page-header";
 import { useStartDialog } from "@/components/start-dialog";
 import { ACTION_LABEL, ACTION_TAG, StudyPlanCard } from "@/components/study-plan-card";
@@ -305,6 +306,7 @@ export function TodayShell({
 						</section>
 					)}
 
+					{integrations.google.connected && <RemindersCard />}
 					<Connections integrations={integrations} briefing={briefing} handlers={handlers} />
 				</div>
 			</div>
