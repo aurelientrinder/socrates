@@ -3,19 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarPlusIcon, ListPlusIcon, Loader2Icon, PlayIcon, RefreshCwIcon } from "lucide-react";
+import { CalendarPlusIcon, FlameIcon, ListPlusIcon, Loader2Icon, PlayIcon, RefreshCwIcon, ZapIcon } from "lucide-react";
 import {
 	BUDGET_CHOICES,
+	STREAK_MIN_MINUTES,
+	quickPrompt,
 	startPrompt,
 	whenLabel,
 	type BriefingItem,
 	type BriefingPlan,
 	type ClassEntry,
 	type StudyEvent,
+	type StudyStreak,
 	type UpcomingEntry,
 } from "@/src/core";
 import { startDraftSession } from "@/components/new-session";
-import { setSessionBudget } from "@/components/session-timer";
+import { QUICK_SESSION_MINUTES, setSessionBudget } from "@/components/session-timer";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { onSettingsSaved } from "@/components/settings-signal";
 import { Button } from "@/components/ui/button";
@@ -28,7 +31,8 @@ import { cn } from "@/lib/utils";
  * a plan card with at most three things to study today and why, inside the
  * time you have, with one button that starts the first; beside it what is
  * coming up in the next two weeks with a readiness bar, today's classes,
- * and an honesty check when your answers show overconfidence. The ranking is server-side code (src/core/briefing.ts);
+ * an honesty check when your answers show overconfidence, and a gentle
+ * study streak with a five-minute way to keep it on a low day. The ranking is server-side code (src/core/briefing.ts);
  * this view only shows it and runs the clicks — Start opens a fresh
  * session seeded with the item, and nothing reaches Google Calendar or
  * Todoist except through the two push buttons.
@@ -61,6 +65,8 @@ export interface SessionOption {
 
 interface Handlers {
 	onStart: (item: BriefingItem) => void;
+	/** The first step as a five-minute session (low-motivation days). */
+	onQuick: (item: BriefingItem) => void;
 	onPrimer: (entry: ClassEntry) => void;
 	onPush: (item: BriefingItem, target: "todo" | "calendar") => void;
 	onRefresh: () => void;
@@ -85,6 +91,7 @@ export function TodayShell({
 	handlers,
 	honesty = null,
 	week = null,
+	streak = null,
 }: {
 	briefing: BriefingData | null;
 	integrations: IntegrationsData;
@@ -100,12 +107,16 @@ export function TodayShell({
 	honesty?: { points: number } | null;
 	/** Minutes studied each day this week (Monday first) and today's index. */
 	week?: StudyWeek | null;
+	/** The study streak; with the week, it shows in the This week card. */
+	streak?: StudyStreak | null;
 }) {
 	const plan = briefing?.plan;
 	const todo = integrations.todo[0];
 	const items = plan?.items ?? [];
 	const first = items[0];
 	const { open: openStart } = useStartDialog();
+	// Five minutes of the first step, or of something new when the plan is empty.
+	const quick = () => (first ? handlers.onQuick(first) : openStart("learn", QUICK_SESSION_MINUTES));
 	const total = items.reduce((sum, item) => sum + item.minutes, 0);
 	return (
 		<PageFrame
@@ -202,6 +213,12 @@ export function TodayShell({
 								Learn something new
 							</Button>
 						)}
+						{plan && (
+							<Button variant="ghost" size="lg" className="h-12 rounded-xl px-4 text-base" onClick={quick} data-testid="today-quick">
+								<ZapIcon className="size-4" />
+								Only 5 minutes
+							</Button>
+						)}
 						{total > 0 && <span className="text-sm text-muted-foreground">{total} min planned in all</span>}
 					</div>
 				</section>
@@ -241,7 +258,7 @@ export function TodayShell({
 						</SideCard>
 					)}
 
-					{week && <WeekCard week={week} />}
+					{week && <WeekCard week={week} streak={streak} onQuick={quick} />}
 
 					{honesty && (
 						<section data-testid="today-honesty" className="flex flex-col gap-2 rounded-2xl bg-good-soft px-5 py-4">
@@ -280,8 +297,45 @@ export function formatStudyTotal(minutes: number): string {
 	return h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
+/** The streak line's words: encouraging, never a scolding. Pure. */
+export function streakMessage(streak: StudyStreak): string {
+	const run = `${streak.days}-day streak`;
+	if (streak.days === 0) return "Start a streak today. Even 5 minutes counts.";
+	if (streak.studiedToday) return `${run}. Today counts.`;
+	if (streak.atRisk) return `${run}. 5 minutes today keeps it going.`;
+	return `${run}. Study today to add a day.`;
+}
+
+/** The streak (2026-10-27) under the week's bars, with a five-minute
+ *  start while today does not count yet. */
+function StreakLine({ streak, onQuick }: { streak: StudyStreak; onQuick: () => void }) {
+	return (
+		<div
+			data-testid="today-streak"
+			title={`A day counts with ${STREAK_MIN_MINUTES} minutes of study or more. One rest day between study days does not break the streak.`}
+			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 pt-3 text-sm"
+		>
+			<FlameIcon
+				aria-hidden="true"
+				className={cn("size-4 shrink-0", streak.days > 0 && streak.studiedToday ? "text-warn" : "text-muted-foreground")}
+			/>
+			<span className={cn("flex-1", streak.days > 0 ? "text-foreground" : "text-muted-foreground")}>{streakMessage(streak)}</span>
+			{!streak.studiedToday && (
+				<button
+					type="button"
+					onClick={onQuick}
+					data-testid="today-streak-quick"
+					className="font-medium text-good-ink underline-offset-2 hover:underline"
+				>
+					Do 5 minutes
+				</button>
+			)}
+		</div>
+	);
+}
+
 /** This week (redesign wave): minutes studied per day, as small bars. */
-function WeekCard({ week }: { week: StudyWeek }) {
+function WeekCard({ week, streak = null, onQuick }: { week: StudyWeek; streak?: StudyStreak | null; onQuick: () => void }) {
 	const total = week.minutes.reduce((a, b) => a + b, 0);
 	// Scale to the busiest day, but never so that a few minutes fill the bar.
 	const top = Math.max(30, ...week.minutes);
@@ -316,6 +370,7 @@ function WeekCard({ week }: { week: StudyWeek }) {
 					</span>
 				))}
 			</div>
+			{streak && <StreakLine streak={streak} onQuick={onQuick} />}
 		</section>
 	);
 }
@@ -595,6 +650,7 @@ export function TodayView({
 	sessions,
 	honesty = null,
 	week = null,
+	streak = null,
 }: {
 	initialBriefing: BriefingData | null;
 	initialIntegrations: IntegrationsData;
@@ -602,6 +658,7 @@ export function TodayView({
 	sessions: SessionOption[];
 	honesty?: { points: number } | null;
 	week?: StudyWeek | null;
+	streak?: StudyStreak | null;
 }) {
 	const router = useRouter();
 	const { open: openSettings } = useSettingsDialog();
@@ -676,6 +733,18 @@ export function TodayView({
 				const target = await startDraftSession(startPrompt(item), fetch);
 				if (target) {
 					setSessionBudget(target, item.minutes);
+					router.push(target);
+				}
+			} catch {
+				setError("Could not start the session.");
+			}
+		},
+		onQuick: async (item) => {
+			try {
+				// The step's title names the session; turn 1 carries the five-minute scope.
+				const target = await startDraftSession(item.title, fetch, undefined, undefined, quickPrompt(item));
+				if (target) {
+					setSessionBudget(target, QUICK_SESSION_MINUTES);
 					router.push(target);
 				}
 			} catch {
@@ -790,6 +859,7 @@ export function TodayView({
 			handlers={handlers}
 			honesty={honesty}
 			week={week}
+			streak={streak}
 		/>
 	);
 }

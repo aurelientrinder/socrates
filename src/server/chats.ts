@@ -4,7 +4,7 @@ import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from ".
 import { titleFromPrompt } from "../core/contracts.ts";
 import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
 import { propositionNames, recallEvents, retentionReport, type RetentionReport } from "../core/retention.ts";
-import { studyMinutesByDay, weekStartOf } from "../core/study-time.ts";
+import { STREAK_LOOKBACK_DAYS, daysBackStart, studyMinutesByDay, studyStreak, weekStartOf, type StudyStreak } from "../core/study-time.ts";
 import { examCalibrationAnswers, examRecallEvents } from "../core/exam.ts";
 import { examStore } from "../store/exams.ts";
 import { graphRevision } from "./graph.ts";
@@ -175,14 +175,20 @@ export function calibrationAcrossSessions(): CalibrationReport {
 	return calibrationReport([...answers, ...examStore.list().flatMap(examCalibrationAnswers)]);
 }
 
-/** Today's "This week": minutes studied each day of the current week,
- *  Monday first. Only sessions active since the week began are read. */
-export function studyWeek(now: Date = new Date()): number[] {
-	const start = weekStartOf(now);
+/** Today's "This week" (minutes studied each day of the current week,
+ *  Monday first) and the study streak, from one read of the sessions active
+ *  since the earlier of the week's start and the streak's lookback. */
+export function studyRecord(now: Date = new Date()): { week: number[]; streak: StudyStreak } {
+	const weekStart = weekStartOf(now);
+	const streakStart = daysBackStart(now, STREAK_LOOKBACK_DAYS);
+	const since = Math.min(weekStart.getTime(), streakStart.getTime());
 	const sessions = listChats()
-		.filter((summary) => Date.parse(summary.updatedAt) >= start.getTime())
+		.filter((summary) => Date.parse(summary.updatedAt) >= since)
 		.map((summary) => (getChat(summary.id)?.messages ?? []).map((m) => (m as { timestamp?: number }).timestamp ?? NaN));
-	return studyMinutesByDay(sessions, start);
+	return {
+		week: studyMinutesByDay(sessions, weekStart),
+		streak: studyStreak(studyMinutesByDay(sessions, streakStart, STREAK_LOOKBACK_DAYS)),
+	};
 }
 
 /** The review view's report: every tested recall across sessions, folded
