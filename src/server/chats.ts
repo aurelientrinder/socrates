@@ -5,6 +5,8 @@ import { titleFromPrompt } from "../core/contracts.ts";
 import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
 import { propositionNames, recallEvents, retentionReport, type RetentionReport } from "../core/retention.ts";
 import { studyMinutesByDay, weekStartOf } from "../core/study-time.ts";
+import { examCalibrationAnswers, examRecallEvents } from "../core/exam.ts";
+import { examStore } from "../store/exams.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -162,14 +164,15 @@ export function sessionCoverage(chatId: string): SessionCoverage | null {
 	};
 }
 
-/** The calibration view's report: every session's graded quiz answers,
- *  folded into stated confidence vs actual accuracy. */
+/** The calibration view's report: every session's graded quiz answers
+ *  and every rated mock-exam part, folded into stated confidence vs
+ *  actual accuracy. */
 export function calibrationAcrossSessions(): CalibrationReport {
 	const answers = listChats().flatMap((summary) => {
 		const record = getChat(summary.id);
 		return record ? calibrationAnswers(record) : [];
 	});
-	return calibrationReport(answers);
+	return calibrationReport([...answers, ...examStore.list().flatMap(examCalibrationAnswers)]);
 }
 
 /** Today's "This week": minutes studied each day of the current week,
@@ -190,5 +193,7 @@ export function retentionAcrossSessions(now: number = Date.now()): RetentionRepo
 		const record = getChat(summary.id);
 		return record ? recallEvents(record, (id) => names.get(id)) : [];
 	});
-	return retentionReport(events, now);
+	// Graded mock exams test topics too (as reviews: core/exam.ts).
+	const exams = examStore.list().flatMap(examRecallEvents);
+	return retentionReport([...events, ...exams], now);
 }

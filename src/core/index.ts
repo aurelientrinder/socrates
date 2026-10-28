@@ -60,6 +60,7 @@ export * from "./reply-language.ts";
 export * from "./briefing.ts";
 // Spaced-repetition review sessions: the queue marker + progress tally. Pure.
 export * from "./review.ts";
+export * from "./exam.ts";
 export * from "./context-usage.ts";
 export type { ChatGPTStatus, ChatGPTControlBridge } from "./contracts/chatgpt.ts";
 export { NATIVE_SUBSCRIPTIONS } from "./contracts/subscriptions.ts";
