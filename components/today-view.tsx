@@ -24,6 +24,7 @@ import { onSettingsSaved } from "@/components/settings-signal";
 import { Button } from "@/components/ui/button";
 import { PageFrame } from "@/components/page-header";
 import { useStartDialog } from "@/components/start-dialog";
+import { ACTION_LABEL, ACTION_TAG, StudyPlanCard } from "@/components/study-plan-card";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,7 +33,10 @@ import { cn } from "@/lib/utils";
  * time you have, with one button that starts the first; beside it what is
  * coming up in the next two weeks with a readiness bar, today's classes,
  * an honesty check when your answers show overconfidence, and a gentle
- * study streak with a five-minute way to keep it on a low day. The ranking is server-side code (src/core/briefing.ts);
+ * study streak with a five-minute way to keep it on a low day. Under the
+ * plan, the study plan card shows the days up to each exam
+ * (components/study-plan-card.tsx). The ranking is server-side code
+ * (src/core/briefing.ts, src/core/study-plan.ts);
  * this view only shows it and runs the clicks — Start opens a fresh
  * session seeded with the item, and nothing reaches Google Calendar or
  * Todoist except through the two push buttons.
@@ -148,80 +152,83 @@ export function TodayShell({
 			<div className="flex flex-wrap items-start gap-6">
 				{/* THE PLAN CARD (redesign wave): what to do, in order, inside the
 				    time you have, and one button that starts the first thing. */}
-				<section
-					aria-labelledby="plan-heading"
-					data-testid="today-plan"
-					className="flex min-w-0 flex-[2_1_30rem] flex-col rounded-2xl border border-border/70 bg-surface px-6 pb-6 pt-5"
-				>
-					<div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-						<h2 id="plan-heading" className="text-lg font-semibold">
-							Today&apos;s plan
-						</h2>
-						<div role="group" aria-label="Time you have today" data-testid="today-budget" className="flex gap-0.5 rounded-lg bg-accent/70 p-0.5">
-							{BUDGET_CHOICES.map((m) => (
-								<button
-									key={m}
-									type="button"
-									aria-pressed={budgetMinutes === m}
-									onClick={() => handlers.onBudget(m)}
-									className={cn(
-										"h-8 rounded-md px-2.5 text-sm transition-colors",
-										budgetMinutes === m ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
-									)}
-								>
-									{m} min
-								</button>
-							))}
+				<div className="flex min-w-0 flex-[2_1_30rem] flex-col gap-6">
+					<section
+						aria-labelledby="plan-heading"
+						data-testid="today-plan"
+						className="flex min-w-0 flex-col rounded-2xl border border-border/70 bg-surface px-6 pb-6 pt-5"
+					>
+						<div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+							<h2 id="plan-heading" className="text-lg font-semibold">
+								Today&apos;s plan
+							</h2>
+							<div role="group" aria-label="Time you have today" data-testid="today-budget" className="flex gap-0.5 rounded-lg bg-accent/70 p-0.5">
+								{BUDGET_CHOICES.map((m) => (
+									<button
+										key={m}
+										type="button"
+										aria-pressed={budgetMinutes === m}
+										onClick={() => handlers.onBudget(m)}
+										className={cn(
+											"h-8 rounded-md px-2.5 text-sm transition-colors",
+											budgetMinutes === m ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+										)}
+									>
+										{m} min
+									</button>
+								))}
+							</div>
 						</div>
-					</div>
-					{!plan ? (
-						<p className="py-4 text-sm text-muted-foreground">{busy ? "Working out what matters most today…" : "No plan yet."}</p>
-					) : items.length === 0 ? (
-						<p className="py-4 text-base text-muted-foreground">Nothing urgent. A good day to learn something new.</p>
-					) : (
-						<ol className="flex flex-col">
-							{items.map((item, i) => (
-								<PlanRow
-									key={item.id}
-									index={i + 1}
-									item={item}
-									pushed={briefing?.pushed?.[item.id]}
-									pushing={pushing}
-									canTodo={todo?.configured === true}
-									todoLabel={todo?.label ?? "to-do"}
-									canCalendar={integrations.google.connected}
-									handlers={handlers}
-								/>
-							))}
-						</ol>
-					)}
-					{plan && plan.trackedTopics === 0 && (
-						<p className="pt-2 text-sm text-muted-foreground">
-							Your memory of each topic is measured from quiz checks and practice. Once you have answered a few, the plan can
-							tell what is fading before each exam.
-						</p>
-					)}
-					<div className="mt-2 flex flex-wrap items-center gap-4 border-t border-border/60 pt-4">
-						{first ? (
-							<Button size="lg" className="h-12 rounded-xl px-6 text-base" onClick={() => handlers.onStart(first)} data-testid="today-start-first">
-								<PlayIcon className="size-4 fill-current" />
-								{items.length > 1 ? `Start with ${ACTION_LABEL[first.action].toLowerCase()}` : "Start"} · {first.minutes} min
-							</Button>
+						{!plan ? (
+							<p className="py-4 text-sm text-muted-foreground">{busy ? "Working out what matters most today…" : "No plan yet."}</p>
+						) : items.length === 0 ? (
+							<p className="py-4 text-base text-muted-foreground">Nothing urgent. A good day to learn something new.</p>
 						) : (
-							<Button size="lg" className="h-12 rounded-xl px-6 text-base" onClick={() => openStart("learn")} data-testid="today-learn-new">
-								<PlayIcon className="size-4 fill-current" />
-								Learn something new
-							</Button>
+							<ol className="flex flex-col">
+								{items.map((item, i) => (
+									<PlanRow
+										key={item.id}
+										index={i + 1}
+										item={item}
+										pushed={briefing?.pushed?.[item.id]}
+										pushing={pushing}
+										canTodo={todo?.configured === true}
+										todoLabel={todo?.label ?? "to-do"}
+										canCalendar={integrations.google.connected}
+										handlers={handlers}
+									/>
+								))}
+							</ol>
 						)}
-						{plan && (
-							<Button variant="ghost" size="lg" className="h-12 rounded-xl px-4 text-base" onClick={quick} data-testid="today-quick">
-								<ZapIcon className="size-4" />
-								Only 5 minutes
-							</Button>
+						{plan && plan.trackedTopics === 0 && (
+							<p className="pt-2 text-sm text-muted-foreground">
+								Your memory of each topic is measured from quiz checks and practice. Once you have answered a few, the plan can
+								tell what is fading before each exam.
+							</p>
 						)}
-						{total > 0 && <span className="text-sm text-muted-foreground">{total} min planned in all</span>}
-					</div>
-				</section>
+						<div className="mt-2 flex flex-wrap items-center gap-4 border-t border-border/60 pt-4">
+							{first ? (
+								<Button size="lg" className="h-12 rounded-xl px-6 text-base" onClick={() => handlers.onStart(first)} data-testid="today-start-first">
+									<PlayIcon className="size-4 fill-current" />
+									{items.length > 1 ? `Start with ${ACTION_LABEL[first.action].toLowerCase()}` : "Start"} · {first.minutes} min
+								</Button>
+							) : (
+								<Button size="lg" className="h-12 rounded-xl px-6 text-base" onClick={() => openStart("learn")} data-testid="today-learn-new">
+									<PlayIcon className="size-4 fill-current" />
+									Learn something new
+								</Button>
+							)}
+							{plan && (
+								<Button variant="ghost" size="lg" className="h-12 rounded-xl px-4 text-base" onClick={quick} data-testid="today-quick">
+									<ZapIcon className="size-4" />
+									Only 5 minutes
+								</Button>
+							)}
+							{total > 0 && <span className="text-sm text-muted-foreground">{total} min planned in all</span>}
+						</div>
+					</section>
+					{plan && <StudyPlanCard plan={plan} onStart={handlers.onStart} />}
+				</div>
 
 				<div className="flex min-w-0 flex-[1_1_18rem] flex-col gap-5">
 					{plan && (
@@ -229,7 +236,7 @@ export function TodayShell({
 							{plan.upcoming.length === 0 ? (
 								<p className="text-sm text-muted-foreground">
 									{integrations.google.connected || todo?.configured
-										? "No exams or deadlines in the next two weeks."
+										? "No exams in the next five weeks or deadlines in the next two."
 										: "Connect your calendar to see exams and deadlines here."}
 								</p>
 							) : (
@@ -249,6 +256,9 @@ export function TodayShell({
 									<li key={c.event.id} className="flex items-center gap-2 text-sm">
 										<span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">{timeOf(c.event)}</span>
 										<span className="min-w-0 flex-1 truncate">{c.event.title}</span>
+										{plan.study?.tough.some((t) => t.key === c.course.key) && (
+											<span className="shrink-0 rounded-full bg-warn-soft px-2 py-px text-xs font-semibold text-warn-ink">tough</span>
+										)}
 										<Button variant="ghost" size="sm" onClick={() => handlers.onPrimer(c)} data-testid="today-primer">
 											5-min primer
 										</Button>
@@ -441,16 +451,6 @@ function Connections({ integrations, briefing, handlers }: { integrations: Integ
 		</section>
 	);
 }
-
-const ACTION_LABEL = { review: "Review", check: "Quick check", learn: "New material" } as const;
-
-/** The tint behind each kind of plan step: amber for fading memory,
- *  blue for a confident miss to re-check, neutral for new material. */
-const ACTION_TAG = {
-	review: "bg-warn-soft text-warn-ink",
-	check: "bg-good-soft text-good-ink",
-	learn: "bg-accent text-foreground/80",
-} as const;
 
 function PlanRow({
 	index,

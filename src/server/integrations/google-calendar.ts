@@ -367,6 +367,9 @@ export function toStudyEvent(e: GoogleEvent, calendarId: string): StudyEvent | n
 	};
 }
 
+/** Pages of events read per calendar (250 each). */
+const MAX_EVENT_PAGES = 4;
+
 /**
  * Events in [from, to] from every calendar the learner shows in Google
  * Calendar (calendarList `selected`), with recurring events expanded by
@@ -378,17 +381,24 @@ export async function listCalendarEvents(from: number, to: number): Promise<Stud
 	const calendars = (list.items ?? []).filter((c) => c.selected || c.primary);
 	const out: StudyEvent[] = [];
 	for (const cal of calendars) {
-		const query = new URLSearchParams({
-			timeMin: new Date(from).toISOString(),
-			timeMax: new Date(to).toISOString(),
-			singleEvents: "true",
-			orderBy: "startTime",
-			maxResults: "250",
-		});
-		const page = await api<{ items?: GoogleEvent[] }>(`/calendars/${encodeURIComponent(cal.id)}/events?${query}`);
-		for (const e of page.items ?? []) {
-			const ev = toStudyEvent(e, cal.id);
-			if (ev) out.push(ev);
+		// Five weeks of a class timetable can pass one page: follow the page tokens (bounded).
+		let pageToken: string | undefined;
+		for (let pages = 0; pages < MAX_EVENT_PAGES; pages++) {
+			const query = new URLSearchParams({
+				timeMin: new Date(from).toISOString(),
+				timeMax: new Date(to).toISOString(),
+				singleEvents: "true",
+				orderBy: "startTime",
+				maxResults: "250",
+				...(pageToken ? { pageToken } : {}),
+			});
+			const page = await api<{ items?: GoogleEvent[]; nextPageToken?: string }>(`/calendars/${encodeURIComponent(cal.id)}/events?${query}`);
+			for (const e of page.items ?? []) {
+				const ev = toStudyEvent(e, cal.id);
+				if (ev) out.push(ev);
+			}
+			pageToken = page.nextPageToken;
+			if (!pageToken) break;
 		}
 	}
 	return out.sort((a, b) => a.start - b.start);

@@ -58,6 +58,7 @@ export * from "./study-time.ts";
 export * from "./reply-language.ts";
 // The daily briefing planner (calendar + to-do + retention). Pure, browser-safe.
 export * from "./briefing.ts";
+export * from "./study-plan.ts";
 // Spaced-repetition review sessions: the queue marker + progress tally. Pure.
 export * from "./review.ts";
 // Free-recall review ("explain from memory"): key points, marks, the computed grade. Pure.
