@@ -49,14 +49,20 @@ export const QUESTION_TOOLS = [
 	"explain",
 	"recall",
 	"review",
+	"review_recall",
 ] as const;
 
 /** The tool→kind map (the dock's own fold, named once — the dismissal
  *  path and the dock must never disagree on what a tool is). The probe
  *  names fold onto their teach kinds — the dock is kind-driven. The
- *  review session's `review` tool is quiz-shaped too. */
+ *  review session's `review` tool is quiz-shaped too, its free-recall
+ *  `review_recall` explain-shaped. */
 export function toolQuestionKind(tool: string): "quiz" | "ask" | "explain" {
-	return tool === "quiz" || tool === "probe" || tool === "review" ? "quiz" : tool === "explain" || tool === "recall" ? "explain" : "ask";
+	return tool === "quiz" || tool === "probe" || tool === "review"
+		? "quiz"
+		: tool === "explain" || tool === "recall" || tool === "review_recall"
+			? "explain"
+			: "ask";
 }
 
 /** Tools fulfilled by background sub-agent jobs (W2/W6). */
@@ -150,6 +156,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
 	pdf: "Reading a PDF…",
 	plan_init: "Drawing up the plan…",
 	probe_done: "Concluding the assessment…",
+	review_mark: "Marking your answer…",
 };
 
 /** The activity label for ONE running tool (owner, streaming round

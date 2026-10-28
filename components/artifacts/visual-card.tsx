@@ -1,9 +1,7 @@
 "use client";
 
-import { useContext, useState } from "react";
-import { ChatActionsContext } from "@/components/chat";
 import { DownloadIcon, MaximizeIcon } from "lucide-react";
-import { InvertDiscIcon } from "@/components/artifacts/invert-disc";
+import { InvertDiscIcon, useInvertSwitch } from "@/components/artifacts/invert-disc";
 import { Toggle } from "@/components/settings/controls";
 import { useSessionMermaid } from "@/components/session-overlay";
 import { downloadFile } from "@/components/artifacts/download";
@@ -55,7 +53,7 @@ export function VisualCard({ part }: ArtifactPartProps) {
 export function VisualOutputCard({
 	output,
 	messageId,
-	initialInverted = false,
+	initialInverted,
 }: {
 	output: unknown;
 	messageId?: string;
@@ -63,22 +61,10 @@ export function VisualOutputCard({
 }) {
 	const result = output as VisualResult | undefined;
 	const overlay = useSessionMermaid();
-	const actions = useContext(ChatActionsContext);
-	// Brightness inversion (owner, 2026-10-07): the switch state PERSISTS on
-	// the steer record (details.ui.inverted) — seeded here, written through
-	// the silent artifact-ui route on toggle; without a chat page (tests,
-	// previews) it stays local-only. The toggled state also feeds the
-	// fullscreen overlay (openFigure).
-	const [inverted, setInverted] = useState(initialInverted);
-	const toggleInverted = (next: boolean) => {
-		setInverted(next);
-		if (!actions?.chatId || !messageId) return;
-		void fetch(`/api/chats/${actions.chatId}/artifact-ui`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ input: { messageId, inverted: next } }),
-		}).catch(() => {});
-	};
+	// Brightness inversion (owner, 2026-10-07): persisted per figure, and
+	// following the theme until the learner picks (useInvertSwitch). The
+	// state also feeds the fullscreen overlay (openFigure).
+	const [inverted, toggleInverted] = useInvertSwitch(initialInverted, messageId);
 	const natural = result && typeof result.svg === "string" ? svgNaturalWidth(result.svg) : null;
 	if (!result || typeof result.svg !== "string") {
 		return (

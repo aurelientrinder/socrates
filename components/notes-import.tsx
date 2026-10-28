@@ -101,10 +101,10 @@ export function useNotesImport(callbacks: { onStart?: () => void; onFinish?: () 
 export function NotesImportErrors({ errors, warnings = [] }: { errors: readonly string[]; warnings?: readonly string[] }) {
 	return <>
 		{errors.map((error, i) => (
-			<p key={i} role="alert" className="max-w-full whitespace-pre-wrap break-words text-xs text-red-400">{error}</p>
+			<p key={i} role="alert" className="max-w-full whitespace-pre-wrap break-words text-xs text-destructive">{error}</p>
 		))}
 		{warnings.map((warning, i) => (
-			<p key={`w${i}`} role="status" className="max-w-full whitespace-pre-wrap break-words text-xs text-amber-500">{warning}</p>
+			<p key={`w${i}`} role="status" className="max-w-full whitespace-pre-wrap break-words text-xs text-warn-ink">{warning}</p>
 		))}
 	</>;
 }

@@ -8,6 +8,9 @@
  * exactly the failure it exists to catch.
  *
  * Topics:
+ *   - any topic, tested again in a review session: a multiple-choice
+ *     review answer grades like a quiz, a free-recall answer by its
+ *     marking (recall-review.ts — how many key points came back);
  *   - a teaching session's PLAN NODE, tested by teach-phase quiz CHECKS
  *     (predictions are posed before the teaching, so a miss there is not
  *     forgetting; probe quizzes carry no node and are not counted);
@@ -26,6 +29,7 @@
 import type { ChatRecord } from "./contracts/chat.ts";
 import type { GraphNode } from "./contracts.ts";
 import type { QuestionAnswerData } from "./question-core.ts";
+import { isRecallMarkData, RECALL_REVIEW_TOOL } from "./recall-review.ts";
 
 /** FSRS grades. Easy (4) is deliberately never produced. */
 export type RecallGrade = 1 | 2 | 3;
@@ -235,8 +239,30 @@ export function recallEvents(
 			}
 		}
 
+		const r = m as { role?: string; toolCallId?: string; toolName?: string; details?: unknown; isError?: boolean };
+
+		// Free-recall review: the marking grades the topic (the grade is
+		// computed from the marks, never chosen — recall-review.ts), and
+		// "I don't remember" grades it on the answer alone.
+		if (r.role === "toolResult" && r.isError !== true && isRecallMarkData(r.details)) {
+			const marked = parseTopicKey(r.details.topicId);
+			const at = Date.parse(r.details.markedAt);
+			if (marked && !Number.isNaN(at)) {
+				out.push({ ...base, ...marked, title: marked.topicId, at, grade: r.details.grade, review: true });
+			}
+			continue;
+		}
+		if (r.role === "toolResult" && r.toolName === RECALL_REVIEW_TOOL) {
+			const d = r.details as Partial<QuestionAnswerData> | undefined;
+			const recalled = parseTopicKey(d?.topicId);
+			const at = typeof d?.answeredAt === "string" ? Date.parse(d.answeredAt) : NaN;
+			if (recalled && d?.dontKnow === true && d.dismissed !== true && !Number.isNaN(at)) {
+				out.push({ ...base, ...recalled, title: recalled.topicId, at, grade: GRADE_AGAIN, review: true });
+			}
+			continue;
+		}
+
 		// Teaching: a graded quiz answer on a plan node, posed as a check.
-		const r = m as { role?: string; toolCallId?: string; details?: unknown };
 		if (r.role !== "toolResult" || !isGradedQuiz(r.details)) continue;
 		const at = Date.parse(r.details.answeredAt);
 		if (Number.isNaN(at)) continue;

@@ -18,9 +18,14 @@
 import type { LhMarkerMessage, LhMessage } from "./native-messages.ts";
 import { newMessageId } from "./native-messages.ts";
 import type { QuestionAnswerData } from "./question-core.ts";
+import { isRecallMarkData, RECALL_MARK_TOOL, RECALL_REVIEW_TOOL, type ReviewFormat } from "./recall-review.ts";
 
-/** The review agent's one quizzing tool (a QUESTION_TOOLS entry). */
+/** The review agent's multiple-choice tool (a QUESTION_TOOLS entry). Its
+ *  free-recall twin is RECALL_REVIEW_TOOL (recall-review.ts). */
 export const REVIEW_TOOL = "review";
+
+/** Both posing tools: one question per topic, whichever format. */
+const POSE_TOOLS: readonly string[] = [REVIEW_TOOL, RECALL_REVIEW_TOOL];
 
 /** Topics per session: about five minutes of questions. A backlog after
  *  a break never turns into a wall — the learner can start another
@@ -58,6 +63,17 @@ export interface ReviewTopic {
 	/** A drill's topic: questions on it the learner recently got wrong,
 	 *  so the new question aims at the same gap (never repeats them). */
 	missed?: string[];
+	/** The question format this session uses for the topic. Absent on
+	 *  sessions from before free recall: multiple choice. */
+	format?: ReviewFormat;
+	/** What the learner was taught on the topic (recall topics): the
+	 *  material a free-recall answer is marked against, and nothing else. */
+	source?: string;
+}
+
+/** A topic's format (old queues carry none: multiple choice). */
+export function topicFormat(topic: Pick<ReviewTopic, "format">): ReviewFormat {
+	return topic.format === "recall" ? "recall" : "choice";
 }
 
 /** A due-topics review (the schedule's), or a weak-spot drill (the
@@ -95,13 +111,19 @@ export function newReviewContextMessage(topics: readonly ReviewTopic[], mode: Re
 		mode === "drill"
 			? "[Session context] — a weak-spot drill: the learner picked these topics to drill (answered wrong while feeling sure, or only just recalled). Worst first."
 			: "[Session context] — a spaced-repetition review: these topics are due, weakest first.",
-		"Ask exactly one review question per topic, in this order (topicId — title: what it covers):",
-		...topics.map(
-			(t) =>
-				`- [${t.key}] ${t.title}${t.summary ? `: ${t.summary}` : ""}` +
-				(t.missed?.length ? ` (recently missed: ${t.missed.map((q) => JSON.stringify(q)).join("; ")})` : ""),
-		),
+		"Ask exactly one review question per topic, in this order, in the format each one names (topicId — title: what it covers):",
 	];
+	for (const t of topics) {
+		const recall = topicFormat(t) === "recall";
+		lines.push(
+			`- [${t.key}] ${t.title}${t.summary ? `: ${t.summary}` : ""} — ${recall ? "EXPLAIN FROM MEMORY (review_recall)" : "multiple choice (review)"}` +
+				(t.missed?.length ? ` (recently missed: ${t.missed.map((q) => JSON.stringify(q)).join("; ")})` : ""),
+		);
+		if (recall && t.source) {
+			lines.push("  Source material — what he was taught; the only ground for key points and marks:");
+			lines.push(...t.source.split("\n").map((l) => `  > ${l}`));
+		}
+	}
 	return {
 		id: newMessageId(),
 		role: "custom",
@@ -128,22 +150,24 @@ export function reviewTopicsOf(messages: readonly LhMessage[]): ReviewTopic[] {
 /** Every review question POSED in the record (answered or not), in
  *  order: topic key + call id. A failed (error-result) call never posed
  *  anything, so it does not count. */
-export function reviewCallsOf(messages: readonly LhMessage[]): { toolCallId: string; topicId: string }[] {
+export function reviewCallsOf(
+	messages: readonly LhMessage[],
+): { toolCallId: string; topicId: string; tool: string; input: unknown }[] {
 	const failed = new Set<string>();
 	for (const m of messages) {
 		if ((m as { role?: string }).role === "toolResult" && (m as { isError?: boolean }).isError) {
 			failed.add((m as { toolCallId: string }).toolCallId);
 		}
 	}
-	const out: { toolCallId: string; topicId: string }[] = [];
+	const out: { toolCallId: string; topicId: string; tool: string; input: unknown }[] = [];
 	for (const m of messages) {
 		if ((m as { role?: string }).role !== "assistant") continue;
 		const content = (m as { content?: unknown }).content;
 		if (!Array.isArray(content)) continue;
 		for (const block of content as Array<{ type?: string; name?: string; id?: string; arguments?: unknown }>) {
-			if (block.type !== "toolCall" || block.name !== REVIEW_TOOL || !block.id || failed.has(block.id)) continue;
+			if (block.type !== "toolCall" || !POSE_TOOLS.includes(block.name ?? "") || !block.id || failed.has(block.id)) continue;
 			const topicId = (block.arguments as { topicId?: unknown } | null)?.topicId;
-			if (typeof topicId === "string") out.push({ toolCallId: block.id, topicId });
+			if (typeof topicId === "string") out.push({ toolCallId: block.id, topicId, tool: block.name!, input: block.arguments });
 		}
 	}
 	return out;
@@ -168,8 +192,11 @@ export interface ReviewTally {
  *  same line the retention fold draws (a lucky or fragile recall). */
 export const SHAKY_CONFIDENCE_BELOW = 50;
 
-function outcomeOf(answer: QuestionAnswerData): ReviewOutcome {
+function outcomeOf(answer: QuestionAnswerData): ReviewOutcome | undefined {
 	if (answer.dismissed) return "skipped";
+	// A free-recall answer waits for its marking — only "I don't
+	// remember" settles on the answer alone.
+	if (answer.kind === "explain") return answer.dontKnow ? "missed" : undefined;
 	if (answer.dontKnow || answer.correct !== true) return "missed";
 	return typeof answer.confidence === "number" && answer.confidence < SHAKY_CONFIDENCE_BELOW ? "shaky" : "recalled";
 }
@@ -178,15 +205,9 @@ function outcomeOf(answer: QuestionAnswerData): ReviewOutcome {
  *  closing line read. */
 export function reviewTally(messages: readonly LhMessage[]): ReviewTally {
 	const topics = reviewTopicsOf(messages);
-	const callTopic = new Map(reviewCallsOf(messages).map((c) => [c.toolCallId, c.topicId]));
 	const outcomes: Record<string, ReviewOutcome> = {};
-	for (const m of messages) {
-		if ((m as { role?: string }).role !== "toolResult") continue;
-		const result = m as { toolCallId: string; toolName?: string; details?: unknown };
-		if (result.toolName !== REVIEW_TOOL) continue;
-		const topicId = callTopic.get(result.toolCallId);
-		if (!topicId || outcomes[topicId] || !result.details) continue;
-		outcomes[topicId] = outcomeOf(result.details as QuestionAnswerData);
+	for (const r of reviewResults(messages)) {
+		if (!outcomes[r.topicId]) outcomes[r.topicId] = r.outcome;
 	}
 	const values = Object.values(outcomes);
 	const count = (o: ReviewOutcome) => values.filter((v) => v === o).length;
@@ -201,11 +222,64 @@ export function reviewTally(messages: readonly LhMessage[]): ReviewTally {
 	};
 }
 
-/** The review tool's call-boundary check: the topic must be on this
- *  session's queue and not already asked. Empty = the call may pose. */
-export function reviewTopicProblems(messages: readonly LhMessage[], topicId: string): string[] {
+/** Every settled review in the record, in order: the topic, how it went,
+ *  and when (a multiple-choice answer, a free-recall "I don't remember"
+ *  or skip, or a free-recall marking). An answered but unmarked recall
+ *  is not settled yet. */
+export function reviewResults(messages: readonly LhMessage[]): { topicId: string; outcome: ReviewOutcome; at: number }[] {
+	const callTopic = new Map(reviewCallsOf(messages).map((c) => [c.toolCallId, c.topicId]));
+	const out: { topicId: string; outcome: ReviewOutcome; at: number }[] = [];
+	for (const m of messages) {
+		if ((m as { role?: string }).role !== "toolResult") continue;
+		const result = m as { toolCallId: string; toolName?: string; details?: unknown; isError?: boolean };
+		if (result.toolName === RECALL_MARK_TOOL) {
+			if (result.isError || !isRecallMarkData(result.details)) continue;
+			const mark = result.details;
+			out.push({
+				topicId: mark.topicId,
+				outcome: mark.grade === 3 ? "recalled" : mark.grade === 2 ? "shaky" : "missed",
+				at: Date.parse(mark.markedAt),
+			});
+			continue;
+		}
+		if (!POSE_TOOLS.includes(result.toolName ?? "")) continue;
+		const topicId = callTopic.get(result.toolCallId);
+		if (!topicId || !result.details) continue;
+		const answer = result.details as QuestionAnswerData;
+		const outcome = outcomeOf(answer);
+		if (outcome) out.push({ topicId, outcome, at: Date.parse(answer.answeredAt) });
+	}
+	return out;
+}
+
+/** The free-recall answer still waiting for its marking (the latest
+ *  answered review_recall with no review_mark after it); null when none.
+ *  Dismissed and "I don't remember" answers need no marking. */
+export function unmarkedRecallOf(
+	messages: readonly LhMessage[],
+): { toolCallId: string; topicId: string; input: unknown; answer: QuestionAnswerData } | null {
+	const marked = new Set(reviewResults(messages).map((r) => r.topicId));
+	const recallCalls = reviewCallsOf(messages).filter((c) => c.tool === RECALL_REVIEW_TOOL);
+	for (const m of messages) {
+		if ((m as { role?: string }).role !== "toolResult") continue;
+		const result = m as { toolCallId: string; toolName?: string; details?: unknown };
+		if (result.toolName !== RECALL_REVIEW_TOOL || !result.details) continue;
+		const call = recallCalls.find((c) => c.toolCallId === result.toolCallId);
+		if (!call || marked.has(call.topicId)) continue;
+		const answer = result.details as QuestionAnswerData;
+		if (answer.dismissed || answer.dontKnow) continue;
+		return { toolCallId: call.toolCallId, topicId: call.topicId, input: call.input, answer };
+	}
+	return null;
+}
+
+/** The posing tools' call-boundary check: the topic must be on this
+ *  session's queue, posed in its own format, and not already asked.
+ *  Empty = the call may pose. */
+export function reviewTopicProblems(messages: readonly LhMessage[], topicId: string, tool: string = REVIEW_TOOL): string[] {
 	const topics = reviewTopicsOf(messages);
-	if (!topics.some((t) => t.key === topicId)) {
+	const topic = topics.find((t) => t.key === topicId);
+	if (!topic) {
 		const keys = topics.map((t) => `"${t.key}"`).join(", ");
 		return [
 			topics.length === 0
@@ -213,12 +287,20 @@ export function reviewTopicProblems(messages: readonly LhMessage[], topicId: str
 				: `topicId "${topicId}" is not on this session's review queue. Valid topicIds: ${keys}. Copy one exactly.`,
 		];
 	}
-	if (reviewCallsOf(messages).some((c) => c.topicId === topicId)) {
-		const left = topics.filter((t) => !reviewCallsOf(messages).some((c) => c.topicId === t.key)).map((t) => `"${t.key}"`);
+	const asked = reviewCallsOf(messages);
+	if (asked.some((c) => c.topicId === topicId)) {
+		const left = topics.filter((t) => !asked.some((c) => c.topicId === t.key)).map((t) => `"${t.key}"`);
 		return [
 			`topic "${topicId}" was already reviewed this session — one question per topic. ` +
 				(left.length > 0 ? `Remaining: ${left.join(", ")}.` : "Every topic is done — close the session in prose."),
 		];
+	}
+	const format = topicFormat(topic);
+	if (format === "recall" && tool !== RECALL_REVIEW_TOOL) {
+		return [`topic "${topicId}" is an explain-from-memory topic — pose it with ${RECALL_REVIEW_TOOL}, not ${tool}.`];
+	}
+	if (format === "choice" && tool !== REVIEW_TOOL) {
+		return [`topic "${topicId}" is a multiple-choice topic — pose it with ${REVIEW_TOOL}, not ${tool}.`];
 	}
 	return [];
 }

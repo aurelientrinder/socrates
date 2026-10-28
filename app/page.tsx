@@ -6,7 +6,7 @@ import {
 	listChats,
 	readBriefingPrefs,
 	savedBriefing,
-	studyWeek,
+	studyRecord,
 	TASK_PROVIDERS,
 } from "@/src/server";
 
@@ -27,7 +27,8 @@ export default function TodayPage() {
 	const honesty =
 		gap !== null && calibration.answered >= HONESTY_MIN_ANSWERS && gap > CALIBRATED_WITHIN ? { points: Math.round(gap) } : null;
 	const now = new Date();
-	const week = { minutes: studyWeek(now), today: (now.getDay() + 6) % 7 };
+	const study = studyRecord(now);
+	const week = { minutes: study.week, today: (now.getDay() + 6) % 7 };
 	return (
 		<TodayView
 			initialBriefing={savedBriefing()}
@@ -39,6 +40,7 @@ export default function TodayPage() {
 			sessions={listChats().map((c) => ({ id: c.id, title: c.title }))}
 			honesty={honesty}
 			week={week}
+			streak={study.streak}
 		/>
 	);
 }

@@ -5,7 +5,8 @@
  * - the chosen kind is pressed, and Review carries the due count;
  * - Learn and Practice ask for a topic and offer recent notes;
  * - Start stays disabled until there is a topic (or something due);
- * - a note becomes a first message that names it.
+ * - a note becomes a first message that names it;
+ * - five minutes is a length, and its first message carries the scope.
  */
 
 import React from "react";
@@ -14,7 +15,8 @@ import React from "react";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
-import { StartDialogBody, notePrompt, type StartMode } from "../components/start-dialog.tsx";
+import { StartDialogBody, notePrompt, quickSessionPrompt, type StartMode } from "../components/start-dialog.tsx";
+import { SESSION_LENGTHS } from "../components/session-timer.tsx";
 
 const noop = () => {};
 
@@ -79,5 +81,15 @@ describe("StartDialogBody", () => {
 		assert.match(learn, /aria-pressed="true"[^>]*>45 min/);
 		assert.match(learn, /aria-pressed="false"[^>]*>25 min/);
 		assert.doesNotMatch(render("review"), /start-length/);
+	});
+
+	it("offers a five-minute session whose first message keeps it tiny", () => {
+		assert.equal(SESSION_LENGTHS[0], 5);
+		const html = render("learn", { minutes: 5 });
+		assert.match(html, /aria-pressed="true"[^>]*>5 min/);
+		const learn = quickSessionPrompt("learn", "  the Calvin cycle ");
+		assert.match(learn, /^the Calvin cycle\n\n\(I only have 5 minutes: teach me the single most important idea/);
+		assert.match(learn, /stop there\.\)$/);
+		assert.match(quickSessionPrompt("practice", "entropy"), /one or two short problems/);
 	});
 });

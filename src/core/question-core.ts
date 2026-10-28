@@ -462,7 +462,7 @@ export interface QuestionAnswerData {
 	 *  2026-10-03) — a separate channel from `thinking`, captured by the
 	 *  reading field and riding the check answer. Absent when empty. */
 	readingThinking?: string;
-	confidence?: number; // quiz only: the learner's stated probability (0-100, raw) that his selected answer is correct — never sent on "I don't know" (owner, 2026-10-01)
+	confidence?: number; // quiz (and free-recall review): the learner's stated probability (0-100, raw) that his selected answer is correct — never sent on "I don't know" (owner, 2026-10-01)
 	correct?: boolean; // quiz only
 	correctIndices?: number[]; // quiz only (rendering)
 	committed?: string; // explain only (rendering): the model's committed answer
@@ -737,6 +737,12 @@ export function buildAnswer(qd: QuestionData, req: AnswerRequest, tool?: string)
 		// No client grading — the model grades in its reply, against the
 		// commitment. The commitment snapshots for the reveal + rendering.
 		base.committed = qd.committedAnswer;
+		// Free-recall REVIEW answers carry a confidence too (the marking's
+		// grade reads it: right but unsure stays shaky). Only the review
+		// dock sends one; never on "I don't remember".
+		if (!base.dontKnow && req.confidence !== undefined) {
+			base.confidence = Math.max(0, Math.min(100, Math.round(req.confidence)));
+		}
 	}
 	return base;
 }
