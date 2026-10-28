@@ -30,13 +30,27 @@ import type { ArtifactPartProps, DemoResult } from "@/src/core";
 
 export const DEMO_BRIDGE_SCRIPT = `<script>(function(){
 var send=function(m){try{parent.postMessage(m,"*")}catch(e){}};
-var post=function(){
+var last=0,streak=0;
+var measure=function(){
 var b=document.body;
-if(!b){send({type:"demo-resize",height:document.documentElement.scrollHeight});return}
-var h=Math.max(b.scrollHeight,b.getBoundingClientRect().height);
-var cs=getComputedStyle(b);
-h+=(parseFloat(cs.marginTop)||0)+(parseFloat(cs.marginBottom)||0);
-send({type:"demo-resize",height:Math.ceil(h)})
+if(!b)return document.documentElement.scrollHeight;
+var y=window.pageYOffset||0,h=0,all=b.getElementsByTagName("*");
+for(var i=0;i<all.length;i++){var el=all[i],t=el.tagName;
+if(t==="SCRIPT"||t==="STYLE"||t==="LINK"||t==="META")continue;
+var cs=getComputedStyle(el);
+if(cs.position==="fixed"||cs.display==="none")continue;
+var r=el.getBoundingClientRect();
+if(r.height>0&&r.bottom+y>h)h=r.bottom+y}
+var bs=getComputedStyle(b);
+if(h>0)return h+(parseFloat(bs.paddingBottom)||0)+(parseFloat(bs.borderBottomWidth)||0);
+return Math.max(b.scrollHeight,b.getBoundingClientRect().height)+(parseFloat(bs.marginTop)||0)+(parseFloat(bs.marginBottom)||0)
+};
+var post=function(){
+var h=Math.ceil(measure());
+if(h===last)return;
+if(h>last&&h-last<=32){if(++streak>3)return}else streak=0;
+last=h;
+send({type:"demo-resize",height:h})
 };
 if(typeof ResizeObserver!=="undefined"){new ResizeObserver(post).observe(document.documentElement)}
 window.addEventListener("resize",post);

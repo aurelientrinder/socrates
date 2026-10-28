@@ -57,6 +57,7 @@ Runtime contract (the document runs in a sandboxed iframe, sandbox="allow-script
 - NO localStorage, sessionStorage, or document.cookie — the sandbox makes them throw.
 - The parent sizes the iframe to the document height automatically; just build normal flowing layout.
   Make the demo fill the width and size its own height sensibly.
+- Never use vh units or height:100% / min-height:100vh on body or wrappers: the iframe is sized to the content, so viewport-relative heights leave empty space. Use fixed pixel or content-based heights.
 
 Build quality:
 - The demo must directly serve the brief: every control named in the brief must exist and do the thing.
