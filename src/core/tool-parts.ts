@@ -33,6 +33,7 @@ import { quizDisplayInputSchema, askInputSchema, askOptionProblems, quizInputPro
 import { repairMathForDisplay } from "./math-delims.ts";
 import { healEncodedArguments } from "./argument-heal.ts";
 import { probeDoneInputSchema, type ProbeDoneInput } from "./contracts/probe.ts";
+import { recallReviewInputObject, recallMarkInputObject, type RecallReviewInput, type RecallMarkInput } from "./recall-review.ts";
 
 /** The pi-boundary parse step, mirrored here (live-smoke fix, 2026-09-26):
  *  pi-ai's validateToolArguments runs TypeBox's Value.Convert on the model's
@@ -131,6 +132,21 @@ export function parseExplainInput(input: unknown): ExplainToolInput | undefined 
 	if (!cleaned) return undefined;
 	if (explainInputProblems(cleaned).length > 0) return undefined;
 	return cleaned;
+}
+
+/** review_recall parse for DISPLAY: the schema the tool declared (the
+ *  source-quote refinement needs the session's queue — the boundary
+ *  already ran it; the dock never shows the key points anyway). */
+export function parseRecallReviewInput(input: unknown): RecallReviewInput | undefined {
+	const cleaned = boundaryParse<RecallReviewInput>(recallReviewInputObject, restoreMathEscapesDeep(input));
+	if (!cleaned || cleaned.keyPoints.length === 0) return undefined;
+	return cleaned;
+}
+
+/** review_mark parse (the card reads the result details, which our own
+ *  execute authored; this parses the model's call for completeness). */
+export function parseRecallMarkInput(input: unknown): RecallMarkInput | undefined {
+	return boundaryParse<RecallMarkInput>(recallMarkInputObject, input);
 }
 
 /** probe_done parse — the core-owned schema the tool itself declares. */

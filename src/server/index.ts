@@ -9,6 +9,7 @@ export * from "./events-stream.ts";
 export * from "./chats.ts";
 export * from "./review.ts";
 export * from "./flashcards.ts";
+export * from "./exams.ts";
 export * from "./graph.ts";
 export * from "./notes.ts";
 export { notesLibrary } from "../store/notes.ts";

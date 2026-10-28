@@ -3,7 +3,7 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { DownloadIcon } from "lucide-react";
 import { Toggle } from "@/components/settings/controls";
-import { InvertDiscIcon } from "@/components/artifacts/invert-disc";
+import { InvertDiscIcon, useInvertSwitch } from "@/components/artifacts/invert-disc";
 import { ChatActionsContext } from "@/components/chat";
 import { downloadFile, slugFilename } from "@/components/artifacts/download";
 import { DispatchCard } from "@/components/artifacts/dispatch-card";
@@ -94,7 +94,7 @@ export function DemoCard({ part }: ArtifactPartProps) {
 export function DemoOutputCard({
 	output,
 	messageId,
-	initialInverted = false,
+	initialInverted,
 }: {
 	output: unknown;
 	messageId?: string;
@@ -129,7 +129,7 @@ function DemoFrame({
 	title,
 	html,
 	messageId,
-	initialInverted = false,
+	initialInverted,
 }: {
 	title: string;
 	html: string;
@@ -139,23 +139,12 @@ function DemoFrame({
 	const actions = useContext(ChatActionsContext);
 	const iframeRef = useRef<HTMLIFrameElement | null>(null);
 	const [state, setState] = useState<DemoBridgeState>(INITIAL_DEMO_BRIDGE_STATE);
-	// Brightness inversion (owner, 2026-10-07): the switch state PERSISTS on
-	// the steer record (details.ui.inverted) — seeded here, written through
-	// the silent artifact-ui route on toggle. Without a chat page (tests,
-	// previews) the toggle stays local-only. The filter rides the iframe
-	// element, which carries the card's white backing, so one filter flips
-	// page + content together while hue-rotate(180deg) undoes invert's hue
-	// flip.
-	const [inverted, setInverted] = useState(initialInverted);
-	const toggleInverted = (next: boolean) => {
-		setInverted(next);
-		if (!actions?.chatId || !messageId) return;
-		void fetch(`/api/chats/${actions.chatId}/artifact-ui`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ input: { messageId, inverted: next } }),
-		}).catch(() => {});
-	};
+	// Brightness inversion (owner, 2026-10-07): persisted per demo, and
+	// following the theme until the learner picks (useInvertSwitch). The
+	// filter rides the iframe element, which carries the card's white
+	// backing, so one filter flips page + content together while
+	// hue-rotate(180deg) undoes invert's hue flip.
+	const [inverted, toggleInverted] = useInvertSwitch(initialInverted, messageId);
 	const srcDoc = useMemo(() => buildDemoSrcDoc(html), [html]);
 
 	useEffect(() => {

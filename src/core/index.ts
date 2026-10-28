@@ -62,6 +62,10 @@ export * from "./briefing.ts";
 export * from "./review.ts";
 // Flashcards from imported notes: decks, quote checks, FSRS scheduling. Pure.
 export * from "./flashcards.ts";
+// Free-recall review ("explain from memory"): key points, marks, the computed grade. Pure.
+export * from "./recall-review.ts";
+// Mock exams: scenario problems, checked references, quoted grading. Pure.
+export * from "./exam.ts";
 export * from "./context-usage.ts";
 export type { ChatGPTStatus, ChatGPTControlBridge } from "./contracts/chatgpt.ts";
 export { NATIVE_SUBSCRIPTIONS } from "./contracts/subscriptions.ts";
