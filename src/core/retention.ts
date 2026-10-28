@@ -243,7 +243,7 @@ export function recallEvents(
 
 		// Free-recall review: the marking grades the topic (the grade is
 		// computed from the marks, never chosen — recall-review.ts), and
-		// "I don't remember" grades it on the answer alone.
+		// "I don't know" grades it on the answer alone.
 		if (r.role === "toolResult" && r.isError !== true && isRecallMarkData(r.details)) {
 			const marked = parseTopicKey(r.details.topicId);
 			const at = Date.parse(r.details.markedAt);

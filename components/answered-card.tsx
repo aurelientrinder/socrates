@@ -8,7 +8,7 @@ import { ThinkingBlock } from "@/components/thinking-block";
 import { cn } from "@/lib/utils";
 import { MessageResponse } from "@/components/ai-elements/message";
 import type { QuestionAnswerData } from "@/src/core";
-import { parseAskInput, parseQuizInput, repairMathForDisplay } from "@/src/core";
+import { normalizeQuizType, parseAskInput, parseQuizInput, repairMathForDisplay } from "@/src/core";
 
 /**
  * Static rendering of an answered question (tool part in `output-available`).
@@ -43,7 +43,7 @@ export function AnsweredCard({
 	const isExplain = answer.kind === "explain";
 	// Free-recall review: the marking card that follows shows the key
 	// points with his marks; this card reveals them only when he could not
-	// recall the topic at all (no marking follows "I don't remember").
+	// recall the topic at all (no marking follows "I don't know").
 	const freeRecall = answer.tool === "review_recall";
 	const selectedIdx = new Set(answer.answers.map((a) => a.index));
 	const correctIdx = new Set(answer.correctIndices ?? []);
@@ -56,6 +56,16 @@ export function AnsweredCard({
 	const askInput = answer.kind === "ask" ? parseAskInput(input) : undefined;
 	const parsedDetails = askInput?.details ?? (answer.kind === "quiz" ? parseQuizInput(input)?.details : undefined);
 	const descByIndex = new Map((askInput?.options ?? []).map((o, i) => [i + 1, o.description]));
+	// The teach-cycle role. Quiz answers snapshot it; explain answers carry it
+	// only on the original call, so it is read from there.
+	const questionType =
+		answer.questionType ??
+		(answer.tool === "explain" ? normalizeQuizType((input as { type?: unknown } | null | undefined)?.type) : undefined);
+	// A teach-phase PREDICTION shows no "Why" and no committed answer (owner,
+	// 2026-10-28): the tutor's next reply opens by resolving the prediction
+	// in full, so a card explanation would say the same thing twice. The card
+	// keeps the verdict (✓/✗ on the options); the prose is the explanation.
+	const resolvedInProse = questionType === "predict";
 
 	return (
 		<>
@@ -87,8 +97,8 @@ export function AnsweredCard({
 						? "Review · explain from memory"
 					: answer.tool === "recall"
 						? "Recall"
-						: isQuiz
-								? answer.questionType === "predict"
+						: isQuiz || resolvedInProse
+								? questionType === "predict"
 									? "Prediction"
 									: "Check"
 									: isExplain
@@ -197,7 +207,7 @@ export function AnsweredCard({
 				<div className="mt-2 text-sm text-muted-foreground">Answered “I don't know”.</div>
 			)}
 			{answer.dontKnow && freeRecall && (
-				<div className="mt-2 text-sm text-muted-foreground">Answered “I don't remember”.</div>
+				<div className="mt-2 text-sm text-muted-foreground">Answered “I don't know”.</div>
 			)}
 
 			{(answer.thinking ?? answer.note) && (
@@ -222,14 +232,14 @@ export function AnsweredCard({
 					<MessageResponse>{repairMathForDisplay(answer.committed)}</MessageResponse>
 				</div>
 			)}
-			{isExplain && answer.committed && !freeRecall && (
+			{isExplain && answer.committed && !freeRecall && !resolvedInProse && (
 				<div className="mt-3 rounded-lg bg-muted py-2 text-sm text-muted-foreground">
 					<span className="font-medium text-foreground">The answer: </span>
 					<MessageResponse className="inline [&_p]:inline [&_p]:m-0">{repairMathForDisplay(answer.committed)}</MessageResponse>
 				</div>
 			)}
 		</div>
-		{isQuiz && answer.explanation && (
+		{isQuiz && answer.explanation && !resolvedInProse && (
 			/* The explanation as its OWN card (owner, 2026-10-27 — reverses the
 			   2026-10-07 tuck): a large neutral block under the question card,
 			   open by default. Same white card paint as the question, no tint;

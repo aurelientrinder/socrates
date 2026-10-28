@@ -41,6 +41,27 @@ describe("startDraftSession — the create-on-send contract", () => {
 		assert.equal(calls.length, 1, "a single create call — the birth stamp is server-side");
 	});
 
+	it("the start dialog's warm-up switch holds for every way of starting a session", async () => {
+		const g = globalThis as { window?: unknown };
+		const had = "window" in g;
+		const prev = g.window;
+		const store = new Map<string, string>([["lh:warmup", "off"]]);
+		g.window = { localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) } };
+		try {
+			const { f, calls } = fakeFetch("c_w");
+			await startDraftSession("teach me limits", f);
+			assert.equal((calls[0]!.body as { warmup?: boolean }).warmup, false, "switched off: no warm-up");
+			store.set("lh:warmup", "on");
+			await startDraftSession("teach me limits", f);
+			assert.equal((calls[1]!.body as { warmup?: boolean }).warmup, undefined, "switched on: the server default");
+			await startDraftSession("teach me limits", f, undefined, undefined, undefined, { warmup: false });
+			assert.equal((calls[2]!.body as { warmup?: boolean }).warmup, false, "a caller can still skip it");
+		} finally {
+			if (had) g.window = prev;
+			else delete g.window;
+		}
+	});
+
 	it("empty or whitespace text never creates anything", async () => {
 		const { f, calls } = fakeFetch("never");
 		assert.equal(await startDraftSession("", f), null);

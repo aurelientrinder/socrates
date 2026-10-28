@@ -18,6 +18,7 @@ import {
 	type UpcomingEntry,
 } from "@/src/core";
 import { startDraftSession } from "@/components/new-session";
+import { REVIEW_START_PROMPT } from "@/components/review-start";
 import { QUICK_SESSION_MINUTES, setSessionBudget } from "@/components/session-timer";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { onSettingsSaved } from "@/components/settings-signal";
@@ -82,6 +83,27 @@ interface Handlers {
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+/** Steps that are recall on topics he has already studied. */
+function isRecallStep(item: BriefingItem): boolean {
+	return (item.action === "check" || item.action === "review" || item.action === "prep") && item.topicKeys.length > 0;
+}
+
+/** Topics in a five-minute review ("Only 5 minutes" on a recall step). */
+const QUICK_REVIEW_TOPICS = 3;
+
+/** Open a review session on a plan step's topics; null when the server
+ *  has none of them (the caller falls back to a learn session). */
+async function startStepReview(item: BriefingItem, limit?: number): Promise<string | null> {
+	const res = await fetch("/api/review/start", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ keys: item.topicKeys, title: item.title, ...(limit ? { limit } : {}) }),
+	});
+	if (!res.ok) return null;
+	const { id } = (await res.json()) as { id?: string };
+	return id ? `/chat/${id}?prompt=${encodeURIComponent(REVIEW_START_PROMPT)}` : null;
+}
 
 /** The pure shell — the render-test seam. */
 export function TodayShell({
@@ -730,7 +752,14 @@ export function TodayView({
 	const handlers: Handlers = {
 		onStart: async (item) => {
 			try {
-				const target = await startDraftSession(startPrompt(item), fetch);
+				// A check, review or class prep on known topics is a real review
+				// session, so the answers move the review schedule. Without
+				// topics (or if none is tracked any more) it falls back to a
+				// learn session, with no warm-up: it is recall already.
+				const recall = isRecallStep(item);
+				const target =
+					(recall ? await startStepReview(item) : null) ??
+					(await startDraftSession(startPrompt(item), fetch, undefined, undefined, undefined, recall ? { warmup: false } : undefined));
 				if (target) {
 					setSessionBudget(target, item.minutes);
 					router.push(target);
@@ -741,8 +770,12 @@ export function TodayView({
 		},
 		onQuick: async (item) => {
 			try {
-				// The step's title names the session; turn 1 carries the five-minute scope.
-				const target = await startDraftSession(item.title, fetch, undefined, undefined, quickPrompt(item), { warmup: false });
+				// Five minutes of a recall step: the same review, three topics.
+				// Otherwise the step's title names the session and turn 1
+				// carries the five-minute scope.
+				const target =
+					(isRecallStep(item) ? await startStepReview(item, QUICK_REVIEW_TOPICS) : null) ??
+					(await startDraftSession(item.title, fetch, undefined, undefined, quickPrompt(item), { warmup: false }));
 				if (target) {
 					setSessionBudget(target, QUICK_SESSION_MINUTES);
 					router.push(target);
@@ -754,7 +787,8 @@ export function TodayView({
 		onPrimer: async (entry) => {
 			const text = `5-minute primer before my ${entry.event.title} class: remind me where we left off and ask me one prediction question about what comes next.`;
 			try {
-				const target = await startDraftSession(text, fetch);
+				// Five minutes, like "Only 5 minutes": no warm-up.
+				const target = await startDraftSession(text, fetch, undefined, undefined, undefined, { warmup: false });
 				if (target) {
 					setSessionBudget(target, 5);
 					router.push(target);

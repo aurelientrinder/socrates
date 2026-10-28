@@ -79,7 +79,8 @@ export function topicFormat(topic: Pick<ReviewTopic, "format">): ReviewFormat {
 /** A due-topics review (the schedule's), or a weak-spot drill (the
  *  learner's pick from the weak-spot report, due or not). Both are
  *  kind:"review" sessions with the same tool and the same fold. */
-export type ReviewMode = "review" | "drill";
+/** "plan": a study-plan step's topics (Today), due or not. */
+export type ReviewMode = "review" | "drill" | "plan";
 
 /** What the start panel needs: how much is due, and what today held. */
 export interface ReviewStatus {
@@ -114,7 +115,9 @@ export function newReviewContextMessage(topics: readonly ReviewTopic[], mode: Re
 	const lines = [
 		mode === "drill"
 			? "[Session context] — a weak-spot drill: the learner picked these topics to drill (answered wrong while feeling sure, or only just recalled). Worst first."
-			: "[Session context] — a spaced-repetition review: these topics are due, weakest first.",
+			: mode === "plan"
+				? "[Session context] — a review from the learner's study plan: these topics are the plan's step for today (an exam or class is coming), weakest first. Some may not be due yet."
+				: "[Session context] — a spaced-repetition review: these topics are due, weakest first.",
 		"Ask exactly one review question per topic, in this order, in the format each one names (topicId — title: what it covers):",
 	];
 	for (const t of topics) {
@@ -134,7 +137,7 @@ export function newReviewContextMessage(topics: readonly ReviewTopic[], mode: Re
 		customType: "review-context",
 		content: lines.join("\n"),
 		display: true,
-		details: mode === "drill" ? { topics, mode } : { topics },
+		details: mode === "review" ? { topics } : { topics, mode },
 		timestamp: Date.now(),
 	};
 }
@@ -332,7 +335,7 @@ export function reviewTally(messages: readonly LhMessage[]): ReviewTally {
 }
 
 /** Every settled review in the record, in order: the topic, how it went,
- *  and when (a multiple-choice answer, a free-recall "I don't remember"
+ *  and when (a multiple-choice answer, a free-recall "I don't know"
  *  or skip, or a free-recall marking). An answered but unmarked recall
  *  is not settled yet. */
 export function reviewResults(messages: readonly LhMessage[]): { topicId: string; outcome: ReviewOutcome; at: number }[] {
@@ -363,7 +366,7 @@ export function reviewResults(messages: readonly LhMessage[]): { topicId: string
 
 /** The free-recall answer still waiting for its marking (the latest
  *  answered review_recall with no review_mark after it); null when none.
- *  Dismissed and "I don't remember" answers need no marking. */
+ *  Dismissed and "I don't know" answers need no marking. */
 export function unmarkedRecallOf(
 	messages: readonly LhMessage[],
 ): { toolCallId: string; topicId: string; input: unknown; answer: QuestionAnswerData } | null {

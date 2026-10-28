@@ -643,13 +643,31 @@ describe("predict vs check rendering", () => {
 		assert.ok(!html.includes(">Quiz<"), "the generic label is retired");
 	});
 
-	it("a prediction answer shows the verdict AND the explanation", () => {
+	it("a prediction answer shows the verdict but NO Why — the tutor's reply resolves it (owner, 2026-10-28)", () => {
 		const qd: QuestionData = { ...quizQD(), questionType: "predict" };
 		const answer = buildAnswer(qd, { values: ["Venus"] }); // wrong on purpose
 		const html = renderToStaticMarkup(<AnsweredCard answer={answer} />);
 		assert.ok(html.includes("Prediction"), "the eyebrow distinguishes the card");
 		assert.ok(/incorrect|wrong|&times;|✗/i.test(html), "the verdict still shows (owner: predictions are graded)");
-		assert.ok(html.includes('data-open="true"'), "the explanation is shown by default");
+		assert.ok(!html.includes("tucked-explanation"), "no Why card: the teaching that follows is the explanation");
+	});
+
+	it("a free-recall prediction hides the committed answer and reads 'Prediction'", () => {
+		const qd: QuestionData = {
+			id: "ep1",
+			kind: "explain",
+			question: "What do you think has to give?",
+			mode: "text",
+			options: [],
+			committedAnswer: "The constant-speed assumption.",
+			createdAt: new Date().toISOString(),
+		};
+		const answer = buildAnswer(qd, { text: "The mass?" }, "explain");
+		const html = renderToStaticMarkup(<AnsweredCard answer={answer} input={{ type: "predict" }} />);
+		assert.ok(html.includes("Prediction"), "same eyebrow as a multiple-choice prediction");
+		assert.ok(!html.includes("The answer:"), "the tutor's reply resolves it");
+		const check = renderToStaticMarkup(<AnsweredCard answer={answer} input={{ type: "check" }} />);
+		assert.ok(check.includes("The answer:"), "a free-recall check still reveals the answer");
 	});
 
 	it("a check answer shows the explanation like every question (owner, 2026-10-27)", () => {

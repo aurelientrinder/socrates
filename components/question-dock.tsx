@@ -141,7 +141,7 @@ export function QuestionDock({
 				: toolName === "review"
 					? "Review"
 					: toolName === "review_recall"
-						? "Explain from memory"
+						? "Review · explain from memory"
 						: undefined;
 	// Parse, don't cast (src/core/tool-parts.ts): the model authored this
 	// input, and only the schema the tool declared vouches for its shape.
@@ -151,7 +151,7 @@ export function QuestionDock({
 	// crash on `.map` over model-authored bytes.
 	// The free-recall review rides the explain machinery: its key points
 	// are the commitment (hidden until he answers, snapshotted into the
-	// answer for the "I don't remember" reveal).
+	// answer for the "I don't know" reveal).
 	const parsed =
 		toolName === "review_recall"
 			? recallAsExplain(input)
@@ -308,7 +308,7 @@ function QuestionDockForm({
 }: Omit<QuestionDockProps, "expanded" | "onExpand" | "reveal">) {
 	const kind = toolQuestionKind(toolName);
 	// Free-recall review (recall-review.ts): a text answer that ALSO
-	// states a confidence and can say "I don't remember" — the marking's
+	// states a confidence and can say "I don't know" — the marking's
 	// grade reads both.
 	const freeRecall = toolName === "review_recall";
 	const rated = kind === "quiz" || freeRecall;
@@ -619,7 +619,9 @@ function QuestionDockForm({
 									? "Prediction"
 									: "Check"
 									: kind === "explain"
-										? "Explain"
+										? toolName === "explain" && normalizeQuizType((input as { type?: unknown }).type) === "predict"
+											? "Prediction"
+											: "Explain"
 											: "Question"}
 					{qd.mode === "multi-select" && " · select all that apply"}
 					</span>
@@ -828,7 +830,7 @@ function QuestionDockForm({
 						>
 							{sel.dontKnow && <span className="size-1.5 rounded-full bg-current" />}
 						</span>
-						<span>I don't remember</span>
+						<span>I don't know</span>
 					</button>
 				</div>
 			)}
@@ -944,7 +946,7 @@ function QuestionDockForm({
 							onChange={(e) => {
 								answerTextRef.current = e.target.value;
 								setText(e.target.value);
-								// Writing an answer takes back "I don't remember".
+								// Writing an answer takes back "I don't know".
 								if (freeRecall && e.target.value.trim()) setSel((prev) => (prev.dontKnow ? { ...prev, dontKnow: false } : prev));
 							}}
 							onKeyDown={(e) => {

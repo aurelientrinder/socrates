@@ -8,7 +8,7 @@
  * - the format each topic takes is set by the queue and enforced;
  * - an answer waits for its marking before the next question, within one
  *   turn too (the gate);
- * - the marking and "I don't remember" feed the retention fold, an
+ * - the marking and "I don't know" feed the retention fold, an
  *   unmarked answer does not;
  * - the tally and the source read-back from a teaching session.
  */
@@ -281,7 +281,7 @@ describe("the marking flow", () => {
 		assert.match(textOf(generous), /marks\[1\] is covered but its evidence/);
 	});
 
-	it("needs no marking for a skip or 'I don't remember'", () => {
+	it("needs no marking for a skip or 'I don't know'", () => {
 		assert.equal(unmarkedRecallOf(answeredRecord(recallAnswer(undefined, { dontKnow: true })).messages), null);
 		assert.equal(unmarkedRecallOf(answeredRecord(recallAnswer(undefined, { dismissed: true })).messages), null);
 		const gate = createReviewGate(storeOf(answeredRecord(recallAnswer(undefined, { dontKnow: true })).messages));
@@ -320,7 +320,7 @@ describe("the retention fold", () => {
 		assert.deepEqual(lapse.map((e) => e.grade), [GRADE_AGAIN]);
 	});
 
-	it("grades 'I don't remember' Again, and ignores an answer not yet marked", () => {
+	it("grades 'I don't know' Again, and ignores an answer not yet marked", () => {
 		const forgot = recallEvents({ id: "r", title: "Review", messages: answeredRecord(recallAnswer(undefined, { dontKnow: true })).messages });
 		assert.deepEqual(forgot.map((e) => [e.topicKey, e.grade]), [["prop:n_chain", GRADE_AGAIN]]);
 		assert.deepEqual(recallEvents({ id: "r", title: "Review", messages: answeredRecord(recallAnswer(ANSWER)).messages }), []);
