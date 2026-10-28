@@ -72,6 +72,11 @@ export function ReviewContextCard({
 							<span className="min-w-0 flex-1">
 								<span className="font-medium text-foreground/80">{t.title}</span>
 								{t.sourceTitle && <span className="text-muted-foreground"> — from {t.sourceTitle}</span>}
+								{t.format === "recall" && (
+									<span data-testid="review-context-recall" className="ml-1.5 rounded bg-muted px-1 py-px text-[11px] text-muted-foreground">
+										explain from memory
+									</span>
+								)}
 							</span>
 							<span className="shrink-0 tabular-nums text-muted-foreground">{Math.round(t.retention * 100)}%</span>
 						</div>

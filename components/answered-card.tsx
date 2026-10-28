@@ -41,6 +41,10 @@ export function AnsweredCard({
 
 	const isQuiz = answer.kind === "quiz";
 	const isExplain = answer.kind === "explain";
+	// Free-recall review: the marking card that follows shows the key
+	// points with his marks; this card reveals them only when he could not
+	// recall the topic at all (no marking follows "I don't remember").
+	const freeRecall = answer.tool === "review_recall";
 	const selectedIdx = new Set(answer.answers.map((a) => a.index));
 	const correctIdx = new Set(answer.correctIndices ?? []);
 	// The question's own context rides the ORIGINAL CALL, not the answer
@@ -79,6 +83,8 @@ export function AnsweredCard({
 					? "Probe"
 					: answer.tool === "review"
 						? "Review"
+					: freeRecall
+						? "Review · explain from memory"
 					: answer.tool === "recall"
 						? "Recall"
 						: isQuiz
@@ -179,7 +185,7 @@ export function AnsweredCard({
 			    "I don't know" sent none (its slider was grayed out), explain and
 			    ask never had one, and records from before the feature carry no
 			    field — nothing to show, nothing rendered. */}
-			{isQuiz && answer.confidence != null && (
+			{(isQuiz || freeRecall) && answer.confidence != null && (
 				<div className="mt-3 flex items-center gap-3" data-testid="answered-confidence">
 					<ConfidenceRail value={answer.confidence} className="min-w-0 flex-1" />
 					<span className="w-9 shrink-0 text-right font-mono text-sm tabular-nums text-muted-foreground">
@@ -189,6 +195,9 @@ export function AnsweredCard({
 			)}
 			{answer.dontKnow && isQuiz && (
 				<div className="mt-2 text-sm text-muted-foreground">Answered “I don't know”.</div>
+			)}
+			{answer.dontKnow && freeRecall && (
+				<div className="mt-2 text-sm text-muted-foreground">Answered “I don't remember”.</div>
 			)}
 
 			{(answer.thinking ?? answer.note) && (
@@ -207,7 +216,13 @@ export function AnsweredCard({
 			{/* The explain reveal (owner ruling 2026-09-27): the committed answer
 			    — one field, reasoning included — shown on submit; no verdict,
 			    the model's next reply IS the grading. */}
-			{isExplain && answer.committed && (
+			{isExplain && answer.committed && freeRecall && answer.dontKnow && (
+				<div className="mt-3 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground" data-testid="recall-key-points">
+					<div className="mb-1 font-medium text-foreground">A full answer covers</div>
+					<MessageResponse>{repairMathForDisplay(answer.committed)}</MessageResponse>
+				</div>
+			)}
+			{isExplain && answer.committed && !freeRecall && (
 				<div className="mt-3 rounded-lg bg-muted py-2 text-sm text-muted-foreground">
 					<span className="font-medium text-foreground">The answer: </span>
 					<MessageResponse className="inline [&_p]:inline [&_p]:m-0">{repairMathForDisplay(answer.committed)}</MessageResponse>

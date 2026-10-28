@@ -246,16 +246,17 @@ function dismissalConclusion(record: { messages: LhMessage[] }): LhMessage[] {
 	return problemCallId ? concludedByDismissalPair(problemCallId) : [];
 }
 
-/** The review stamp (spaced repetition): a `review` answer carries the
- *  topic key its call named, copied from the PERSISTED call arguments —
- *  never trusted from the client body (any client-sent topicId is
- *  dropped). Every other tool's answer passes through without one. */
+/** The review stamp (spaced repetition): a `review` or `review_recall`
+ *  answer carries the topic key its call named, copied from the
+ *  PERSISTED call arguments — never trusted from the client body (any
+ *  client-sent topicId is dropped). Every other tool's answer passes
+ *  through without one. */
 export function withReviewTopic(
 	answer: QuestionAnswerData,
 	pending: { tool: string; input: unknown },
 ): QuestionAnswerData {
 	const { topicId: _client, ...rest } = answer;
-	if (pending.tool !== "review") return rest;
+	if (pending.tool !== "review" && pending.tool !== "review_recall") return rest;
 	const topicId = (pending.input as { topicId?: unknown } | null)?.topicId;
 	return typeof topicId === "string" && topicId.length > 0 ? { ...rest, topicId } : rest;
 }

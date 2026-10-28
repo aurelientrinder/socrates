@@ -247,6 +247,7 @@ describe("session birth", () => {
 		const topics = reviewTopicsOf(messages);
 		assert.equal(topics.length, WARMUP_SIZE);
 		assert.ok(topics.every((t) => t.summary?.endsWith("in one line.")), "each topic carries its material");
+		assert.ok(topics.every((t) => t.format === undefined && t.source === undefined), "warm-up topics are multiple choice only");
 	});
 
 	it("warmup: false opens the session without one", async () => {

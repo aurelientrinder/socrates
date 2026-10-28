@@ -1561,6 +1561,7 @@ export function Chat({
 													case "tool-quiz":
 													case "tool-probe":
 													case "tool-review":
+													case "tool-review_recall":
 													case "tool-ask_user_question":
 													case "tool-explain":
 													case "tool-recall": {
@@ -2378,7 +2379,7 @@ function DockOverlay({
 					>
 							{pending ? (
 								<QuestionDock
-									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall" | "review"}
+									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall" | "review" | "review_recall"}
 									toolCallId={pending.toolCallId}
 									input={pending.input as never}
 									expanded={expanded}

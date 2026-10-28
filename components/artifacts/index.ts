@@ -6,6 +6,7 @@ import { VisualCard } from "@/components/artifacts/visual-card";
 import { ProbeDoneCard } from "@/components/artifacts/probe-done-card";
 import { ToolCallCard } from "@/components/artifacts/tool-call-card";
 import { ProblemCard, ConcludeCard } from "@/components/practice-cards";
+import { RecallMarkCard } from "@/components/artifacts/recall-mark-card";
 
 /**
  * Artifact renderer registry — the extension point for tool-part UI.
@@ -43,6 +44,9 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	// the conclusion carries the outcome + verdict + the reveal.
 	problem: ProblemCard,
 	conclude: ConcludeCard,
+	// Free-recall review (core/recall-review.ts): the marking — every key
+	// point with how his explanation did on it, and the computed outcome.
+	review_mark: RecallMarkCard,
 	// The prober's graph tools (wave 7): same quiet expandable card —
 	// collapsed one-liner (tool name + the session id for
 	// list_propositions), the tool's own compact row-per-line output

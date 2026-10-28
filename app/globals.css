@@ -90,6 +90,10 @@
 	--lh-warn-ink: #8a4a06;
 	--lh-warn-soft: #f6e7d3;
 	--lh-surface: #fffefb;
+	/* The dimming behind a dialog (dark mode pass, 2026-10-27): a light
+	   wash of ink on the paper page; the dark palette swaps in a black
+	   wash, since ink there is near-white and would LIGHTEN the page. */
+	--lh-scrim: color-mix(in srgb, var(--foreground) 20%, transparent);
 	/* THE TYPEFACE SETS (light theme wave). The @theme font tokens below
 	   point at these runtime variables, so <html data-typeface> swaps the
 	   whole set with no re-render. "classic" = the original JetBrains Mono
@@ -140,6 +144,7 @@ html[data-typeface="claude"] {
 	--lh-warn-ink: #e8b073;
 	--lh-warn-soft: #33271a;
 	--lh-surface: #1c1c1c;
+	--lh-scrim: rgb(0 0 0 / 0.55);
 }
 
 /* CMU Serif bold (titles) — bundled local file, no CDN dependency. */
@@ -354,6 +359,7 @@ body {
 	--color-warn-ink: var(--lh-warn-ink);
 	--color-warn-soft: var(--lh-warn-soft);
 	--color-surface: var(--lh-surface);
+	--color-scrim: var(--lh-scrim);
 }
 
 /* Page titles (redesign wave): the title face at a reading weight, not
