@@ -21,6 +21,8 @@ import {
 	parseAskInput,
 	parseQuizInput,
 	parseExplainInput,
+	parseRecallReviewInput,
+	keyPointsText,
 	toggleOption,
 	toggleOther,
 	type AnswerRequest,
@@ -57,7 +59,7 @@ import { CONFIDENCE_COLORS, confidenceRailStyle } from "@/components/confidence-
  */
 
 export interface QuestionDockProps {
-	toolName: "quiz" | "probe" | "ask_user_question" | "explain" | "recall" | "review";
+	toolName: "quiz" | "probe" | "ask_user_question" | "explain" | "recall" | "review" | "review_recall";
 	toolCallId: string;
 	input: QuizToolInput | AskToolInput | ExplainToolInput;
 	/** Collapse state, owned by the DockOverlay (it drives the shell's height morph). */
@@ -110,19 +112,41 @@ export function QuestionDock({
 	// the probe quiz ("probe") is quiz-shaped, the probe free-recall
 	// ("recall") is explain-shaped. Old records keep the teach names.
 	const canonical =
-		toolName === "probe" || toolName === "review" ? "quiz" : toolName === "recall" ? "explain" : toolName;
+		toolName === "probe" || toolName === "review"
+			? "quiz"
+			: toolName === "recall" || toolName === "review_recall"
+				? "explain"
+				: toolName;
 	// The chip's display name carries the tool's OWN name (owner
 	// 2026-10-09): probe-phase questions label Probe/Recall in the
 	// composer; teach tools keep the standing labels.
-	const toolLabel = toolName === "probe" ? "Probe" : toolName === "recall" ? "Recall" : toolName === "review" ? "Review" : undefined;
+	const toolLabel =
+		toolName === "probe"
+			? "Probe"
+			: toolName === "recall"
+				? "Recall"
+				: toolName === "review"
+					? "Review"
+					: toolName === "review_recall"
+						? "Explain from memory"
+						: undefined;
 	// Parse, don't cast (src/core/tool-parts.ts): the model authored this
 	// input, and only the schema the tool declared vouches for its shape.
 	// The dock mounts on input-available parts (already validated at the
 	// bridge), so this is pure defense in depth — but it is STRUCTURAL now:
 	// anything that slips through renders the quiet fallback, never a
 	// crash on `.map` over model-authored bytes.
+	// The free-recall review rides the explain machinery: its key points
+	// are the commitment (hidden until he answers, snapshotted into the
+	// answer for the "I don't remember" reveal).
 	const parsed =
-		canonical === "quiz" ? parseQuizInput(input) : canonical === "explain" ? parseExplainInput(input) : parseAskInput(input);
+		toolName === "review_recall"
+			? recallAsExplain(input)
+			: canonical === "quiz"
+				? parseQuizInput(input)
+				: canonical === "explain"
+					? parseExplainInput(input)
+					: parseAskInput(input);
 	if (!parsed) {
 		return (
 			<div data-testid="malformed-question" className="rounded-xl border border-dashed bg-card/60 p-3 text-sm text-muted-foreground">
@@ -162,6 +186,19 @@ export function QuestionDock({
 			</div>
 		</>
 	);
+}
+
+/** A review_recall call in the explain shape the form arms. */
+function recallAsExplain(input: unknown): ExplainToolInput | undefined {
+	const recall = parseRecallReviewInput(input);
+	if (!recall) return undefined;
+	return {
+		type: "check",
+		nodeId: "",
+		question: recall.question,
+		correctAnswer: keyPointsText(recall.keyPoints),
+		...(recall.details ? { details: recall.details } : {}),
+	};
 }
 
 /** A plain-text teaser of a question for the collapsed bar: unwrap math, flatten common LaTeX. */
@@ -255,6 +292,11 @@ function QuestionDockForm({
 	compactionRunning = false,
 }: Omit<QuestionDockProps, "expanded" | "onExpand" | "reveal">) {
 	const kind = toolQuestionKind(toolName);
+	// Free-recall review (recall-review.ts): a text answer that ALSO
+	// states a confidence and can say "I don't remember" — the marking's
+	// grade reads both.
+	const freeRecall = toolName === "review_recall";
+	const rated = kind === "quiz" || freeRecall;
 
 	// Canonical QuestionData, built once per question. Quiz options are
 	// deterministically shuffled (seeded by toolCallId) so position never leaks
@@ -361,7 +403,7 @@ function QuestionDockForm({
 
 	const canSubmit =
 		qd.mode === "text"
-			? text.trim().length > 0
+			? text.trim().length > 0 || (freeRecall && sel.dontKnow)
 			: sel.dontKnow || (sel.otherSelected && other.trim().length > 0) || sel.selected.size > 0;
 
 	const submit = () => {
@@ -384,11 +426,11 @@ function QuestionDockForm({
 			dontKnow: sel.dontKnow,
 			values: [...sel.selected].map((i) => qd.options[i]!.value),
 			other: sel.otherSelected ? other : undefined,
-			text: qd.mode === "text" ? answerTextRef.current : undefined,
+			text: qd.mode === "text" && !sel.dontKnow ? answerTextRef.current : undefined,
 			thinking: qd.mode !== "text" ? thinkingTextRef.current.trim() || undefined : undefined,
 			// Always sent on quiz answers (owner: 50 must mean 50, never
 			// "untouched"); buildAnswer drops it on "I don't know".
-			confidence: kind === "quiz" ? CONFIDENCE_STOPS[confIdx] : undefined,
+			confidence: rated ? CONFIDENCE_STOPS[confIdx] : undefined,
 		};
 		onSubmit(buildAnswer(qd, req, toolName));
 	};
@@ -550,6 +592,8 @@ function QuestionDockForm({
 						? "Probe"
 						: toolName === "review"
 							? "Review"
+						: freeRecall
+							? "Review · explain from memory"
 						: toolName === "recall"
 							? "Recall"
 							: kind === "quiz"
@@ -735,7 +779,32 @@ function QuestionDockForm({
 				app-wide). Clicking and dragging are native. "I don't know"
 				GRAYS it out — the layout holds, no value is sent, the IDK
 				signal stands alone. */}
-			{kind === "quiz" && (
+			{freeRecall && (
+				<div className="px-4 pb-2">
+					<button
+						type="button"
+						data-testid="dont-remember"
+						aria-pressed={sel.dontKnow}
+						onClick={() => setSel((prev) => ({ ...prev, dontKnow: !prev.dontKnow }))}
+						className={cn(
+							"flex w-full items-start gap-3 rounded-lg border border-dashed px-3 py-2 text-left text-sm outline-none transition-colors",
+							sel.dontKnow ? "border-primary text-foreground" : "text-muted-foreground",
+						)}
+					>
+						<span
+							className={cn(
+								"mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+								sel.dontKnow ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40",
+							)}
+						>
+							{sel.dontKnow && <span className="size-1.5 rounded-full bg-current" />}
+						</span>
+						<span>I don't remember</span>
+					</button>
+				</div>
+			)}
+
+			{rated && (
 				<div className="border-t border-border/60 px-4 py-2.5">
 					<div className="flex items-center gap-3">
 						<span
@@ -773,9 +842,17 @@ function QuestionDockForm({
 								step={1}
 								value={CONFIDENCE_STOPS[confIdx]}
 								disabled={sel.dontKnow}
-								aria-label="Confidence — the probability your selected answer is correct"
+								aria-label={
+									freeRecall
+										? "Confidence — how sure you are your explanation is complete and right"
+										: "Confidence — the probability your selected answer is correct"
+								}
 								aria-valuetext={`${CONFIDENCE_STOPS[confIdx]} percent`}
-								title="The probability your selected answer is correct — 50% is a coin flip. Adjust with ←/→."
+								title={
+									freeRecall
+										? "How sure you are your explanation is complete and right — 50% is a coin flip."
+										: "The probability your selected answer is correct — 50% is a coin flip. Adjust with ←/→."
+								}
 								data-testid="confidence-slider"
 								onChange={(e) => {
 									// Snap to the nearest stop; the rendered VALUE is the stop's own
@@ -838,6 +915,8 @@ function QuestionDockForm({
 							onChange={(e) => {
 								answerTextRef.current = e.target.value;
 								setText(e.target.value);
+								// Writing an answer takes back "I don't remember".
+								if (freeRecall && e.target.value.trim()) setSel((prev) => (prev.dontKnow ? { ...prev, dontKnow: false } : prev));
 							}}
 							onKeyDown={(e) => {
 								// Esc ends dictation (the dictate decisions: click-again
@@ -856,7 +935,7 @@ function QuestionDockForm({
 									submit();
 								}
 							}}
-							placeholder="Type your answer…"
+							placeholder={freeRecall ? "Explain it in your own words, from memory…" : "Type your answer…"}
 							rows={1}
 							className="field-sizing-content lh-input max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
 						/>
