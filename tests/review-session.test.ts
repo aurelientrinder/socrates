@@ -17,7 +17,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-review-session-"));
 process.env.LH_DATA_DIR = TMP_DATA;
 
 const { chatStore } = await import("../src/store/chats.ts");
-const { reviewStatus, startDrillSession, startReviewSession } = await import("../src/server/review.ts");
+const { reviewStatus, startDrillSession, startReviewSession, startTopicsSession } = await import("../src/server/review.ts");
 const { newAnswerResult } = await import("../src/core/native-messages.ts");
 const { reviewTopicsOf } = await import("../src/core/review.ts");
 
@@ -115,5 +115,47 @@ describe("starting a weak-spot drill", () => {
 		assert.equal(marker.details.mode, "drill");
 		assert.match(marker.content, /weak-spot drill/);
 		assert.match(marker.content, /recently missed: "Why does sin\(x\)\/x tend to 1\?"/);
+	});
+});
+
+describe("starting a review from a study-plan step", () => {
+	it("reviews the step's tracked topics, due or not, titled after the step", () => {
+		const lesson = chatStore.createChat("Vectors");
+		chatStore.saveTree(lesson.id, {
+			nodes: [{ id: "dot", title: "Dot product", summary: "Sum of componentwise products; |a||b|cos θ." }],
+			edges: [],
+			version: 1,
+		});
+		const at = NOW - 60 * 60 * 1000; // answered an hour ago: not due
+		chatStore.saveMessages(lesson.id, [
+			{
+				id: "m1",
+				role: "assistant",
+				content: [{ type: "toolCall", id: "call_d", name: "quiz", arguments: { type: "check", nodeId: "dot" } }],
+				timestamp: at,
+			} as never,
+			newAnswerResult("call_d", "quiz", {
+				kind: "quiz",
+				questionText: "q",
+				dontKnow: false,
+				answers: [],
+				correct: true,
+				confidence: 80,
+				answeredAt: new Date(at).toISOString(),
+			}),
+		]);
+		const key = `plan:${lesson.id}:dot`;
+
+		assert.equal(startTopicsSession(["plan:nope:x"], "Check Vectors", undefined, NOW), null, "unknown topics open nothing");
+		const started = startTopicsSession([key, "plan:nope:x"], "Check Vectors", undefined, NOW);
+		assert.ok(started, "a tracked topic opens a review even when not due");
+		assert.equal(started.title, "Check Vectors");
+		assert.equal(started.topics, 1);
+		const record = chatStore.getChat(started.id)!;
+		assert.equal(record.kind, "review");
+		assert.deepEqual(reviewTopicsOf(record.messages).map((t) => t.key), [key]);
+		const marker = record.messages[0] as { content: string; details: { mode?: string } };
+		assert.equal(marker.details.mode, "plan");
+		assert.match(marker.content, /study plan/);
 	});
 });

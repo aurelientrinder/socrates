@@ -22,7 +22,7 @@
  *      The grade is NOT the model's to choose: it is computed here from
  *      the marks (recallMarkGrade), on the retention fold's scale.
  *
- * "I don't remember" needs no marking: the answer itself grades Again.
+ * "I don't know" needs no marking: the answer itself grades Again.
  *
  * Pure and browser-safe. Types only from the retention fold (it imports
  * this module's names, so a value import back would be circular).

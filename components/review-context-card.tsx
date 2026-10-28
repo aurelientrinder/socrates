@@ -15,7 +15,8 @@ import type { ReviewMode, ReviewOutcome, ReviewTopic, WarmupDoneData } from "@/s
 /** The review-context marker's details (core/review.ts). */
 export interface ReviewContextData {
 	topics: ReviewTopic[];
-	/** "drill" for a weak-spot drill; absent on a due-topics review. */
+	/** "drill" for a weak-spot drill, "plan" for a study-plan step;
+	 *  absent on a due-topics review. */
 	mode?: ReviewMode;
 	/** A learn or practice session's warm-up (warm-up recall), not a
 	 *  review session. */
@@ -66,7 +67,9 @@ export function ReviewContextCard({
 						? `${topics.length} earlier ${topics.length === 1 ? "topic" : "topics"} · ${done} done`
 						: drill
 							? `${topics.length} weak ${topics.length === 1 ? "spot" : "spots"} · ${done} done`
-							: `${topics.length} ${topics.length === 1 ? "topic" : "topics"} due · ${done} done`}
+							: data?.mode === "plan"
+								? `${topics.length} ${topics.length === 1 ? "topic" : "topics"} from your plan · ${done} done`
+								: `${topics.length} ${topics.length === 1 ? "topic" : "topics"} due · ${done} done`}
 				</span>
 			</button>
 			{open && (

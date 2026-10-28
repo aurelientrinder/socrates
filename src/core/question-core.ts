@@ -739,7 +739,7 @@ export function buildAnswer(qd: QuestionData, req: AnswerRequest, tool?: string)
 		base.committed = qd.committedAnswer;
 		// Free-recall REVIEW answers carry a confidence too (the marking's
 		// grade reads it: right but unsure stays shaky). Only the review
-		// dock sends one; never on "I don't remember".
+		// dock sends one; never on "I don't know".
 		if (!base.dontKnow && req.confidence !== undefined) {
 			base.confidence = Math.max(0, Math.min(100, Math.round(req.confidence)));
 		}

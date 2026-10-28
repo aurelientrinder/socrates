@@ -43,7 +43,7 @@ export function AnsweredCard({
 	const isExplain = answer.kind === "explain";
 	// Free-recall review: the marking card that follows shows the key
 	// points with his marks; this card reveals them only when he could not
-	// recall the topic at all (no marking follows "I don't remember").
+	// recall the topic at all (no marking follows "I don't know").
 	const freeRecall = answer.tool === "review_recall";
 	const selectedIdx = new Set(answer.answers.map((a) => a.index));
 	const correctIdx = new Set(answer.correctIndices ?? []);
@@ -207,7 +207,7 @@ export function AnsweredCard({
 				<div className="mt-2 text-sm text-muted-foreground">Answered “I don't know”.</div>
 			)}
 			{answer.dontKnow && freeRecall && (
-				<div className="mt-2 text-sm text-muted-foreground">Answered “I don't remember”.</div>
+				<div className="mt-2 text-sm text-muted-foreground">Answered “I don't know”.</div>
 			)}
 
 			{(answer.thinking ?? answer.note) && (

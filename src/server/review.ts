@@ -67,6 +67,14 @@ export function drillQueue(keys: readonly string[] | undefined, now: number = Da
 	return toReviewTopics(picked).map((t) => (missed.get(t.key)?.length ? { ...t, missed: missed.get(t.key) } : t));
 }
 
+/** The queue for a study-plan step (Today's Review, Check and Prep):
+ *  the asked topics that are tracked, weakest first, due or not, capped
+ *  like a review. Unknown keys are dropped. */
+export function topicsQueue(keys: readonly string[], now: number = Date.now(), limit: number = REVIEW_SESSION_SIZE): ReviewTopic[] {
+	const asked = new Set(keys);
+	return toReviewTopics(retentionAcrossSessions(now).topics.filter((t) => asked.has(t.key)).slice(0, Math.max(0, limit)));
+}
+
 function toReviewTopics(picked: readonly TopicRetention[]): ReviewTopic[] {
 	if (picked.length === 0) return [];
 	const nodes = new Map(stores.graphStore.readNodes().map((n) => [n.id, n]));
@@ -122,6 +130,19 @@ export function startDrillSession(keys?: readonly string[], now: number = Date.n
 	const topics = drillQueue(keys, now);
 	if (topics.length === 0) return null;
 	return openReviewSession(`Drill · ${topics.length} weak ${topics.length === 1 ? "spot" : "spots"}`, topics, "drill");
+}
+
+/** Open a review session on a study-plan step's topics, titled after the
+ *  step; null when none of them is tracked any more. */
+export function startTopicsSession(
+	keys: readonly string[],
+	title?: string,
+	limit: number = REVIEW_SESSION_SIZE,
+	now: number = Date.now(),
+): { id: string; title: string; topics: number } | null {
+	const topics = topicsQueue(keys, now, limit);
+	if (topics.length === 0) return null;
+	return openReviewSession(title?.trim() || `Review · ${topics.length} ${topics.length === 1 ? "topic" : "topics"}`, topics, "plan");
 }
 
 function openReviewSession(title: string, topics: ReviewTopic[], mode: ReviewMode): { id: string; title: string; topics: number } {
