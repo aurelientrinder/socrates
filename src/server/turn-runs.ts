@@ -43,6 +43,11 @@ export function registerTurn(chatId: string, handle: PiTurnHandle): void {
 	runs().set(chatId, handle);
 }
 
+/** How many turns are running right now (any chat). */
+export function runningTurnCount(): number {
+	return runs().size;
+}
+
 /** Unregister at settle — chat-handler's onFinish, LAST (after endTurn). */
 export function unregisterTurn(chatId: string): void {
 	runs().delete(chatId);

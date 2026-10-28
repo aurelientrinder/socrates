@@ -381,6 +381,13 @@ export function SettingsDialogBody({
 									>
 										<ExportButton />
 									</SettingsRow>
+									<SettingsRow
+										label="Restore your data"
+										hint="Put sessions, map, flashcards, exams and settings back from a daily snapshot or an export file. A copy of what you have now is kept first, so a restore can be undone."
+										testid="row-restore-data"
+									>
+										<RestoreControls />
+									</SettingsRow>
 								</SettingsSection>
 							)}
 							{active === "keys" && (
@@ -481,6 +488,119 @@ function ExportButton() {
 			>
 				{state === "busy" ? "Exporting…" : "Export"}
 			</button>
+		</span>
+	);
+}
+
+interface Snapshot {
+	name: string;
+	kind: "daily" | "before-restore";
+	sessions: number;
+}
+
+function snapshotLabel(s: Snapshot): string {
+	if (s.kind === "daily") return `${s.name} (${s.sessions} ${s.sessions === 1 ? "session" : "sessions"})`;
+	const m = /(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(s.name);
+	return m ? `Before a restore, ${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : s.name;
+}
+
+/** Restore from a daily snapshot or from an export file. Asks first, since
+ *  it replaces what is there now, then reloads so every page reads the
+ *  restored data. */
+function RestoreControls() {
+	const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+	const [picked, setPicked] = useState("");
+	const [state, setState] = useState<{ tone: "idle" | "busy" | "ok" | "error"; text?: string }>({ tone: "idle" });
+	const fileInput = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		void fetch("/api/restore", { cache: "no-store" })
+			.then((r) => (r.ok ? (r.json() as Promise<{ snapshots: Snapshot[] }>) : null))
+			.then((d) => {
+				if (!d) return;
+				setSnapshots(d.snapshots);
+				setPicked(d.snapshots[0]?.name ?? "");
+			})
+			.catch(() => undefined);
+	}, []);
+
+	const send = async (body: unknown) => {
+		if (!window.confirm("Restore replaces your current sessions, map, flashcards, exams and settings with the copy you picked. A copy of what you have now is kept first. Continue?")) return;
+		setState({ tone: "busy", text: "Restoring…" });
+		try {
+			const res = await fetch("/api/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+			const data = (await res.json().catch(() => ({}))) as { error?: string };
+			if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+			setState({ tone: "ok", text: "Restored. Reloading…" });
+			setTimeout(() => window.location.reload(), 800);
+		} catch (err) {
+			setState({ tone: "error", text: err instanceof Error ? err.message : "Couldn't restore." });
+		}
+	};
+
+	const fromFile = async (file: File | undefined) => {
+		if (!file) return;
+		let bundle: unknown;
+		try {
+			bundle = JSON.parse(await file.text());
+		} catch {
+			setState({ tone: "error", text: "That file is not a Socrates export." });
+			return;
+		}
+		await send({ bundle });
+	};
+
+	const busy = state.tone === "busy";
+	return (
+		<span className="flex min-w-0 flex-col items-end gap-1.5">
+			<span className="flex flex-wrap items-center justify-end gap-2">
+				{snapshots.length > 0 && (
+					<>
+						<select
+							aria-label="Snapshot to restore"
+							value={picked}
+							disabled={busy}
+							onChange={(e) => setPicked(e.target.value)}
+							className="max-w-48 rounded-sm border border-border bg-surface px-2 py-1 text-xs"
+						>
+							{snapshots.map((s) => (
+								<option key={s.name} value={s.name}>{snapshotLabel(s)}</option>
+							))}
+						</select>
+						<button
+							type="button"
+							disabled={busy || !picked}
+							onClick={() => void send({ snapshot: picked })}
+							className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-muted disabled:opacity-60"
+						>
+							Restore
+						</button>
+					</>
+				)}
+				<button
+					type="button"
+					disabled={busy}
+					onClick={() => fileInput.current?.click()}
+					className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-muted disabled:opacity-60"
+				>
+					From a file…
+				</button>
+				<input
+					ref={fileInput}
+					type="file"
+					accept="application/json,.json"
+					className="hidden"
+					onChange={(e) => {
+						void fromFile(e.target.files?.[0]);
+						e.target.value = "";
+					}}
+				/>
+			</span>
+			{state.text && (
+				<span role={state.tone === "error" ? "alert" : "status"} className={state.tone === "error" ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+					{state.text}
+				</span>
+			)}
 		</span>
 	);
 }

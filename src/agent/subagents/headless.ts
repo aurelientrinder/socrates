@@ -299,6 +299,14 @@ async function runDemo(html: string, opts: RunDemoOptions = {}): Promise<DemoRun
 		});
 		page.on("pageerror", (err) => pageErrors.push(err instanceof Error ? err.message : String(err)));
 		page.on("requestfailed", (req) => failedRequests.push(`${req.url()} (${req.failure()?.errorText ?? "failed"})`));
+		// The app lets a demo talk to nothing but itself (the page's CSP), so the
+		// check refuses web requests too: a demo that needs a CDN fails here,
+		// where the builder can still fix it, not in front of the learner.
+		await page.setRequestInterception(true);
+		page.on("request", (req) => {
+			if (/^(https?|wss?):/i.test(req.url())) void req.abort("blockedbyclient");
+			else void req.continue();
+		});
 
 		try {
 			await page.goto(pathToFileURL(file).href, { waitUntil: "load", timeout: 30_000 });

@@ -8,6 +8,7 @@ export * from "./chat-handler.ts";
 export * from "./events-stream.ts";
 export * from "./chats.ts";
 export { backupIfDue, exportData } from "./backup.ts";
+export { listSnapshots, restoreExport, restoreSnapshot, RestoreError } from "./restore.ts";
 export * from "./review.ts";
 export * from "./flashcards.ts";
 export * from "./exams.ts";

@@ -142,3 +142,8 @@ export function forgetChatDigest(chatId: string): void {
 	memory().delete(chatId);
 	fs.rmSync(path.join(digestsDir(), `${chatId}.json`), { force: true });
 }
+
+/** Forget every cached digest (the data folder was replaced under us). */
+export function resetChatDigestCache(): void {
+	memory().clear();
+}
