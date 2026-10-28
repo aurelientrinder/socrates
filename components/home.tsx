@@ -11,6 +11,7 @@ import { useStrongKeyless, useZeroKeys, ZeroKeysPill } from "@/components/setup-
 import { DictationBar, joinDictation, useDictation } from "@/components/dictation";
 import { useFieldCycle } from "@/components/field-cycle";
 import { StatsBar } from "@/components/stats-bar";
+import { readWarmupPreference } from "@/components/new-session";
 import { PageHead, PageTabs, PROGRESS_TABS } from "@/components/page-header";
 import type { TurnUsage } from "@/src/core";
 
@@ -144,6 +145,7 @@ export function Home({
 					title: t,
 					...(mode === "practice" ? { kind: "practice" } : {}),
 					...(practiceProps.length > 0 ? { graphContext: { propositions: practiceProps } } : {}),
+					...(readWarmupPreference() ? {} : { warmup: false }),
 				}),
 			});
 			const { id } = (await res.json()) as { id: string };

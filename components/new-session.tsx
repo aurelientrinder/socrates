@@ -32,6 +32,27 @@ export type DraftPick = { id: string; name: string; statement: string };
 
 const DOCK = "mx-auto w-full max-w-[46rem] px-4";
 
+/** The warm-up switch is remembered per device (warm-up recall): on
+ *  unless the learner turned it off in the start dialog. Every way of
+ *  starting a session reads it, so turning it off holds everywhere. */
+const WARMUP_PREFERENCE_KEY = "lh:warmup";
+
+export function readWarmupPreference(): boolean {
+	try {
+		return window.localStorage.getItem(WARMUP_PREFERENCE_KEY) !== "off";
+	} catch {
+		return true;
+	}
+}
+
+export function writeWarmupPreference(on: boolean): void {
+	try {
+		window.localStorage.setItem(WARMUP_PREFERENCE_KEY, on ? "on" : "off");
+	} catch {
+		// Private windows: the switch still works for this session.
+	}
+}
+
 /**
  * The draft's whole behavior as one pure seam: create the session (title =
  * the first message), persist the lifted pre-chat settings, return the push
@@ -48,11 +69,13 @@ export async function startDraftSession(
 	picks?: readonly DraftPick[],
 	firstMessage?: string,
 	/** warmup: false opens the session without the warm-up recall (the
-	 *  server's default is on whenever topics are due). */
+	 *  server's default is on whenever topics are due). Left out, the
+	 *  learner's own warm-up switch decides, wherever the session starts. */
 	options?: { warmup?: boolean },
 ): Promise<string | null> {
 	const t = text.trim();
 	if (!t) return null;
+	const warmup = options?.warmup ?? readWarmupPreference();
 	// THE PICKS RIDE THE CREATE (owner round 10): a practice draft seeded
 	// from the pick bar creates its session WITH the graph context — the
 	// same contract as the home screen's practice send (the marker with
@@ -64,7 +87,7 @@ export async function startDraftSession(
 			...(mode === "practice"
 				? { title: t, kind: "practice", ...(picks && picks.length > 0 ? { graphContext: { propositions: picks } } : {}) }
 				: { title: t }),
-			...(options?.warmup === false ? { warmup: false } : {}),
+			...(warmup ? {} : { warmup: false }),
 		}),
 	});
 	const { id } = (await res.json()) as { id: string };

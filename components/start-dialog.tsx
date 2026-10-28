@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookOpenIcon, ClipboardCheckIcon, DumbbellIcon, Loader2Icon, PlayIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
-import { startDraftSession } from "@/components/new-session";
+import { readWarmupPreference, startDraftSession, writeWarmupPreference } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
 import { DEFAULT_EXAM_LENGTH, EXAM_LENGTHS, problemCountFor, REVIEW_SESSION_SIZE, WARMUP_SIZE } from "@/src/core";
 import { DEFAULT_SESSION_LENGTH, QUICK_SESSION_MINUTES, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
@@ -205,26 +205,6 @@ const MODES: { id: StartMode; label: string; desc: string; icon: React.ReactNode
 	{ id: "review", label: "Review", desc: "Quick recall on the topics you are starting to forget.", icon: <RotateCcwIcon className="size-4" /> },
 	{ id: "exam", label: "Mock exam", desc: "A timed paper of real exam problems. No hints, marked at the end.", icon: <ClipboardCheckIcon className="size-4" /> },
 ];
-
-/** The warm-up switch is remembered per device (warm-up recall): on
- *  unless the learner turned it off. */
-const WARMUP_PREFERENCE_KEY = "lh:warmup";
-
-function readWarmupPreference(): boolean {
-	try {
-		return window.localStorage.getItem(WARMUP_PREFERENCE_KEY) !== "off";
-	} catch {
-		return true;
-	}
-}
-
-function writeWarmupPreference(on: boolean): void {
-	try {
-		window.localStorage.setItem(WARMUP_PREFERENCE_KEY, on ? "on" : "off");
-	} catch {
-		// Private windows: the switch still works for this session.
-	}
-}
 
 /** The dialog's pure body: the render-test seam (state lives in the wrapper). */
 export function StartDialogBody({

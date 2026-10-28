@@ -730,7 +730,10 @@ export function TodayView({
 	const handlers: Handlers = {
 		onStart: async (item) => {
 			try {
-				const target = await startDraftSession(startPrompt(item), fetch);
+				// A check, review or class prep is itself recall on these topics,
+				// so a warm-up before it would quiz the same ground twice.
+				const recall = item.action === "check" || item.action === "review" || item.action === "prep";
+				const target = await startDraftSession(startPrompt(item), fetch, undefined, undefined, undefined, recall ? { warmup: false } : undefined);
 				if (target) {
 					setSessionBudget(target, item.minutes);
 					router.push(target);
@@ -754,7 +757,8 @@ export function TodayView({
 		onPrimer: async (entry) => {
 			const text = `5-minute primer before my ${entry.event.title} class: remind me where we left off and ask me one prediction question about what comes next.`;
 			try {
-				const target = await startDraftSession(text, fetch);
+				// Five minutes, like "Only 5 minutes": no warm-up.
+				const target = await startDraftSession(text, fetch, undefined, undefined, undefined, { warmup: false });
 				if (target) {
 					setSessionBudget(target, 5);
 					router.push(target);

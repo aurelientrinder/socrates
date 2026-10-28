@@ -141,7 +141,7 @@ export function QuestionDock({
 				: toolName === "review"
 					? "Review"
 					: toolName === "review_recall"
-						? "Explain from memory"
+						? "Review · explain from memory"
 						: undefined;
 	// Parse, don't cast (src/core/tool-parts.ts): the model authored this
 	// input, and only the schema the tool declared vouches for its shape.
@@ -619,7 +619,9 @@ function QuestionDockForm({
 									? "Prediction"
 									: "Check"
 									: kind === "explain"
-										? "Explain"
+										? toolName === "explain" && normalizeQuizType((input as { type?: unknown }).type) === "predict"
+											? "Prediction"
+											: "Explain"
 											: "Question"}
 					{qd.mode === "multi-select" && " · select all that apply"}
 					</span>
