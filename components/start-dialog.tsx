@@ -131,7 +131,7 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 	};
 
 	return createPortal(
-		<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/20 px-4 py-16" {...backdropDismiss}>
+		<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-scrim px-4 py-16" {...backdropDismiss}>
 			<StartDialogBody
 				mode={mode}
 				topic={topic}

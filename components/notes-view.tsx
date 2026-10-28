@@ -92,7 +92,7 @@ export function NotesView() {
 				<NotesImportErrors errors={notesImport.errors} warnings={notesImport.warnings} />
 			</header>
 
-			{loadError && <p role="alert" className="text-sm text-red-400">{loadError}</p>}
+			{loadError && <p role="alert" className="text-sm text-destructive">{loadError}</p>}
 			{notes && notes.length > 0 && (
 				<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
 					{notes.map((note) => (

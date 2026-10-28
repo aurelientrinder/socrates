@@ -2380,6 +2380,55 @@ describe("notes import completion and retry reliability", () => {
 		assert.equal(ledgers.readSources()[0]!.extractions?.length, 3);
 	});
 
+	it("an unfinished import resumes: a retry of the same text redoes only the chunks that never merged", async () => {
+		const ledgers = memoryLedgers();
+		const text = "first chunk\nsecond chunk\nthird chunk";
+		let calls = 0;
+		const counting = (failOn?: number) => createExtractionPipeline({
+			chatStore, graphStore: ledgers, getChunkTokens: () => 1,
+			engineFor: (role) => role === "auditor" ? submitModel("submit_review", NOTES_VERDICT) : fauxEngine([() => {
+				calls++;
+				if (calls === failOn) throw new Error("synthetic failed chunk");
+				return fauxAssistantMessage([fauxToolCall("submit_findings", NOTES_FINDINGS as unknown as ToolCall["arguments"])], { stopReason: "toolUse" });
+			}]),
+		});
+		await assert.rejects(counting(2).importNotes({ ...input, text }), (error) => {
+			assert.ok(error instanceof NotesImportError);
+			assert.match(error.message, /2 of 3 parts are already on your map; importing the file again picks up where it stopped/);
+			return true;
+		});
+		assert.equal(ledgers.readSources()[0]!.resume?.chunks.length, 2, "the two merged chunks are recorded");
+
+		calls = 0;
+		await counting().importNotes({ ...input, text });
+		assert.equal(calls, 1, "only the chunk that failed runs again");
+		assert.equal(ledgers.readSources()[0]!.resume, undefined, "a completed import clears the record");
+
+		calls = 0;
+		await counting().importNotes({ ...input, text });
+		assert.equal(calls, 3, "after a completed import, an explicit re-import still processes the whole file");
+	});
+
+	it("a used-up daily quota stops the remaining chunks instead of trying each one", async () => {
+		const ledgers = memoryLedgers();
+		let calls = 0;
+		const pipeline = createExtractionPipeline({
+			chatStore, graphStore: ledgers, getChunkTokens: () => 1,
+			engineFor: (role) => role === "auditor" ? submitModel("submit_review", NOTES_VERDICT) : fauxEngine([() => {
+				calls++;
+				if (calls === 2) return fauxAssistantMessage("", { stopReason: "error", errorMessage: "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier, model: gemini-3.5-flash-lite" });
+				return fauxAssistantMessage([fauxToolCall("submit_findings", NOTES_FINDINGS as unknown as ToolCall["arguments"])], { stopReason: "toolUse" });
+			}]),
+		});
+		await assert.rejects(pipeline.importNotes({ ...input, text: "first chunk\nsecond chunk\nthird chunk" }), (error) => {
+			assert.ok(error instanceof NotesImportError);
+			assert.equal(error.outcome, "partial");
+			assert.match(error.message, /daily quota/);
+			return true;
+		});
+		assert.equal(calls, 2, "the third chunk never asked");
+	});
+
 	it("an abort after an earlier merge stops later chunks without losing graph or billed usage", async () => {
 		const ledgers = memoryLedgers();
 		let calls = 0;
