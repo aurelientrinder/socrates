@@ -55,6 +55,13 @@ export interface RecallEvent {
 	/** A dedicated review of a topic first tested elsewhere: it schedules
 	 *  the topic but never renames it or moves its home session. */
 	review?: boolean;
+	/** The stated confidence of a quiz answer (absent on practice, and on
+	 *  "I don't know"). Never touches the schedule beyond quizGrade's
+	 *  shaky line; the weak-spot report reads it for overconfidence. */
+	confidence?: number;
+	/** The quiz question as posed (absent on practice): what a weak-spot
+	 *  drill aims its fresh question at. */
+	question?: string;
 }
 
 export interface TopicRetention {
@@ -261,9 +268,13 @@ export function recallEvents(
 		if (Number.isNaN(at)) continue;
 
 		// A review answer names its topic key outright (any session kind).
+		const confidence = {
+			...(!r.details.dontKnow && typeof r.details.confidence === "number" ? { confidence: r.details.confidence } : {}),
+			...(typeof r.details.questionText === "string" && r.details.questionText ? { question: r.details.questionText } : {}),
+		};
 		const reviewed = parseTopicKey((r.details as { topicId?: unknown }).topicId);
 		if (reviewed) {
-			out.push({ ...base, ...reviewed, title: reviewed.topicId, at, grade: quizGrade(r.details), review: true });
+			out.push({ ...base, ...reviewed, title: reviewed.topicId, at, grade: quizGrade(r.details), review: true, ...confidence });
 			continue;
 		}
 
@@ -279,6 +290,7 @@ export function recallEvents(
 			title: titles.get(args.nodeId) ?? args.nodeId,
 			at,
 			grade: quizGrade(r.details),
+			...confidence,
 		});
 	}
 	return out;

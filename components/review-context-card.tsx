@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CheckIcon, ChevronRightIcon, MinusIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ReviewOutcome, ReviewTopic, WarmupDoneData } from "@/src/core";
+import type { ReviewMode, ReviewOutcome, ReviewTopic, WarmupDoneData } from "@/src/core";
 
 /**
  * The review-context card (spaced repetition): message[0] of a review
@@ -15,6 +15,8 @@ import type { ReviewOutcome, ReviewTopic, WarmupDoneData } from "@/src/core";
 /** The review-context marker's details (core/review.ts). */
 export interface ReviewContextData {
 	topics: ReviewTopic[];
+	/** "drill" for a weak-spot drill; absent on a due-topics review. */
+	mode?: ReviewMode;
 	/** A learn or practice session's warm-up (warm-up recall), not a
 	 *  review session. */
 	warmup?: boolean;
@@ -48,6 +50,7 @@ export function ReviewContextCard({
 	const [open, setOpen] = useState(false);
 	const topics = data?.topics ?? [];
 	const done = topics.filter((t) => outcomes[t.key] !== undefined).length;
+	const drill = data?.mode === "drill";
 	return (
 		<div data-testid="review-context-card" className="my-1">
 			<button
@@ -57,11 +60,13 @@ export function ReviewContextCard({
 				className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border/70 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
 			>
 				<ChevronRightIcon aria-hidden="true" className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
-				<span className="font-medium">{data?.warmup ? "Warm-up" : "Review"}</span>
+				<span className="font-medium">{data?.warmup ? "Warm-up" : drill ? "Drill" : "Review"}</span>
 				<span className="min-w-0 flex-1 truncate">
 					{data?.warmup
 						? `${topics.length} earlier ${topics.length === 1 ? "topic" : "topics"} · ${done} done`
-						: `${topics.length} ${topics.length === 1 ? "topic" : "topics"} due · ${done} done`}
+						: drill
+							? `${topics.length} weak ${topics.length === 1 ? "spot" : "spots"} · ${done} done`
+							: `${topics.length} ${topics.length === 1 ? "topic" : "topics"} due · ${done} done`}
 				</span>
 			</button>
 			{open && (

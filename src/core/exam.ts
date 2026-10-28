@@ -869,6 +869,10 @@ export function examRecallEvents(record: ExamRecord): RecallEvent[] {
 					at,
 					grade: partGrade(grade, record.answers[part.id]?.confidence),
 					review: true,
+					// The weak-spot report reads these: a sure miss on an exam part
+					// is overconfidence on its topics too.
+					...(typeof record.answers[part.id]?.confidence === "number" ? { confidence: record.answers[part.id]!.confidence } : {}),
+					question: part.prompt,
 				});
 			}
 		}

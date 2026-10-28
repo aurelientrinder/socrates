@@ -60,6 +60,9 @@ export interface ReviewTopic {
 	sourceTitle?: string;
 	/** Retention when the session started, 0-1 (the card's bar). */
 	retention: number;
+	/** A drill's topic: questions on it the learner recently got wrong,
+	 *  so the new question aims at the same gap (never repeats them). */
+	missed?: string[];
 	/** The question format this session uses for the topic. Absent on
 	 *  sessions from before free recall: multiple choice. */
 	format?: ReviewFormat;
@@ -72,6 +75,11 @@ export interface ReviewTopic {
 export function topicFormat(topic: Pick<ReviewTopic, "format">): ReviewFormat {
 	return topic.format === "recall" ? "recall" : "choice";
 }
+
+/** A due-topics review (the schedule's), or a weak-spot drill (the
+ *  learner's pick from the weak-spot report, due or not). Both are
+ *  kind:"review" sessions with the same tool and the same fold. */
+export type ReviewMode = "review" | "drill";
 
 /** What the start panel needs: how much is due, and what today held. */
 export interface ReviewStatus {
@@ -102,15 +110,18 @@ export const WARMUP_SIZE = 3;
 /** The review-context marker (message[0] of a review session). The
  *  bracketed preamble marks it honestly as injected session context —
  *  custom markers reach the model in the user channel. */
-export function newReviewContextMessage(topics: readonly ReviewTopic[]): LhMarkerMessage {
+export function newReviewContextMessage(topics: readonly ReviewTopic[], mode: ReviewMode = "review"): LhMarkerMessage {
 	const lines = [
-		"[Session context] — a spaced-repetition review: these topics are due, weakest first.",
+		mode === "drill"
+			? "[Session context] — a weak-spot drill: the learner picked these topics to drill (answered wrong while feeling sure, or only just recalled). Worst first."
+			: "[Session context] — a spaced-repetition review: these topics are due, weakest first.",
 		"Ask exactly one review question per topic, in this order, in the format each one names (topicId — title: what it covers):",
 	];
 	for (const t of topics) {
 		const recall = topicFormat(t) === "recall";
 		lines.push(
-			`- [${t.key}] ${t.title}${t.summary ? `: ${t.summary}` : ""} — ${recall ? "EXPLAIN FROM MEMORY (review_recall)" : "multiple choice (review)"}`,
+			`- [${t.key}] ${t.title}${t.summary ? `: ${t.summary}` : ""} — ${recall ? "EXPLAIN FROM MEMORY (review_recall)" : "multiple choice (review)"}` +
+				(t.missed?.length ? ` (recently missed: ${t.missed.map((q) => JSON.stringify(q)).join("; ")})` : ""),
 		);
 		if (recall && t.source) {
 			lines.push("  Source material — what he was taught; the only ground for key points and marks:");
@@ -123,7 +134,7 @@ export function newReviewContextMessage(topics: readonly ReviewTopic[]): LhMarke
 		customType: "review-context",
 		content: lines.join("\n"),
 		display: true,
-		details: { topics },
+		details: mode === "drill" ? { topics, mode } : { topics },
 		timestamp: Date.now(),
 	};
 }

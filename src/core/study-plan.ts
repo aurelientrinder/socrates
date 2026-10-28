@@ -172,7 +172,7 @@ export interface PlanDay {
 	minutes: number;
 }
 
-export type ExamStatus = "not-started" | "tight" | "on-track" | "ready";
+export type ExamPlanStatus = "not-started" | "tight" | "on-track" | "ready";
 
 export interface ExamPlan {
 	eventId: string;
@@ -188,7 +188,7 @@ export interface ExamPlan {
 	readinessPlanned: number | null;
 	/** Minutes of planned work that do not fit the daily budget before it. */
 	unscheduledMinutes: number;
-	status: ExamStatus;
+	status: ExamPlanStatus;
 	topicKeys: string[];
 }
 
@@ -453,7 +453,7 @@ export function planStudy(input: StudyPlanInput): StudyPlan {
 		const planned = plannedRecall.get(target.event.id);
 		const readinessPlanned = planned && planned.length > 0 ? planned.reduce((a, b) => a + b, 0) / planned.length : null;
 		const unscheduledMinutes = left.reduce((a, i) => a + i.minutes, 0);
-		const status: ExamStatus =
+		const status: ExamPlanStatus =
 			target.topics.length === 0 && target.chatIds.length === 0
 				? "not-started"
 				: unscheduledMinutes > 0

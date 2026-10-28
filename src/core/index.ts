@@ -67,6 +67,8 @@ export * from "./flashcards.ts";
 export * from "./recall-review.ts";
 // Mock exams: scenario problems, checked references, quoted grading. Pure.
 export * from "./exam.ts";
+// The weak-spot report: per-topic overconfidence + fading, joined on the retention key. Pure.
+export * from "./weak-spots.ts";
 export * from "./context-usage.ts";
 export type { ChatGPTStatus, ChatGPTControlBridge } from "./contracts/chatgpt.ts";
 export { NATIVE_SUBSCRIPTIONS } from "./contracts/subscriptions.ts";

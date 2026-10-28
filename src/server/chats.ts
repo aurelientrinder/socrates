@@ -3,7 +3,8 @@ import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
 import { titleFromPrompt } from "../core/contracts.ts";
 import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
-import { propositionNames, recallEvents, retentionReport, type RetentionReport } from "../core/retention.ts";
+import { propositionNames, recallEvents, retentionReport, type RecallEvent, type RetentionReport } from "../core/retention.ts";
+import { weakSpotReport, type WeakSpotReport } from "../core/weak-spots.ts";
 import { STREAK_LOOKBACK_DAYS, daysBackStart, studyMinutesByDay, studyStreak, weekStartOf, type StudyStreak } from "../core/study-time.ts";
 import { examCalibrationAnswers, examRecallEvents } from "../core/exam.ts";
 import { examStore } from "../store/exams.ts";
@@ -194,12 +195,21 @@ export function studyRecord(now: Date = new Date()): { week: number[]; streak: S
 /** The review view's report: every tested recall across sessions, folded
  *  into per-topic memory state, estimated retention, and what is due. */
 export function retentionAcrossSessions(now: number = Date.now()): RetentionReport {
+	return retentionReport(recallEventsAcrossSessions(), now);
+}
+
+/** The weak-spot tab's report: the same recalls, read per topic for
+ *  overconfidence (stated confidence vs right) as well as fading. */
+export function weakSpotsAcrossSessions(now: number = Date.now()): WeakSpotReport {
+	return weakSpotReport(recallEventsAcrossSessions(), now);
+}
+
+function recallEventsAcrossSessions(): RecallEvent[] {
 	const names = propositionNames(stores.graphStore.readNodes());
 	const events = listChats().flatMap((summary) => {
 		const record = getChat(summary.id);
 		return record ? recallEvents(record, (id) => names.get(id)) : [];
 	});
 	// Graded mock exams test topics too (as reviews: core/exam.ts).
-	const exams = examStore.list().flatMap(examRecallEvents);
-	return retentionReport([...events, ...exams], now);
+	return [...events, ...examStore.list().flatMap(examRecallEvents)];
 }
