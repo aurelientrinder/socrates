@@ -11,6 +11,7 @@
  * half a deck.
  */
 
+import { renameWithRetry } from "./fs-atomic.ts";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -79,7 +80,7 @@ export const flashcardStore = {
 		const tmp = `${file}.tmp-${crypto.randomUUID().slice(0, 8)}`;
 		try {
 			fs.writeFileSync(tmp, JSON.stringify(deck, null, "\t"), "utf-8");
-			fs.renameSync(tmp, file);
+			renameWithRetry(tmp, file);
 		} catch (err) {
 			fs.rmSync(tmp, { force: true });
 			throw err;

@@ -546,6 +546,31 @@ describe("the exam pipeline", () => {
 		assert.ok(calibrationAcrossSessions().answered >= 3);
 	});
 
+	it("grades choice parts and blanks without any model", async () => {
+		const server = await import("../src/server/exams.ts");
+		const { examStore } = await import("../src/store/exams.ts");
+		server.examEngineOverride.current = undefined; // no model set up
+		const id = "exam_nomodel_0123abcd";
+		const part = { rubric: [], solution: "", topicKeys: [] as string[] };
+		examStore.save(record("ready", {
+			id,
+			problems: [{
+				id: "1", title: "Quick", scenario: "s", sources: [],
+				parts: [
+					{ ...part, id: "1a", prompt: "2+2", points: 2, kind: "numeric", finalAnswer: "4", numeric: { value: 4, tolerance: 0.01 }, rubric: [{ id: "r", criterion: "final", points: 2, final: true }] },
+					{ ...part, id: "1b", prompt: "pick", points: 1, kind: "choice", options: ["a", "b"], correctOption: 0, finalAnswer: "a" },
+				],
+			}],
+		}));
+		server.beginExam(id);
+		server.submitExam(id, { answers: { "1b": { choice: 0, confidence: 70 } } }); // 1a left blank
+		await until(() => server.getExamView(id)?.status !== "grading", "grading");
+		const done = server.getExamView(id)!;
+		assert.equal(done.status, "graded", done.error);
+		assert.equal(done.grades["1a"]!.method, "blank");
+		assert.equal(done.grades["1b"]!.earned, 1);
+	});
+
 	it("hands the paper in when the time runs out, even with the page closed", async () => {
 		const server = await import("../src/server/exams.ts");
 		const { examStore } = await import("../src/store/exams.ts");

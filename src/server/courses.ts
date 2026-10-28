@@ -12,6 +12,7 @@
  * events the day's briefing already read.
  */
 
+import { renameWithRetry } from "../store/fs-atomic.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { PATHS } from "../../config.ts";
@@ -57,7 +58,7 @@ function writeJson(file: string, value: unknown): void {
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	const tmp = `${file}.tmp-${process.pid}`;
 	fs.writeFileSync(tmp, `${JSON.stringify(value, null, "\t")}\n`);
-	fs.renameSync(tmp, file);
+	renameWithRetry(tmp, file);
 }
 
 const strings = (v: unknown): string[] | undefined =>

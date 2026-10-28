@@ -47,6 +47,7 @@ import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { KeysSection } from "./keys-section.tsx";
 import { Hint } from "@/components/ui/hint";
+import { downloadFile } from "@/components/artifacts/download";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
 import { KeyboardSection } from "./keyboard-section.tsx";
 
@@ -378,13 +379,7 @@ export function SettingsDialogBody({
 										hint="Sessions, map, flashcards, exams and settings as one JSON file (no API keys). A copy is also saved daily in the data folder's backups."
 										testid="row-export-data"
 									>
-										<a
-											href="/api/export"
-											download
-											className="shrink-0 rounded-sm border border-border px-3 py-1 text-xs hover:bg-muted"
-										>
-											Export
-										</a>
+										<ExportButton />
 									</SettingsRow>
 								</SettingsSection>
 							)}
@@ -455,5 +450,37 @@ export function SettingsDialogBody({
 				</div>
 			</div>
 		</div>
+	);
+}
+
+/** Fetches the export and saves it as a file. A plain download link would
+ *  save a server error page as the "export" when the request is refused;
+ *  this reports the failure instead. */
+function ExportButton() {
+	const [state, setState] = useState<"idle" | "busy" | "error">("idle");
+	const save = async () => {
+		setState("busy");
+		try {
+			const res = await fetch("/api/export", { cache: "no-store" });
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const stamp = new Date().toISOString().slice(0, 10);
+			downloadFile(`socrates-export-${stamp}.json`, await res.text(), "application/json");
+			setState("idle");
+		} catch {
+			setState("error");
+		}
+	};
+	return (
+		<span className="flex shrink-0 items-center gap-2">
+			{state === "error" && <span role="alert" className="text-xs text-destructive">Couldn&apos;t export. Try again.</span>}
+			<button
+				type="button"
+				disabled={state === "busy"}
+				onClick={() => void save()}
+				className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-muted disabled:opacity-60"
+			>
+				{state === "busy" ? "Exporting…" : "Export"}
+			</button>
+		</span>
 	);
 }

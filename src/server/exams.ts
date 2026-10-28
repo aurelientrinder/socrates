@@ -317,12 +317,15 @@ async function grade(id: string): Promise<void> {
 	try {
 		const record = examStore.get(id);
 		if (!record) return;
-		const run = examinerRun(controller.signal);
+		// Only a part the code cannot grade (written work) needs a model, so a
+		// paper of choice and numeric questions is graded even without one.
+		let run: ExaminerRun | undefined;
+		const getRun = () => (run ??= examinerRun(controller.signal));
 		const grades: Record<string, PartGrade> = { ...record.grades };
 		for (const [i, problem] of record.problems.entries()) {
 			if (problem.parts.every((p) => grades[p.id])) continue; // graded before a retry
 			examStore.update(id, (r) => ({ ...r, phase: `Grading problem ${i + 1} of ${record.problems.length}` }));
-			Object.assign(grades, await gradeOne(run, problem, record.answers));
+			Object.assign(grades, await gradeOne(getRun, problem, record.answers));
 			examStore.update(id, (r) => ({ ...r, grades: { ...grades } }));
 		}
 		examStore.update(id, (r) => ({
@@ -344,7 +347,7 @@ async function grade(id: string): Promise<void> {
 	}
 }
 
-async function gradeOne(run: ExaminerRun, problem: ExamProblem, answers: ExamRecord["answers"]): Promise<Record<string, PartGrade>> {
+async function gradeOne(getRun: () => ExaminerRun, problem: ExamProblem, answers: ExamRecord["answers"]): Promise<Record<string, PartGrade>> {
 	const code: Record<string, PartGrade> = {};
 	for (const part of problem.parts) {
 		const g = gradeByCode(part, answers[part.id]);
@@ -352,7 +355,7 @@ async function gradeOne(run: ExaminerRun, problem: ExamProblem, answers: ExamRec
 	}
 	const toGrade = problem.parts.filter((p) => !code[p.id]);
 	if (toGrade.length === 0) return code;
-	const submission = await gradeProblem(run, problem, answers, toGrade, code);
+	const submission = await gradeProblem(getRun(), problem, answers, toGrade, code);
 	const out: Record<string, PartGrade> = { ...code };
 	for (const g of finalizeRubricGrades(problem, answers, submission, code)) out[g.partId] = g;
 	return out;
@@ -364,11 +367,13 @@ export function retryExam(id: string): ExamView {
 	const record = examStore.get(id);
 	if (!record) throw new ExamError("Exam not found.", 404);
 	if (record.status !== "failed") throw new ExamError("Nothing to retry.", 409);
-	examinerRun(new AbortController().signal);
 	if (record.failedDuring === "grading") {
+		const needsModel = record.problems.some((p) => p.parts.some((part) => !record.grades[part.id] && !gradeByCode(part, record.answers[part.id])));
+		if (needsModel) examinerRun(new AbortController().signal); // refuse up front when no model can
 		examStore.save({ ...record, status: "grading", phase: "Grading", error: undefined });
 		void grade(id);
 	} else {
+		examinerRun(new AbortController().signal); // refuse before rewriting when no model can
 		examStore.save({ ...record, status: "generating", phase: "Reading your notes", error: undefined, problems: [] });
 		void generate(id);
 	}

@@ -7,6 +7,7 @@
  * record.
  */
 
+import { renameWithRetry } from "./fs-atomic.ts";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -52,7 +53,7 @@ export const examStore = {
 		const file = examFile(record.id);
 		const tmp = `${file}.tmp-${crypto.randomUUID().slice(0, 8)}`;
 		fs.writeFileSync(tmp, JSON.stringify(next, null, "\t"), "utf-8");
-		fs.renameSync(tmp, file);
+		renameWithRetry(tmp, file);
 		return next;
 	},
 

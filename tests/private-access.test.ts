@@ -86,10 +86,11 @@ describe("the fs tools", () => {
 
 describe("net guard", () => {
 	it("recognizes private, loopback, link-local and metadata addresses", () => {
-		for (const ip of ["127.0.0.1", "10.1.2.3", "172.16.0.9", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:7f00:1"]) {
+		for (const ip of ["127.0.0.1", "10.1.2.3", "172.16.0.9", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:7f00:1", "192.0.0.8", "192.0.2.1", "::ffff:c000:0201", "64:ff9b::7f00:1", "64:ff9b::10.0.0.1"]) {
 			assert.equal(isPrivateAddress(ip), true, ip);
 		}
-		for (const ip of ["8.8.8.8", "93.184.216.34", "2606:4700:4700::1111"]) assert.equal(isPrivateAddress(ip), false, ip);
+		// 192.0.78.x is WordPress.com: only 192.0.0.0/24 and 192.0.2.0/24 are special.
+		for (const ip of ["8.8.8.8", "93.184.216.34", "2606:4700:4700::1111", "192.0.78.24", "::ffff:c000:4e18", "64:ff9b::808:808"]) assert.equal(isPrivateAddress(ip), false, ip);
 	});
 
 	it("refuses private hosts, odd schemes and hostnames that resolve privately", async () => {

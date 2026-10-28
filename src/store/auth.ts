@@ -14,6 +14,7 @@
  * untouched until a catalog entry adopts them).
  */
 
+import { renameWithRetry } from "./fs-atomic.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { AUTH_FILE } from "../../config.ts";
@@ -42,7 +43,7 @@ function writeMap(map: Record<string, string>): void {
 	const tmp = path.join(dir, `.auth.json.tmp-${process.pid}`);
 	fs.writeFileSync(tmp, `${JSON.stringify(map, null, "\t")}\n`, { mode: 0o600 });
 	fs.chmodSync(tmp, 0o600); // umask may have relaxed the create mode
-	fs.renameSync(tmp, AUTH_FILE);
+	renameWithRetry(tmp, AUTH_FILE);
 }
 
 export const authStore: AuthStore = {

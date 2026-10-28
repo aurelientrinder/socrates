@@ -112,6 +112,12 @@ export async function deleteChatSession(chatId: string, mode: ChatDeleteMode): P
 		}
 	}
 
+	// "preserve-graph" keeps what the session proved about the learner's
+	// memory, so bring its digest up to date first: a digest is only written
+	// when a report is read, and one made earlier would miss what the
+	// session did since (or never exist for a session no report has seen).
+	if (mode === "preserve-graph") chatDigests();
+
 	// THE SYNC BLOCK — no awaits below (see the doc comment). Order:
 	// ledgers → jobs → the chat record.
 	const stats = deleteChatTraces(stores.graphStore, chatId, mode);

@@ -14,6 +14,7 @@
  * so the next one can say what changed: core/study-plan.ts planChanges).
  */
 
+import { renameWithRetry } from "../store/fs-atomic.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { PATHS } from "../../config.ts";
@@ -86,7 +87,7 @@ function writeJson(file: string, value: unknown): void {
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	const tmp = `${file}.tmp-${process.pid}`;
 	fs.writeFileSync(tmp, `${JSON.stringify(value, null, "\t")}\n`);
-	fs.renameSync(tmp, file);
+	renameWithRetry(tmp, file);
 }
 
 const dayFile = (day: string) => path.join(DIR, `${day}.json`);

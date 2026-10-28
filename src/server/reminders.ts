@@ -10,6 +10,7 @@
  * nothing lands on the primary calendar.
  */
 
+import { renameWithRetry } from "../store/fs-atomic.ts";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -56,7 +57,7 @@ function writeStatus(status: ReminderStatus): void {
 	fs.mkdirSync(DIR, { recursive: true });
 	const tmp = `${PREFS_FILE}.tmp-${process.pid}`;
 	fs.writeFileSync(tmp, `${JSON.stringify(status, null, "\t")}\n`);
-	fs.renameSync(tmp, PREFS_FILE);
+	renameWithRetry(tmp, PREFS_FILE);
 }
 
 export const readReminderStatus = readStatus;
