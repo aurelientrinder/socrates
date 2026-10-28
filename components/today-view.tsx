@@ -60,7 +60,7 @@ export interface BriefingData {
 }
 
 export interface IntegrationsData {
-	google: { configured: boolean; connected: boolean; email?: string; pending: boolean; error?: string };
+	google: { configured: boolean; connected: boolean; needsReconnect?: boolean; email?: string; pending: boolean; error?: string };
 	todo: { id: string; label: string; configured: boolean }[];
 }
 
@@ -428,7 +428,7 @@ function Connections({ integrations, briefing, handlers }: { integrations: Integ
 	const todo = integrations.todo[0];
 	const calendarError = briefing?.sources.calendar.error ?? g.error;
 	const todoError = briefing?.sources.todo.error;
-	const allGood = g.connected && todo?.configured && !calendarError && !todoError;
+	const allGood = g.connected && !g.needsReconnect && todo?.configured && !calendarError && !todoError;
 	if (allGood) return null;
 	return (
 		<section data-testid="today-connections" className="flex flex-col gap-3 rounded-2xl border border-dashed border-border px-5 py-4 text-sm">
@@ -438,6 +438,16 @@ function Connections({ integrations, briefing, handlers }: { integrations: Integ
 				{g.connected ? (
 					<>
 						<span className="text-muted-foreground">connected{g.email ? ` as ${g.email}` : ""}</span>
+						{g.needsReconnect && (
+							<>
+								<span className="text-muted-foreground" data-testid="today-reconnect-note">
+									Reconnect once so Socrates can keep its study blocks and reminders on its own “Socrates” calendar.
+								</span>
+								<Button size="sm" onClick={handlers.onConnectGoogle} disabled={g.pending} data-testid="today-reconnect-google">
+									{g.pending ? "Waiting for the browser…" : "Reconnect"}
+								</Button>
+							</>
+						)}
 						<Button variant="ghost" size="sm" className="ml-auto" onClick={handlers.onDisconnectGoogle}>
 							Disconnect
 						</Button>

@@ -6,7 +6,8 @@
  * to refresh them (it syncs whenever the daily briefing is built).
  *
  * Only events this module made are touched (a private marker), and only
- * on the calendar named "Socrates"; nothing lands on the primary calendar.
+ * on the "Socrates" calendar the app made for itself (google-calendar.ts);
+ * nothing lands on the primary calendar.
  */
 
 import { createHash } from "node:crypto";
@@ -15,12 +16,11 @@ import path from "node:path";
 import { PATHS } from "../../config.ts";
 import { buildReminders, DEFAULT_REMINDER_HOUR, REMINDER_HOUR_CHOICES, REMINDER_DAYS, type Reminder, type ReminderPrefs } from "../core/reminders.ts";
 import type { BriefingPlan } from "../core/briefing.ts";
-import { api, googleCalendarStatus, type GoogleCalendarListEntry } from "./integrations/google-calendar.ts";
+import { api, googleCalendarStatus, socratesCalendarId } from "./integrations/google-calendar.ts";
 
 const DIR = path.join(PATHS.data, "briefing");
 const PREFS_FILE = path.join(DIR, "reminders.json");
 const MARKER = "socratesReminder=1";
-const CALENDAR_NAME = "socrates";
 const EVENT_MINUTES = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -90,13 +90,6 @@ function eventBody(r: Reminder) {
 		reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 0 }] },
 		extendedProperties: { private: { socratesReminder: "1" } },
 	};
-}
-
-async function socratesCalendarId(): Promise<string> {
-	const list = await api<{ items?: GoogleCalendarListEntry[] }>("/users/me/calendarList?minAccessRole=writer");
-	const cal = (list.items ?? []).find((c) => c.summary?.trim().toLowerCase() === CALENDAR_NAME);
-	if (!cal) throw new Error('No calendar named "Socrates" yet. Create one in Google Calendar, then sync again.');
-	return cal.id;
 }
 
 /**

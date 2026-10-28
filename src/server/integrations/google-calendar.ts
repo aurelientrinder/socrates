@@ -17,15 +17,19 @@
  * (not in auth.json, which would reflect it into process.env); access
  * tokens stay in memory only.
  *
- * Scopes: read the calendar list, read/write events (study blocks are only
- * written on an explicit click), and openid email to show who is signed in.
+ * Scopes: read the calendar list, READ events on any calendar (the learner's
+ * classes live on their own), and write only to a "Socrates" calendar the
+ * app itself creates (calendar.app.created reaches no other calendar).
+ * Study blocks are only written on an explicit click, and reminders go to
+ * the same calendar. openid email shows who is signed in.
  */
 
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { AUTH_FILE } from "../../../config.ts";
+import { AUTH_FILE, PATHS } from "../../../config.ts";
+import { writeFileAtomic } from "../../store/fs-atomic.ts";
 import type { StudyEvent } from "../../core/briefing.ts";
 import { keyValue } from "../keys.ts";
 
@@ -37,8 +41,12 @@ export const GOOGLE_SCOPES = [
 	"openid",
 	"email",
 	"https://www.googleapis.com/auth/calendar.calendarlist.readonly",
-	"https://www.googleapis.com/auth/calendar.events",
+	"https://www.googleapis.com/auth/calendar.events.readonly",
+	"https://www.googleapis.com/auth/calendar.app.created",
 ];
+/** The scope that lets the app create and write its own calendar. */
+const WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
+const OWN_CALENDAR_NAME = "Socrates";
 const CALLBACK_PATH = "/oauth2/callback";
 const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15_000;
@@ -56,6 +64,9 @@ export interface GoogleCalendarStatus {
 	/** Client ID and secret are saved in Settings → Keys. */
 	configured: boolean;
 	connected: boolean;
+	/** Signed in before the narrow scopes: reading works, but writing to the
+	 *  Socrates calendar needs a one-time reconnect. */
+	needsReconnect?: boolean;
 	email?: string;
 	/** A sign-in is waiting for the browser. */
 	pending: boolean;
@@ -111,12 +122,17 @@ function client(): { id: string; secret: string } | null {
 	return id && secret ? { id, secret } : null;
 }
 
+function hasWriteScope(creds: StoredCredentials): boolean {
+	return (creds.scope ?? "").split(/\s+/).includes(WRITE_SCOPE);
+}
+
 export function googleCalendarStatus(): GoogleCalendarStatus {
 	const creds = readCredentials();
 	const s = state();
 	return {
 		configured: client() !== null,
 		connected: creds !== null,
+		...(creds && !hasWriteScope(creds) ? { needsReconnect: true } : {}),
 		...(creds?.email ? { email: creds.email } : {}),
 		pending: s.pending !== null,
 		...(s.error ? { error: s.error } : {}),
@@ -336,6 +352,7 @@ interface GoogleEvent {
 	start?: { date?: string; dateTime?: string };
 	end?: { date?: string; dateTime?: string };
 	transparency?: string;
+	extendedProperties?: { private?: Record<string, string> };
 }
 
 /** A date-only value ("2026-11-03") as local midnight; a dateTime as itself. */
@@ -354,6 +371,8 @@ function eventTime(t: { date?: string; dateTime?: string } | undefined): number 
 
 export function toStudyEvent(e: GoogleEvent, calendarId: string): StudyEvent | null {
 	if (e.status === "cancelled" || !e.summary) return null;
+	// Socrates' own reminder pings are not the learner's schedule.
+	if (e.extendedProperties?.private?.socratesReminder) return null;
 	const start = eventTime(e.start);
 	const end = eventTime(e.end) ?? start;
 	if (start === null || end === null) return null;
@@ -364,6 +383,8 @@ export function toStudyEvent(e: GoogleEvent, calendarId: string): StudyEvent | n
 		end,
 		allDay: !e.start?.dateTime,
 		source: "calendar",
+		// A study block the app wrote is busy time, never an exam or a class.
+		...(e.extendedProperties?.private?.socratesBlock ? { kind: "other" as const } : {}),
 		...(e.htmlLink ? { url: e.htmlLink } : {}),
 	};
 }
@@ -379,7 +400,8 @@ const MAX_EVENT_PAGES = 4;
  */
 export async function listCalendarEvents(from: number, to: number): Promise<StudyEvent[]> {
 	const list = await api<{ items?: GoogleCalendarListEntry[] }>("/users/me/calendarList?minAccessRole=reader");
-	const calendars = (list.items ?? []).filter((c) => c.selected || c.primary);
+	const own = storedOwnCalendarId();
+	const calendars = (list.items ?? []).filter((c) => c.selected || c.primary || c.id === own);
 	const out: StudyEvent[] = [];
 	for (const cal of calendars) {
 		// Five weeks of a class timetable can pass one page: follow the page tokens (bounded).
@@ -405,9 +427,86 @@ export async function listCalendarEvents(from: number, to: number): Promise<Stud
 	return out.sort((a, b) => a.start - b.start);
 }
 
-/** Write one study block on the primary calendar (explicit click only). */
+// ─── the Socrates calendar ──────────────────────────────────────────────────
+
+const OWN_CALENDAR_FILE = path.join(PATHS.data, "briefing", "socrates-calendar.json");
+
+function storedOwnCalendarId(): string | null {
+	try {
+		const raw = JSON.parse(fs.readFileSync(OWN_CALENDAR_FILE, "utf-8")) as { id?: unknown };
+		return typeof raw.id === "string" && raw.id ? raw.id : null;
+	} catch {
+		return null;
+	}
+}
+
+function rememberOwnCalendar(id: string): void {
+	fs.mkdirSync(path.dirname(OWN_CALENDAR_FILE), { recursive: true });
+	writeFileAtomic(OWN_CALENDAR_FILE, `${JSON.stringify({ id }, null, "\t")}\n`);
+}
+
+const statusOf = (err: unknown): number | undefined => (err as { status?: number })?.status;
+
+/** Can the app write events to this calendar? An older "Socrates" calendar
+ *  the learner made by hand is not one the narrow scope reaches. */
+async function canWriteTo(calendarId: string): Promise<boolean> {
+	const base = `/calendars/${encodeURIComponent(calendarId)}/events`;
+	const now = Date.now();
+	try {
+		const probe = await api<{ id: string }>(base, {
+			method: "POST",
+			body: { summary: "Socrates check", start: { dateTime: new Date(now).toISOString() }, end: { dateTime: new Date(now + 60_000).toISOString() }, transparency: "transparent" },
+		});
+		await api(`${base}/${probe.id}`, { method: "DELETE" }).catch(() => undefined);
+		return true;
+	} catch (err) {
+		if (statusOf(err) === 403 || statusOf(err) === 404) return false;
+		throw err;
+	}
+}
+
+/**
+ * The id of the "Socrates" calendar the app writes to, made on first use.
+ * The app can only reach calendars it created itself, so a stored id (or a
+ * same-named calendar it can already write to) is reused and anything else
+ * gets a fresh calendar of its own.
+ */
+export async function socratesCalendarId(): Promise<string> {
+	const creds = readCredentials();
+	if (!creds) throw new GoogleAuthError("Google Calendar is not connected.");
+	if (!hasWriteScope(creds)) {
+		throw new GoogleAuthError("Reconnect Google Calendar once (Today → Connections) so Socrates can use its own calendar.");
+	}
+	const stored = storedOwnCalendarId();
+	if (stored) {
+		try {
+			await api(`/calendars/${encodeURIComponent(stored)}`);
+			return stored;
+		} catch (err) {
+			if (statusOf(err) !== 404 && statusOf(err) !== 410) throw err;
+			// deleted in Google Calendar: make it again below
+		}
+	}
+	const list = await api<{ items?: GoogleCalendarListEntry[] }>("/users/me/calendarList?minAccessRole=writer");
+	for (const c of list.items ?? []) {
+		if (c.summary?.trim().toLowerCase() === OWN_CALENDAR_NAME.toLowerCase() && (await canWriteTo(c.id))) {
+			rememberOwnCalendar(c.id);
+			return c.id;
+		}
+	}
+	const taken = (list.items ?? []).some((c) => c.summary?.trim().toLowerCase() === OWN_CALENDAR_NAME.toLowerCase());
+	const made = await api<{ id: string }>("/calendars", {
+		method: "POST",
+		body: { summary: taken ? `${OWN_CALENDAR_NAME} (app)` : OWN_CALENDAR_NAME, description: "Study blocks and reminders from Socrates." },
+	});
+	rememberOwnCalendar(made.id);
+	return made.id;
+}
+
+/** Write one study block on the Socrates calendar (explicit click only). */
 export async function createStudyBlock(input: { title: string; description: string; start: number; minutes: number }): Promise<{ url?: string }> {
-	const event = await api<GoogleEvent>("/calendars/primary/events", {
+	const calendarId = await socratesCalendarId();
+	const event = await api<GoogleEvent>(`/calendars/${encodeURIComponent(calendarId)}/events`, {
 		method: "POST",
 		body: {
 			summary: input.title,
@@ -415,6 +514,7 @@ export async function createStudyBlock(input: { title: string; description: stri
 			start: { dateTime: new Date(input.start).toISOString() },
 			end: { dateTime: new Date(input.start + input.minutes * 60_000).toISOString() },
 			reminders: { useDefault: true },
+			extendedProperties: { private: { socratesBlock: "1" } },
 		},
 	});
 	return event.htmlLink ? { url: event.htmlLink } : {};
