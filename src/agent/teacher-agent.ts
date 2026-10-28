@@ -21,8 +21,7 @@ import { quizInputObject, quizInputProblems } from "../core/question-core.ts";
 import { QUESTION_TOOLS, type EnabledTools } from "../core/pending.ts";
 import { replyLanguageInstruction } from "../core/reply-language.ts";
 import { toLlmMessages, nativeInputCause } from "../core/native-messages.ts";
-import type { ChatGPTRequestCycle } from "./chatgpt-request-cycle.ts";
-import { usageWasAdmitted } from "./subscription-request-cycle.ts";
+import { usageWasAdmitted } from "./unadmitted-usage.ts";
 
 /**
  * The two teaching-side agents (docs/probe-teach-split.md): the PROBER and
@@ -103,7 +102,6 @@ export interface AgentBuildOptions {
 	/** Model + stream function — tests inject a scripted faux engine. */
 	engine?: PiEngine;
 	callPurpose?: { background: boolean };
-	requestCycle?: ChatGPTRequestCycle;
 	/** The initial transcript, as pi messages (the record IS agent state). */
 	messages?: AgentMessage[];
 	/** Money channel: one call per model request. */
@@ -241,7 +239,6 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 				if (automatic) opts.callPurpose.background = true;
 				else if (learner) opts.callPurpose.background = false;
 			}
-			opts.requestCycle?.prepare(request);
 		},
 	});
 	if (opts.onUsage) {
@@ -249,7 +246,7 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 			if (event.type === "message_end" && event.message.role === "assistant" && "usage" in event.message) {
 				// A cancelled call is not a billed step (partial/estimated
 				// usage on an aborted message is not money spent).
-				if (event.message.stopReason === "aborted" || !usageWasAdmitted(event.message.usage) || (opts.requestCycle && !opts.requestCycle.acceptsUsage(event.message))) return;
+				if (event.message.stopReason === "aborted" || !usageWasAdmitted(event.message.usage)) return;
 				opts.onUsage!(event.message.usage);
 			}
 		});

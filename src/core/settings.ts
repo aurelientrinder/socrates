@@ -31,8 +31,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { AUTH_PROVIDER_KEYS } from "./auth-keys.ts";
 import type { ModelRole } from "../../config.ts";
 import type { ChatSettings } from "./contracts/chat.ts";
-import { isSearchEngineId, type SearchEngineId } from "./search.ts";
-import { isDictationEngineId, isDictationLanguage, type DictationEngineId } from "./dictation.ts";
+import { isDictationLanguage } from "./dictation.ts";
 import { isReplyLanguage } from "./reply-language.ts";
 
 /** The schema version this code understands. Bump ONLY for breaking shape
@@ -244,17 +243,10 @@ export interface AgentSettings {
 	/** Tool toggles keyed by tool id (absent key = enabled). User-level
 	 *  only — no per-chat override (owner decision 2026-09-19). */
 	tools?: Record<string, boolean>;
-	/** Search-engine preference (search wave, 2026-09-20). OPTIONAL by
-	 *  owner decision: setting a key auto-activates its engine — the user
-	 *  never chooses an engine to make search work. An explicit choice only
-	 *  pins the preference (e.g. when BOTH keys are present); the chosen
-	 *  engine must still have its key, else search is honestly unavailable.
-	 *  Absent + no key = unavailable (no silent fallback, no default). */
-	search?: { engine?: SearchEngineId };
-	/** Dictation preferences (2026-10-26): engine pin (same discipline as
-	 *  search — a key is enough, the pin only chooses between keyed
-	 *  engines) + the spoken language (absent = automatic). */
-	dictation?: { engine?: DictationEngineId; language?: string };
+	/** Dictation preference (2026-10-26): the spoken language (absent =
+	 *  automatic). A stored `engine` / `search` pin from the retired engines
+	 *  is dropped on read. */
+	dictation?: { language?: string };
 	/** The language the tutor writes to the learner in (2026-10-27): a
 	 *  REPLY_LANGUAGES code; absent = automatic (the learner's own). */
 	replyLanguage?: string;
@@ -535,17 +527,9 @@ function sanitizeAgent(raw: Record<string, unknown>): AgentSettings {
 	if (tools) out.tools = tools;
 	const prompts = sanitizeBooleanMap(raw.prompts);
 	if (prompts) out.prompts = prompts;
-	// Search preference: lenient read side (an unknown engine id drops;
-	// the write side's parser is strict — a stale client can't brick the
-	// record, it just loses the pin and auto-detection resumes).
-	if (raw.search !== null && typeof raw.search === "object" && !Array.isArray(raw.search)) {
-		const engine = (raw.search as Record<string, unknown>).engine;
-		if (isSearchEngineId(engine)) out.search = { engine };
-	}
 	if (raw.dictation !== null && typeof raw.dictation === "object" && !Array.isArray(raw.dictation)) {
 		const d = raw.dictation as Record<string, unknown>;
-		const dictation: { engine?: DictationEngineId; language?: string } = {};
-		if (isDictationEngineId(d.engine)) dictation.engine = d.engine;
+		const dictation: { language?: string } = {};
 		if (isDictationLanguage(d.language)) dictation.language = d.language;
 		out.dictation = dictation;
 	}

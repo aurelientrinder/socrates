@@ -1,16 +1,13 @@
 /**
- * The dictation engines' server composition (dictation-options wave,
+ * The dictation engine's server composition (dictation-options wave,
  * 2026-10-26): engine resolution (core/dictation.ts has the rules) + the
- * Gemini batch transcriber behind POST /api/stt/transcribe. The Deepgram
- * engine keeps its token mint in app/api/stt/token.
+ * Gemini batch transcriber behind POST /api/stt/transcribe.
  *
  * The transcriber takes an injected fetch so tests never touch the network.
  */
 
 import {
-	DICTATION_ENGINES,
 	dictationLanguageLabel,
-	type DictationEngineId,
 	type DictationStatus,
 } from "../core/dictation.ts";
 import { keyValue } from "./keys.ts";
@@ -22,45 +19,11 @@ type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 /** The capture format the renderer's worklet produces (pcm-capture.js). */
 export const DICTATION_SAMPLE_RATE = 16000;
 
-/** Resolve the dictation engine PURELY from the pin + the keyed engines
- *  (testable). Same discipline as resolveSearchEngineFor: a pin wins but
- *  must be keyed; no pin → the first keyed engine in preference order. */
-export function resolveDictationEngineFor(
-	pinned: DictationEngineId | undefined,
-	keys: Partial<Record<DictationEngineId, string | undefined>>,
-): DictationStatus & { key: string | null } {
-	if (pinned) {
-		const key = keys[pinned] ?? null;
-		const envVar = DICTATION_ENGINES.find((e) => e.id === pinned)?.envVar;
-		if (!key) {
-			return {
-				available: false,
-				engine: null,
-				reason: `dictation engine is set to "${pinned}" but its key is missing — set the ${envVar} key`,
-				key: null,
-			};
-		}
-		return { available: true, engine: pinned, reason: `dictation engine: ${pinned} (chosen)`, key };
-	}
-	for (const { id } of DICTATION_ENGINES) {
-		const key = keys[id] ?? null;
-		if (key) return { available: true, engine: id, reason: `dictation engine: ${id} (auto)`, key };
-	}
-	return {
-		available: false,
-		engine: null,
-		reason: "no dictation engine — set a Deepgram key, or a Gemini (Google) model key",
-		key: null,
-	};
-}
-
-function liveKeys(): Partial<Record<DictationEngineId, string>> {
-	const keys: Partial<Record<DictationEngineId, string>> = {};
-	for (const { id, envVar } of DICTATION_ENGINES) {
-		const value = keyValue(envVar);
-		if (value) keys[id] = value;
-	}
-	return keys;
+/** Resolve the dictation state PURELY from the live Gemini key (testable):
+ *  present = live, absent = honestly unavailable. */
+export function resolveDictationEngineFor(geminiKey: string | undefined): DictationStatus & { key: string | null } {
+	if (geminiKey) return { available: true, engine: "gemini", reason: "dictation engine: gemini", key: geminiKey };
+	return { available: false, engine: null, reason: "no dictation engine — set a Gemini (Google) model key", key: null };
 }
 
 /** The live engine + its key + the language pin (null = automatic). Read
@@ -68,7 +31,7 @@ function liveKeys(): Partial<Record<DictationEngineId, string>> {
  *  next run. */
 export function resolveDictation(): DictationStatus & { key: string | null; language: string | null } {
 	const prefs = effectiveSettings().agent.dictation ?? {};
-	return { ...resolveDictationEngineFor(prefs.engine, liveKeys()), language: prefs.language ?? null };
+	return { ...resolveDictationEngineFor(keyValue("GEMINI_API_KEY")), language: prefs.language ?? null };
 }
 
 /** The honest status (no key) — the settings row's reason line. */

@@ -31,9 +31,7 @@ import { after, describe, it } from "node:test";
 // values only, never real secrets).
 for (const varName of [
 	"OPENROUTER_API_KEY",
-	"DEEPGRAM_API_KEY",
-	"TAVILY_API_KEY",
-	"BRAVE_API_KEY",
+	"TODOIST_API_TOKEN",
 	"OPENAI_API_KEY",
 	"ZAI_API_KEY",
 ]) {

@@ -1,5 +1,5 @@
 /**
- * POST /api/stt/transcribe — the batch dictation engine (Gemini,
+ * POST /api/stt/transcribe — the dictation engine (Gemini,
  * 2026-10-26). Body: the run's raw linear16 16kHz mono PCM
  * (application/octet-stream), exactly what pcm-capture.js produced.
  * Answers {text}. The key and the language pin are read server-side.
@@ -15,9 +15,6 @@ const MAX_BYTES = (BATCH_DICTATION_MAX_SECONDS + 10) * DICTATION_SAMPLE_RATE * 2
 export async function POST(request: Request) {
 	const { engine, key, language, reason } = resolveDictation();
 	if (!engine || !key) return Response.json({ message: reason }, { status: 503 });
-	if (engine !== "gemini") {
-		return Response.json({ message: `${engine} dictation streams — it has no batch transcription` }, { status: 409 });
-	}
 	const pcm = new Uint8Array(await request.arrayBuffer());
 	if (pcm.byteLength === 0) return Response.json({ text: "" });
 	if (pcm.byteLength > MAX_BYTES) {

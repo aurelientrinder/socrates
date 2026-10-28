@@ -1,4 +1,4 @@
-import { modelCatalog, refreshConnectionCatalog } from "@/src/server";
+import { modelCatalog } from "@/src/server";
 
 /**
  * The model picker's data (model-control wave): pi-ai's configured-provider
@@ -6,7 +6,6 @@ import { modelCatalog, refreshConnectionCatalog } from "@/src/server";
  * model's SUPPORTED thinking levels (per its thinkingLevelMap). Static
  * catalog: no network, stable within a pi-ai version.
  */
-export async function GET() {
-	await refreshConnectionCatalog();
+export function GET() {
 	return Response.json(modelCatalog(), { headers: { "Cache-Control": "no-store" } });
 }

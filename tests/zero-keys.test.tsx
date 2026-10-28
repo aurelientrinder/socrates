@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { hasProviderKey, strongKeyless, ZeroKeysPill } from "../components/setup-cta.tsx";
 import type { ModelCatalogResponse } from "../src/core/index.ts";
 import { SetupKeysBody } from "../components/setup-dialog.tsx";
-import { DICTATION_KEYLESS, DEEPGRAM_KEY_ID } from "../components/dictation.tsx";
+import { DICTATION_KEYLESS, GEMINI_KEY_ID } from "../components/dictation.tsx";
 import type { AuthKeyStatus } from "../src/core/auth-keys.ts";
 import type { ProviderKeyInfo } from "../components/settings/keys-section.tsx";
 
@@ -37,9 +37,9 @@ describe("hasProviderKey — the zero-keys pill's truth", () => {
 		assert.equal(hasProviderKey([status("ANTHROPIC_API_KEY", true, "file")], PROVIDERS), true);
 	});
 
-	it("a TOOL key alone does not count — Deepgram unlocks no models", () => {
-		// Deepgram is not in the providers roster: it must never suppress the pill.
-		assert.equal(hasProviderKey([status("DEEPGRAM_API_KEY", true)], PROVIDERS), false);
+	it("a TOOL key alone does not count — Todoist unlocks no models", () => {
+		// Todoist is not in the providers roster: it must never suppress the pill.
+		assert.equal(hasProviderKey([status("TODOIST_API_TOKEN", true)], PROVIDERS), false);
 	});
 
 	it("absent provider keys = zero keys (the pill shows)", () => {
@@ -76,8 +76,7 @@ describe("SetupKeysBody — stage 1's self-contained first-key screen", () => {
 		const html = renderToStaticMarkup(
 			createElement(SetupKeysBody, { ...base, providers: PROVIDERS, provider: null }),
 		);
-		assert.ok(html.indexOf('data-testid="setup-key-provider"') < html.indexOf('data-testid="chatgpt-login"'), "API keys remain primary, ChatGPT is secondary");
-		assert.doesNotMatch(html, /chatgpt-privacy-notice|OpenAI privacy|Manage usage/);
+		assert.doesNotMatch(html, /chatgpt|Subscriptions/i);
 		assert.ok(html.includes("Choose your AI provider and paste its API key. You’ll pick your models next."));
 		assert.doesNotMatch(html, /First, add|keys unlock|—/);
 		assert.ok(html.includes('data-testid="setup-key-provider"'));
@@ -113,11 +112,11 @@ describe("SetupKeysBody — stage 1's self-contained first-key screen", () => {
 
 describe("the dictation keyless seam (owner dictation trio)", () => {
 	it("the client-authored short line — not the route's dev-speak", () => {
-		assert.equal(DICTATION_KEYLESS, "Dictation needs a Deepgram or Gemini key");
+		assert.equal(DICTATION_KEYLESS, "Dictation needs a Gemini key");
 	});
 
-	it("the Deepgram row id matches the keys store (KeysSection openRow)", () => {
-		assert.equal(DEEPGRAM_KEY_ID, "DEEPGRAM_API_KEY");
+	it("the Gemini row id matches the keys store (KeysSection openRow)", () => {
+		assert.equal(GEMINI_KEY_ID, "GEMINI_API_KEY");
 	});
 });
 /** A minimal catalog double — only the two halves the strong-keyless guard

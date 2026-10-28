@@ -424,7 +424,7 @@ function QuestionDockForm({
 	const submit = () => {
 		if (!canSubmit || compactionRunning) return;
 		/* FINISH DICTATION FIRST (owner, 2026-10-01): Enter may arrive while
-		 * a run is live with reasoning still in Deepgram's hands. Stop the
+		 * a run is live with reasoning still being transcribed. Stop the
 		 * run, let the last finals land in the target field, and only then
 		 * build the answer — the spoken reasoning is never lost to a
 		 * forgotten stop. The field values below come from the REF mirrors

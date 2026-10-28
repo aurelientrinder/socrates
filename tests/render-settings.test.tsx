@@ -87,17 +87,17 @@ describe("AgentSection (thin SSR)", () => {
 		assert.ok(html.includes('data-testid="group-prompts"'), "System prompts sub-group");
 	});
 
-	it("the search-engine row renders with its live reason (search wave 2026-09-20)", () => {
+	it("no search-engine or dictation-engine rows remain; the dictation language row does", () => {
 		const html = renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />);
-		assert.ok(html.includes('data-testid="search-engine-row"'), "the row");
-		assert.ok(html.includes('data-testid="search-engine-trigger"'), "the trigger");
-		// SSR: /api/search never fired → no reason line yet, trigger reads Automatic
-		assert.ok(html.includes("Automatic"), "unset engine reads Automatic");
-		// the explicit preference shows the chosen engine in the trigger
-		const html2 = renderToStaticMarkup(
-			<AgentSection agent={{ search: { engine: "tavily" } }} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />,
+		assert.ok(!html.includes('data-testid="search-engine-row"'));
+		assert.ok(!html.includes('data-testid="dictation-engine-row"'));
+		assert.ok(html.includes('data-testid="dictation-language-row"'));
+		// a stored pin from a retired engine renders nothing and does not throw
+		const stale = renderToStaticMarkup(
+			<AgentSection agent={{ search: { engine: "tavily" }, dictation: { engine: "deepgram", language: "fr" } } as never} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />,
 		);
-		assert.ok(html2.includes("Tavily"), "pinned engine visible in the trigger");
+		assert.ok(stale.includes("French"));
+		assert.ok(!stale.includes("Tavily"));
 	});
 
 	it("the prober graph-tools row: FIRST in the Tools group, default ON, its own key (wave 7)", () => {

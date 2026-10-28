@@ -25,8 +25,6 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ModelRole } from "../../config.ts";
 import type { ChatSettings } from "./contracts/chat.ts";
-import type { SearchEngineId } from "./search.ts";
-import type { DictationEngineId } from "./dictation.ts";
 import {
 	BACKGROUND_MODEL_ROLES,
 	FACTORY_SETTINGS,
@@ -76,13 +74,9 @@ export interface EffectiveSettings {
 		tools: Record<string, boolean>;
 		/** Delta map as stored — absent key → override off. */
 		prompts: Record<string, boolean>;
-		/** The search-engine preference as stored (search wave, 2026-09-20):
-		 *  passthrough delta — engine resolution (pin → auto → unavailable)
-		 *  lives in server/search.ts, where keys are visible. */
-		search: { engine?: SearchEngineId };
 		/** Dictation preferences as stored (passthrough delta; resolution
 		 *  lives in server/dictation.ts, where keys are visible). */
-		dictation: { engine?: DictationEngineId; language?: string };
+		dictation: { language?: string };
 		/** The tutor's reply language code, or undefined (automatic). */
 		replyLanguage?: string;
 		/** Prober graph tools (wave 7): passthrough delta as stored —
@@ -186,7 +180,6 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 			models,
 			tools: agent.tools ?? {},
 			prompts: agent.prompts ?? {},
-			search: agent.search ?? {},
 			dictation: agent.dictation ?? {},
 			...(agent.replyLanguage ? { replyLanguage: agent.replyLanguage } : {}),
 			graphTools: agent.graphTools ?? {},

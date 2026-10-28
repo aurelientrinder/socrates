@@ -1,53 +1,30 @@
 /**
- * Dictation + search options (2026-10-26): engine resolution for
- * dictation, the Gemini batch transcriber and the Gemini search-grounding
- * adapter against STUB fetches (never the network), the WAV header, the
- * settings parse/sanitize, and the renderer's Deepgram URL.
+ * Dictation + search on the Gemini key (2026-10-26): engine resolution for
+ * dictation, the Gemini transcriber and the Gemini search-grounding
+ * adapter against STUB fetches (never the network), the WAV header, and
+ * the settings parse/sanitize (stale engine pins from retired engines
+ * included).
  */
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { geminiTranscribe, pcmToWav, resolveDictationEngineFor, transcribePrompt } from "../src/server/dictation.ts";
-import { geminiSearchProvider, resolveSearchEngineFor } from "../src/server/search.ts";
+import { geminiSearchProvider } from "../src/server/search.ts";
 import { parseAgentSettingsBody } from "../src/server/settings-body.ts";
 import { sanitizeUserSettings } from "../src/core/settings.ts";
-import { deepgramUrl } from "../components/dictation.tsx";
 import { composeDictation } from "../components/settings/agent-section.tsx";
 
 describe("resolveDictationEngineFor", () => {
-	it("no keys: honestly unavailable", () => {
-		const out = resolveDictationEngineFor(undefined, {});
+	it("no key: honestly unavailable", () => {
+		const out = resolveDictationEngineFor(undefined);
 		assert.ok(!out.available);
 		assert.match(out.reason, /Gemini/);
 	});
 
 	it("a Gemini key alone is enough", () => {
-		const out = resolveDictationEngineFor(undefined, { gemini: "g-key" });
+		const out = resolveDictationEngineFor("g-key");
 		assert.equal(out.engine, "gemini");
 		assert.equal(out.key, "g-key");
-	});
-
-	it("both keys, no pin: Deepgram first (the streaming engine)", () => {
-		assert.equal(resolveDictationEngineFor(undefined, { deepgram: "d", gemini: "g" }).engine, "deepgram");
-	});
-
-	it("a pin wins, and never falls back to the other engine", () => {
-		assert.equal(resolveDictationEngineFor("gemini", { deepgram: "d", gemini: "g" }).engine, "gemini");
-		const out = resolveDictationEngineFor("deepgram", { gemini: "g" });
-		assert.ok(!out.available);
-		assert.match(out.reason, /DEEPGRAM_API_KEY/);
-	});
-});
-
-describe("search: Gemini is the last-resort engine", () => {
-	it("auto-activates when it is the only key", () => {
-		assert.equal(resolveSearchEngineFor(undefined, { gemini: "g" }).engine, "gemini");
-	});
-	it("never shadows a dedicated search key", () => {
-		assert.equal(resolveSearchEngineFor(undefined, { brave: "b", gemini: "g" }).engine, "brave");
-	});
-	it("a missing pinned key names its var", () => {
-		assert.match(resolveSearchEngineFor("gemini", {}).reason, /GEMINI_API_KEY/);
 	});
 });
 
@@ -154,37 +131,35 @@ describe("geminiSearchProvider (grounding metadata → hits)", () => {
 	});
 });
 
-describe("settings: dictation + gemini search", () => {
-	it("the write side accepts valid prefs and rejects unknown ones", () => {
-		const ok = parseAgentSettingsBody({ dictation: { engine: "gemini", language: "fr" }, search: { engine: "gemini" } });
+describe("settings: dictation language", () => {
+	it("the write side accepts a valid language and rejects unknown ones", () => {
+		const ok = parseAgentSettingsBody({ dictation: { language: "fr" } });
 		assert.ok(ok.ok);
-		if (ok.ok) {
-			assert.deepEqual(ok.settings.dictation, { engine: "gemini", language: "fr" });
-			assert.deepEqual(ok.settings.search, { engine: "gemini" });
-		}
-		assert.ok(!parseAgentSettingsBody({ dictation: { engine: "whisper" } }).ok);
+		if (ok.ok) assert.deepEqual(ok.settings.dictation, { language: "fr" });
 		assert.ok(!parseAgentSettingsBody({ dictation: { language: "klingon" } }).ok);
 	});
 
-	it("the read side drops unknown values", () => {
-		const out = sanitizeUserSettings({ version: 1, agent: { dictation: { engine: "x", language: "fr" } } });
-		assert.deepEqual(out?.agent?.dictation, { language: "fr" });
+	it("the write side ignores a stale engine pin and a stale search pin", () => {
+		const out = parseAgentSettingsBody({ dictation: { engine: "deepgram", language: "fr" }, search: { engine: "tavily" } });
+		assert.ok(out.ok);
+		if (out.ok) {
+			assert.deepEqual(out.settings.dictation, { language: "fr" });
+			assert.equal((out.settings as Record<string, unknown>).search, undefined);
+		}
 	});
 
-	it("composeDictation sets and clears one field at a time", () => {
+	it("the read side drops retired engine pins", () => {
+		const out = sanitizeUserSettings({
+			version: 1,
+			agent: { dictation: { engine: "deepgram", language: "fr" }, search: { engine: "brave" } },
+		});
+		assert.deepEqual(out?.agent?.dictation, { language: "fr" });
+		assert.equal((out?.agent as Record<string, unknown> | undefined)?.search, undefined);
+	});
+
+	it("composeDictation sets and clears the language", () => {
 		const a = composeDictation(undefined, "language", "fr");
 		assert.deepEqual(a.dictation, { language: "fr" });
-		const b = composeDictation(a, "engine", "gemini");
-		assert.deepEqual(b.dictation, { language: "fr", engine: "gemini" });
-		assert.deepEqual(composeDictation(b, "engine", null).dictation, { language: "fr" });
 		assert.equal(composeDictation(a, "language", null).dictation, undefined);
-	});
-});
-
-describe("deepgramUrl", () => {
-	it("pins the language, or uses nova-3's multilingual mode", () => {
-		assert.match(deepgramUrl("fr"), /[?&]language=fr(&|$)/);
-		assert.match(deepgramUrl(null), /[?&]language=multi(&|$)/);
-		assert.match(deepgramUrl(null), /model=nova-3/);
 	});
 });

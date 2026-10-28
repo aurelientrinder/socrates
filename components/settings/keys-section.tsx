@@ -15,7 +15,7 @@
  *    a paste box on a key the UI cannot make live would mislead.
  *  - OpenRouter is NOT special: one provider among 33, a row only when
  *    stored, otherwise it lives in the Add dropdown like everyone else.
- *  - Providers groups API keys, subscriptions, dictation and search.
+ *  - Providers groups API keys and the calendar & to-do tokens.
  *    Unknown variables stay masked/read-only at the end of Model API keys.
  *
  * API: GET /api/keys (masked statuses + the providers array), PUT
@@ -26,7 +26,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AUTH_KEYS, type AuthKeyStatus } from "@/src/core";
 import { SettingsGroup } from "./controls.tsx";
-import { SubscriptionConnections } from "./subscription-connections.tsx";
 import { ProviderMenuList } from "./model-menu.tsx";
 import { MenuShell } from "@/components/menu-shell";
 import { notifySettingsSaved } from "@/components/settings-signal";
@@ -45,15 +44,12 @@ interface KeysResponse {
 }
 
 /** The curated tools group, pinned by id (the catalog owns the copy;
- *  these ids are the contract). Derived from the catalog (search wave,
- *  2026-09-20: the Google CSE pair retired, Tavily + Brave joined) — the
- *  section can never drift from core/auth-keys.ts again. */
+ *  these ids are the contract). Derived from the catalog, so the
+ *  section can never drift from core/auth-keys.ts. */
 const TOOL_IDS = AUTH_KEYS.map((k) => k.id) as readonly string[];
 
 /** The non-model key rows, grouped by what they power. */
 const TOOL_GROUPS: readonly { label: string; testid: string; ids: readonly string[] }[] = [
-	{ label: "Dictation", testid: "group-dictation", ids: ["DEEPGRAM_API_KEY"] },
-	{ label: "Search", testid: "group-search", ids: ["TAVILY_API_KEY", "BRAVE_API_KEY"] },
 	{ label: "Calendar & to-do", testid: "group-briefing", ids: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "TODOIST_API_TOKEN"] },
 ];
 
@@ -324,7 +320,7 @@ function AddProviderRow({
 
 export function KeysSection({
 	/** A deep-linked row to unfold on arrival (zero-keys wave): the
-	 *  dictation error's click lands here on DEEPGRAM_API_KEY. Followed
+	 *  dictation error's click lands here on GEMINI_API_KEY. Followed
 	 *  while mounted too — the settings dialog's while-open retarget
 	 *  pattern. undefined = nothing seeded. */
 	initialRow,
@@ -460,10 +456,6 @@ export function KeysSection({
 						<span className="font-mono text-[11px] text-muted-foreground">{status.masked}</span>
 					</div>)}
 				</div>}
-			</SettingsGroup>
-
-			<SettingsGroup label="Subscriptions" testid="group-subscriptions">
-				<SubscriptionConnections />
 			</SettingsGroup>
 
 			{TOOL_GROUPS.map(({ label, testid, ids }) => <SettingsGroup key={label} label={label} testid={testid}>

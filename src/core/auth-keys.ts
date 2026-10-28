@@ -31,24 +31,6 @@ export interface AuthKeyInfo {
 
 export const AUTH_KEYS: readonly AuthKeyInfo[] = [
 	{
-		id: "DEEPGRAM_API_KEY",
-		label: "Deepgram",
-		description: "Streaming speech-to-text for dictation — needs ≥ Member permission in the Deepgram console to mint tokens. Optional: a Gemini (Google) model key also powers dictation.",
-		docsUrl: "https://console.deepgram.com/",
-	},
-	{
-		id: "TAVILY_API_KEY",
-		label: "Tavily",
-		description: "Web-search engine for the researcher sub-agent (AI-native search API). Setting the key activates it — no engine toggle needed.",
-		docsUrl: "https://app.tavily.com/",
-	},
-	{
-		id: "BRAVE_API_KEY",
-		label: "Brave Search",
-		description: "Web-search engine for the researcher sub-agent — the alternative to Tavily. Setting the key activates it. Without any search key, a Gemini (Google) model key searches through Google Search grounding.",
-		docsUrl: "https://brave.com/search/api/",
-	},
-	{
 		id: "GOOGLE_OAUTH_CLIENT_ID",
 		label: "Google OAuth client ID",
 		description: "For Google Calendar sign-in (daily briefing). Create a Desktop app OAuth client in Google Cloud and paste its client ID here, then sign in from the Today page.",
@@ -158,8 +140,8 @@ export type KeyShapeResult = { ok: true } | { ok: false; error: string };
  * a truncated or wrong-family key can never land in the store). Values are
  * TRIMMED first (paste hygiene); empty-after-trim always fails.
  *
- * CURATED keys carry family rules (Tavily's tvly-… prefix; Brave and
- * Deepgram publish no format — length floors + paste hygiene only).
+ * CURATED keys carry their own format rules (Google OAuth client ID suffix,
+ * Todoist's 40-hex token).
  * MODEL-PROVIDER keys use genericProviderKeyGuard below instead (families
  * vary by provider — only paste hygiene applies; owner spec: min length
  * ~12, no whitespace). OPENROUTER_API_KEY moved to the generic guard with
@@ -172,16 +154,6 @@ export function validateKeyShape(id: string, rawValue: string): KeyShapeResult {
 			? { ok: true as const }
 			: { ok: false as const, error: `${id} must be at least ${min} characters with no whitespace` };
 	switch (id) {
-		case "TAVILY_API_KEY":
-			return value.startsWith("tvly-")
-				? nonEmpty(20)
-				: { ok: false, error: `${id} must start with "tvly-" (Tavily's key format)` };
-		case "BRAVE_API_KEY":
-			// No public format — a length floor + paste hygiene only.
-			return nonEmpty(20);
-		case "DEEPGRAM_API_KEY":
-			// No public format — the length floor only catches truncated pastes.
-			return nonEmpty(20);
 		case "GOOGLE_OAUTH_CLIENT_ID":
 			return value.endsWith(".apps.googleusercontent.com")
 				? nonEmpty(40)

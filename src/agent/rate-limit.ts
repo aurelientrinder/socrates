@@ -24,10 +24,10 @@
  * notes import runs. A model that never refused is never slowed down.
  */
 
-import type { Api, AssistantMessage, AssistantMessageEvent, Model, StreamFunction } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, AssistantMessageEvent, Model, StreamFunction, StreamOptions } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { emit } from "../core/events.ts";
-import { markUnadmittedUsage } from "./subscription-request-cycle.ts";
+import { markUnadmittedUsage } from "./unadmitted-usage.ts";
 
 /** Without a delay in the error, wait this long (the per-minute window). */
 const DEFAULT_DELAY_MS = 30_000;
@@ -163,7 +163,7 @@ export async function waitForRequestSlot(modelKey: string, background: boolean, 
  *  and a 429 that names a limit teaches it. The caller's stream starts
  *  only once a slot is free; an abort while waiting ends the stream as
  *  aborted with nothing sent (and nothing billed). */
-export function pacedStream<TApi extends Api>(modelKey: string, background: () => boolean, inner: StreamFunction<TApi>): StreamFunction<TApi> {
+export function pacedStream<TApi extends Api, TOptions extends StreamOptions>(modelKey: string, background: () => boolean, inner: StreamFunction<TApi, TOptions>): StreamFunction<TApi, TOptions> {
 	return (model, context, options) => {
 		const signal = options?.signal;
 		const output = new AssistantMessageEventStream();
