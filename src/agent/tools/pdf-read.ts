@@ -1,3 +1,4 @@
+import { publicFetch } from "./net-guard.ts";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Type } from "typebox";
@@ -111,7 +112,7 @@ export function createPdfReadTools(dir: string): Record<string, AgentTool<any>> 
 					return `web_fetch_pdf failed: invalid URL "${url}"`;
 				}
 				try {
-					const resp = await fetch(url, {
+					const resp = await publicFetch(url, {
 						headers: {
 							"User-Agent": USER_AGENT,
 							Accept: "application/pdf,application/octet-stream,*/*",

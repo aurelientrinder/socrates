@@ -260,6 +260,10 @@ describe("keyless research dispatch (jobTools)", () => {
 
 import { createProberTools, createTeacherTools } from "../src/agent/tools.ts";
 import type { ChatStore } from "../src/core/ports.ts";
+import { setPublicResolverForTests } from "../src/agent/tools/net-guard.ts";
+
+// These tests fake fetch with made-up hosts: fake DNS too, so the private-address guard never touches the network.
+setPublicResolverForTests(async () => ["93.184.216.34"]);
 
 /** A chat-store stub — the registry factories only CLOSE OVER it at build
  *  time (quiz/plan superRefines read it at execute time, never here). */

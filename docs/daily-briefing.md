@@ -37,7 +37,9 @@ Socrates signs in with your own Google OAuth client, so no shared secret is ship
 6. In Socrates: **Settings → Keys**, paste them into "Google OAuth client ID" and "Google OAuth client secret".
 7. On the **Today** page click **Sign in with Google**. Your browser opens; approve the calendar access; come back to the app.
 
-Scopes requested: your calendar list (read), events (read and write, used only by **Block time**), and your email address (to show which account is connected).
+Scopes requested: your calendar list (read), events on any calendar (read only), the ability to create and write to calendars **Socrates itself made** (nothing else), and your email address (to show which account is connected).
+
+**The "Socrates" calendar.** The first time you click **Block time** (or sync reminders), Socrates creates a calendar named "Socrates" and writes there; your class calendar is never written to. Socrates reads the Socrates calendar back too, so its own study blocks count as busy time when it looks for a free slot. If you signed in before this change, Today shows a one-time **Reconnect** button (reading keeps working until then). If you already made a calendar called "Socrates" by hand, Socrates uses it only if it can write there; otherwise it creates "Socrates (app)".
 
 The refresh token is stored next to `auth.json` in `google-calendar.json` (file mode 0600, never synced). **Disconnect** on the Today page revokes it at Google and deletes the file.
 
@@ -56,4 +58,5 @@ Each event's course is guessed from its title (a course code like `MATH201`, or 
 | `briefing/<YYYY-MM-DD>.json` | That day's briefing, so reopening the app shows the same one |
 | `briefing/courses.json` | Your course → session links |
 | `briefing/prefs.json` | Daily minute budget |
+| `briefing/socrates-calendar.json` | The id of the calendar Socrates made for itself |
 | `briefing/plan-history.json` | The study plan as it stood on the last 14 days, to say what changed |

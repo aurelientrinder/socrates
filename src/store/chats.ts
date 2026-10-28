@@ -17,6 +17,7 @@ import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
 import { phaseAt3Lh } from "../core/phases.ts";
+import { writeFileAtomic } from "./fs-atomic.ts";
 
 function chatFile(id: string): string {
 	if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`Invalid chat id: ${id}`);
@@ -56,7 +57,7 @@ function createChat(title: string, kind?: "practice" | "review"): ChatRecord {
  *  lazy migration means existing files only get stamped on their next write.
  *  A future-version guard lives on the read side (getChat). */
 function writeChat(record: ChatRecord): void {
-	fs.writeFileSync(chatFile(record.id), JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"), "utf-8");
+	writeFileAtomic(chatFile(record.id), JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"));
 }
 
 function getChat(id: string): ChatRecord | null {
@@ -77,45 +78,72 @@ function getChat(id: string): ChatRecord | null {
 	return parsed as ChatRecord;
 }
 
+/** Summaries by chat id, valid while the chat file keeps its size and
+ *  mtime: the sidebar lists on every turn, and re-parsing every transcript
+ *  each time is what made the list slow as sessions piled up. */
+const summaryCache = new Map<string, { mtimeMs: number; size: number; summary: ChatSummary }>();
+
+function summarize(id: string): ChatSummary | null {
+	const record = getChat(id);
+	if (!record) return null;
+	const { messages, tree, turns, extractions, ...summary } = record;
+	// Per-record isolation (Wave B): a record whose messages fail the
+	// projection (e.g. pre-Wave-B UIMessage-format scratch — the
+	// zero-back-compat wipe makes these "corrupt") must not blank the
+	// whole sidebar — same isolation getChat's per-file catch gives.
+	try {
+		return {
+			// turns and extractions stay out of the list payload (list =
+			// summaries; usage aggregates ride the full record, the picker
+			// never needs them).
+			...summary,
+			// Normalized kind: absent record field reads as teach.
+			kind: summary.kind ?? "teach",
+			messageCount: messages.length,
+			// Record-derived status for the session picker: phase from the
+			// transcript's explicit events (probe_done concluded / verdict
+			// accepted — docs/probe-teach-split.md §4), pending question
+			// from the native dangling-call scan. Wave D: both folds read
+			// the NATIVE record (core/phases.ts phaseAt3Lh +
+			// native-messages.ts danglingQuestionOf). Liveness (busy) is
+			// NOT record-derived — the API route merges it (ChatListItem).
+			phase: phaseAt3Lh(messages),
+			pendingQuestion: danglingQuestionOf(messages) !== null,
+		} as ChatSummary; // as before: the list payload never carried pendingProblem
+	} catch (err) {
+		console.error(`[chat ${summary.id}] summary projection failed:`, err);
+		return null;
+	}
+}
+
 function listChats(): ChatSummary[] {
 	try {
 		fs.mkdirSync(PATHS.chats, { recursive: true });
-		return fs
-			.readdirSync(PATHS.chats)
-			.filter((f) => f.endsWith(".json"))
-			.map((f) => getChat(f.slice(0, -5)))
-			.filter((r): r is ChatRecord => r !== null)
-			.map(({ messages, tree, turns, extractions, ...summary }) => {
-				// Per-record isolation (Wave B): a record whose messages fail the
-				// projection (e.g. pre-Wave-B UIMessage-format scratch — the
-				// zero-back-compat wipe makes these "corrupt") must not blank the
-				// whole sidebar — same isolation getChat's per-file catch gives.
-				try {
-					return {
-						// turns and extractions stay out of the list payload (list =
-						// summaries; usage aggregates ride the full record, the picker
-						// never needs them).
-						...summary,
-						// Normalized kind: absent record field reads as teach.
-						kind: summary.kind ?? "teach",
-						messageCount: messages.length,
-						// Record-derived status for the session picker: phase from the
-						// transcript's explicit events (probe_done concluded / verdict
-						// accepted — docs/probe-teach-split.md §4), pending question
-						// from the native dangling-call scan. Wave D: both folds read
-						// the NATIVE record (core/phases.ts phaseAt3Lh +
-						// native-messages.ts danglingQuestionOf). Liveness (busy) is
-						// NOT record-derived — the API route merges it (ChatListItem).
-						phase: phaseAt3Lh(messages),
-						pendingQuestion: danglingQuestionOf(messages) !== null,
-					};
-				} catch (err) {
-					console.error(`[chat ${summary.id}] summary projection failed:`, err);
-					return null;
-				}
-			})
-			.filter((s): s is ChatSummary => s !== null)
-			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+		const seen = new Set<string>();
+		const out: ChatSummary[] = [];
+		for (const f of fs.readdirSync(PATHS.chats)) {
+			if (!f.endsWith(".json")) continue;
+			const id = f.slice(0, -5);
+			let st: fs.Stats;
+			try {
+				st = fs.statSync(path.join(PATHS.chats, f));
+			} catch {
+				continue;
+			}
+			seen.add(id);
+			const cached = summaryCache.get(id);
+			if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+				out.push({ ...cached.summary });
+				continue;
+			}
+			const summary = summarize(id);
+			if (summary) {
+				summaryCache.set(id, { mtimeMs: st.mtimeMs, size: st.size, summary });
+				out.push({ ...summary });
+			} else summaryCache.delete(id);
+		}
+		for (const id of summaryCache.keys()) if (!seen.has(id)) summaryCache.delete(id);
+		return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 	} catch {
 		return [];
 	}

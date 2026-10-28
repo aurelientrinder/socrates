@@ -26,6 +26,17 @@ describe("weekStartOf", () => {
 describe("studyMinutesByDay", () => {
 	const week = new Date(2026, 9, 26);
 
+	it("credits a known stretch (a mock exam) whole to the day it started on", () => {
+		const out = studyMinutesByDay([], week, 7, [[at(27, 9, 0), at(27, 10, 30)]]);
+		assert.equal(out[1], 90);
+		assert.equal(out.reduce((a, b) => a + b, 0), 90);
+	});
+
+	it("ignores empty, backwards and out-of-week stretches", () => {
+		const out = studyMinutesByDay([], week, 7, [[at(27, 9, 0), at(27, 9, 0)], [at(27, 10, 0), at(27, 9, 0)], [at(3, 9, 0), at(3, 10, 0)]]);
+		assert.deepEqual(out, [0, 0, 0, 0, 0, 0, 0]);
+	});
+
 	it("counts short gaps and skips breaks", () => {
 		const session = [at(26, 10, 0), at(26, 10, 4), at(26, 10, 10), at(26, 12, 0), at(26, 12, 5)];
 		assert.deepEqual(studyMinutesByDay([session], week), [15, 0, 0, 0, 0, 0, 0]);

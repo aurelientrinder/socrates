@@ -27,6 +27,7 @@
 const { app, BrowserWindow, Menu, ipcMain, session, shell, dialog } = require("electron");
 const { trustedSender } = require("./trusted-sender.cjs");
 const { desktopAPIHeaders } = require("./desktop-api.cjs");
+const { isSafeExternalUrl } = require("./external-url.cjs");
 const { randomBytes } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -371,13 +372,19 @@ function createWindow(url) {
 	});
 
 	win.webContents.on("will-navigate", (event, target) => {
-		if (new URL(target).origin !== allowedOrigin()) {
+		let foreign = true;
+		try {
+			foreign = new URL(target).origin !== allowedOrigin();
+		} catch {
+			// an unparsable target is never ours
+		}
+		if (foreign) {
 			event.preventDefault();
-			void shell.openExternal(target);
+			if (isSafeExternalUrl(target)) void shell.openExternal(target);
 		}
 	});
 	win.webContents.setWindowOpenHandler(({ url: target }) => {
-		void shell.openExternal(target);
+		if (isSafeExternalUrl(target)) void shell.openExternal(target);
 		return { action: "deny" };
 	});
 

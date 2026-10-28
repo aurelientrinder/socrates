@@ -1,5 +1,6 @@
 "use client";
 
+import { sanitizeSvg } from "@/components/artifacts/sanitize-svg";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { MaximizeIcon, MinusIcon, PlusIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -84,12 +85,13 @@ export function MermaidOverlay({
 	onClose: () => void;
 }) {
 	// ── chart render (own instance, own ids); figure mode uses the raw svg ──
-	const [svg, setSvg] = useState<string | null>(rawSvg ?? null);
+	// Figures are model-written: the overlay sanitizes them like the card does.
+	const [svg, setSvg] = useState<string | null>(rawSvg === undefined ? null : sanitizeSvg(rawSvg));
 	const [error, setError] = useState<string | null>(null);
 	const [attempt, setAttempt] = useState(0);
 	useEffect(() => {
 		if (rawSvg !== undefined) {
-			setSvg(rawSvg);
+			setSvg(sanitizeSvg(rawSvg));
 			setError(null);
 			return;
 		}

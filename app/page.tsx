@@ -1,6 +1,7 @@
 import { TodayView } from "@/components/today-view";
 import { CALIBRATED_WITHIN } from "@/src/core";
 import {
+	backupIfDue,
 	calibrationAcrossSessions,
 	googleCalendarStatus,
 	listChats,
@@ -22,6 +23,7 @@ const HONESTY_MIN_ANSWERS = 5;
  * lives at /map (Progress → Map); /today redirects here.
  */
 export default function TodayPage() {
+	backupIfDue();
 	const calibration = calibrationAcrossSessions();
 	const gap = calibration.gap;
 	const honesty =

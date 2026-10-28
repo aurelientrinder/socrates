@@ -1,5 +1,28 @@
 import type { NextConfig } from "next";
 
+/** The app's pages talk only to their own origin. Scripts stay 'unsafe-inline'
+ *  (Next's own bootstrap is inline), so this is not XSS armor: it is what
+ *  stops injected markup from loading outside code or sending data to another
+ *  host (connect-src / img-src / form-action), and from being framed. The
+ *  figure and demo content that reaches the DOM is sanitized/sandboxed
+ *  separately; the demo iframes (srcdoc) inherit this policy. */
+const dev = process.env.NODE_ENV !== "production";
+const CONTENT_SECURITY_POLICY = [
+	"default-src 'self'",
+	`script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${dev ? " 'unsafe-eval'" : ""}`,
+	"style-src 'self' 'unsafe-inline'",
+	"img-src 'self' data: blob:",
+	"font-src 'self' data:",
+	"media-src 'self' data: blob:",
+	`connect-src 'self'${dev ? " ws://127.0.0.1:* ws://localhost:*" : ""}`,
+	"worker-src 'self' blob:",
+	"frame-src 'self' data: blob: about:",
+	"object-src 'none'",
+	"base-uri 'self'",
+	"form-action 'self'",
+	"frame-ancestors 'none'",
+].join("; ");
+
 const nextConfig: NextConfig = {
 	// Desktop target (Electron wrapper, 2026-09-17): standalone output = a
 	// self-contained .next/standalone/server.js the Electron shell spawns
@@ -7,6 +30,19 @@ const nextConfig: NextConfig = {
 	// The manual copies the docs require — public/ and .next/static — are
 	// done by scripts/build-server.mjs.
 	output: "standalone",
+	async headers() {
+		return [
+			{
+				// Pages only: API responses are JSON/SSE and carry no markup.
+				source: "/((?!api/).*)",
+				headers: [
+					{ key: "Content-Security-Policy", value: CONTENT_SECURITY_POLICY },
+					{ key: "X-Content-Type-Options", value: "nosniff" },
+					{ key: "Referrer-Policy", value: "no-referrer" },
+				],
+			},
+		];
+	},
 	// Notes import (2026-10-26): proxy.ts makes Next buffer every request
 	// body, cut at 10MB by default — a scanned class-notes PDF is bigger.
 	// The import route caps each file itself (src/server/notes.ts).

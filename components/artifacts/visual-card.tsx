@@ -6,6 +6,7 @@ import { Toggle } from "@/components/settings/controls";
 import { useSessionMermaid } from "@/components/session-overlay";
 import { downloadFile } from "@/components/artifacts/download";
 import { DispatchCard } from "@/components/artifacts/dispatch-card";
+import { sanitizeSvg } from "@/components/artifacts/sanitize-svg";
 import type { ArtifactPartProps, VisualResult } from "@/src/core";
 
 /**
@@ -16,19 +17,11 @@ import type { ArtifactPartProps, VisualResult } from "@/src/core";
  *
  * The SVG is model-authored for the learner's own machine (their own teacher
  * wrote it, verified by looking) — dangerouslySetInnerHTML is acceptable
- * here, with a cheap hygiene pass (sanitizeSvg: strip <script> blocks, on*
- * handlers, and javascript:/data:text/html URLs) since it lands in the
- * app's DOM.
+ * here, with an allow-list pass (sanitize-svg.ts) since it lands in the
+ * app's DOM. Every place that injects a figure runs it.
  */
 
-/** Cheap SVG hygiene — not a full sanitizer, just removing the obvious exec vectors. */
-export function sanitizeSvg(svg: string): string {
-	return svg
-		.replace(/<script[\s\S]*?<\/script\s*>/gi, "")
-		.replace(/<script[^>]*\/?>/gi, "")
-		.replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-		.replace(/(href|xlink:href)\s*=\s*(?:"\s*(?:javascript|data:text\/html)[^"]*"|'\s*(?:javascript|data:text\/html)[^']*'|(?:javascript|data:text\/html)[^\s>]*)/gi, "");
-}
+export { sanitizeSvg };
 
 /** The svg root's DECLARED width in px, when there is one — the natural
  *  size the card displays at instead of stretching to full width (owner,
