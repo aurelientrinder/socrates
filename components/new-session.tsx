@@ -38,13 +38,15 @@ const DOCK = "mx-auto w-full max-w-[46rem] px-4";
  * target — /chat/<id>?prompt=<msg> — whose initialPrompt path delivers the
  * message as turn 1. Injected fetch/router so tests pin the contract.
  * Returns null on empty text; rethrows on transport failure (the caller's
- * busy flag resets).
+ * busy flag resets). `firstMessage`, when given, is sent as turn 1 instead
+ * of the text, which stays the title (the five-minute session's framing).
  */
 export async function startDraftSession(
 	text: string,
 	fetchLike: typeof fetch,
 	mode?: "practice",
 	picks?: readonly DraftPick[],
+	firstMessage?: string,
 	/** warmup: false opens the session without the warm-up recall (the
 	 *  server's default is on whenever topics are due). */
 	options?: { warmup?: boolean },
@@ -68,7 +70,7 @@ export async function startDraftSession(
 	const { id } = (await res.json()) as { id: string };
 	// No settings PUT on create (per-session models, owner 2026-09-28):
 	// the SERVER stamps the newborn from the strong slot.
-	return `/chat/${id}?prompt=${encodeURIComponent(t)}`;
+	return `/chat/${id}?prompt=${encodeURIComponent(firstMessage?.trim() || t)}`;
 }
 
 /** The pure shell (no router) — the render-test seam: the draft view's

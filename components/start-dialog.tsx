@@ -4,12 +4,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpenIcon, DumbbellIcon, Loader2Icon, PlayIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import { BookOpenIcon, ClipboardCheckIcon, DumbbellIcon, Loader2Icon, PlayIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { startDraftSession } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
-import { REVIEW_SESSION_SIZE, WARMUP_SIZE } from "@/src/core";
-import { DEFAULT_SESSION_LENGTH, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
+import { DEFAULT_EXAM_LENGTH, EXAM_LENGTHS, problemCountFor, REVIEW_SESSION_SIZE, WARMUP_SIZE } from "@/src/core";
+import { DEFAULT_SESSION_LENGTH, QUICK_SESSION_MINUTES, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,12 +19,13 @@ import { cn } from "@/lib/utils";
  * sidebar's Start studying button, mod+N, and Today's "Learn something
  * new". Learn and Practice create the session exactly like the draft view
  * (startDraftSession: the topic becomes the title and turn 1); Review is
- * the Progress page's Start review (/api/review/start).
+ * the Progress page's Start review (/api/review/start). Mock exam writes a
+ * timed paper on a topic and/or saved notes (/api/exams) and opens it.
  */
 
-export type StartMode = "learn" | "practice" | "review";
+export type StartMode = "learn" | "practice" | "review" | "exam";
 
-const StartDialogContext = createContext<{ open: (mode?: StartMode) => void }>({ open: () => {} });
+const StartDialogContext = createContext<{ open: (mode?: StartMode, minutes?: number) => void }>({ open: () => {} });
 
 /** Open the Start dialog from anywhere under the app shell. */
 export function useStartDialog() {
@@ -36,16 +37,24 @@ export const OPEN_START_EVENT = "lh:open-start";
 
 export function StartDialogProvider({ children }: { children: React.ReactNode }) {
 	const [mode, setMode] = useState<StartMode | null>(null);
-	const open = useCallback((m: StartMode = "learn") => setMode(m), []);
+	const [minutes, setMinutes] = useState<number>(DEFAULT_SESSION_LENGTH);
+	const open = useCallback((m: StartMode = "learn", length: number = DEFAULT_SESSION_LENGTH) => {
+		setMinutes(length);
+		setMode(m);
+	}, []);
 	useEffect(() => {
-		const onOpen = () => setMode((m) => m ?? "learn");
+		const onOpen = () =>
+			setMode((m) => {
+				if (m === null) setMinutes(DEFAULT_SESSION_LENGTH);
+				return m ?? "learn";
+			});
 		window.addEventListener(OPEN_START_EVENT, onOpen);
 		return () => window.removeEventListener(OPEN_START_EVENT, onOpen);
 	}, []);
 	return (
 		<StartDialogContext.Provider value={{ open }}>
 			{children}
-			{mode !== null && <StartDialog initialMode={mode} onClose={() => setMode(null)} />}
+			{mode !== null && <StartDialog initialMode={mode} initialMinutes={minutes} onClose={() => setMode(null)} />}
 		</StartDialogContext.Provider>
 	);
 }
@@ -60,13 +69,26 @@ export function notePrompt(mode: "learn" | "practice", name: string): string {
 	return mode === "practice" ? `Give me practice problems on my notes "${name}".` : `Teach me what is in my notes "${name}".`;
 }
 
-function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose: () => void }) {
+/** Turn 1 of a five-minute session (2026-10-27): the learner's words plus
+ *  the scope, so the tutor keeps it tiny and stops on time. The words alone
+ *  stay the session's title. */
+export function quickSessionPrompt(mode: "learn" | "practice", text: string): string {
+	const scope =
+		mode === "practice"
+			? "I only have 5 minutes: give me one or two short problems on this, check my answers, and stop there."
+			: "I only have 5 minutes: teach me the single most important idea here, ask me one question to check it, and stop there.";
+	return `${text.trim()}\n\n(${scope})`;
+}
+
+function StartDialog({ initialMode, initialMinutes, onClose }: { initialMode: StartMode; initialMinutes: number; onClose: () => void }) {
 	const router = useRouter();
 	const [mode, setMode] = useState<StartMode>(initialMode);
 	const [topic, setTopic] = useState("");
 	const [due, setDue] = useState<number | null>(null);
 	const [notes, setNotes] = useState<NoteChip[]>([]);
-	const [minutes, setMinutes] = useState<number>(DEFAULT_SESSION_LENGTH);
+	const [minutes, setMinutes] = useState<number>(initialMinutes);
+	const [examMinutes, setExamMinutes] = useState<number>(DEFAULT_EXAM_LENGTH);
+	const [pickedNotes, setPickedNotes] = useState<string[]>([]);
 	const [warmup, setWarmup] = useState<boolean>(readWarmupPreference);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -85,7 +107,7 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 				setNotes(
 					[...(body?.notes ?? [])]
 						.sort((a, b) => b.importedAt.localeCompare(a.importedAt))
-						.slice(0, 3)
+						.slice(0, 6)
 						.map(({ id, name }) => ({ id, name })),
 				),
 			)
@@ -110,13 +132,28 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 		setError(null);
 		try {
 			let target: string | null;
-			if (mode === "review") {
+			if (mode === "exam") {
+				const res = await fetch("/api/exams", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ scope: text, noteIds: pickedNotes, minutes: examMinutes }),
+				});
+				const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
+				if (!res.ok || !body.id) throw new Error(body.error ?? "Could not start the exam.");
+				target = `/exam/${body.id}`;
+			} else if (mode === "review") {
 				const res = await fetch("/api/review/start", { method: "POST" });
 				const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
 				if (!res.ok || !body.id) throw new Error(body.error ?? "Could not start the review.");
 				target = `/chat/${body.id}?prompt=${encodeURIComponent(REVIEW_START_PROMPT)}`;
 			} else {
-				target = await startDraftSession(text, fetch, mode === "practice" ? "practice" : undefined, undefined, { warmup });
+				const kind = mode === "practice" ? "practice" : "learn";
+				const quick = minutes === QUICK_SESSION_MINUTES;
+				const firstMessage = quick ? quickSessionPrompt(kind, text) : undefined;
+				// A five-minute session is one idea and one question: no warm-up.
+				target = await startDraftSession(text, fetch, kind === "practice" ? "practice" : undefined, undefined, firstMessage, {
+					warmup: warmup && !quick,
+				});
 				if (target) setSessionBudget(target, minutes);
 			}
 			if (!target) {
@@ -139,10 +176,13 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 				due={due}
 				notes={notes}
 				minutes={minutes}
+				examMinutes={examMinutes}
+				pickedNotes={pickedNotes}
 				busy={busy}
 				error={error}
 				onMode={setMode}
 				onMinutes={setMinutes}
+				onExamMinutes={setExamMinutes}
 				warmup={warmup}
 				onWarmup={(on) => {
 					setWarmup(on);
@@ -151,6 +191,7 @@ function StartDialog({ initialMode, onClose }: { initialMode: StartMode; onClose
 				onTopic={setTopic}
 				onStart={() => void go(topic)}
 				onNote={(name) => void go(notePrompt(mode === "practice" ? "practice" : "learn", name))}
+				onPickNote={(id) => setPickedNotes((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))}
 				onClose={onClose}
 			/>
 		</div>,
@@ -162,6 +203,7 @@ const MODES: { id: StartMode; label: string; desc: string; icon: React.ReactNode
 	{ id: "learn", label: "Learn", desc: "Socrates teaches something new and checks you as it goes.", icon: <BookOpenIcon className="size-4" /> },
 	{ id: "practice", label: "Practice", desc: "Solve problems on what you have covered. No new teaching.", icon: <DumbbellIcon className="size-4" /> },
 	{ id: "review", label: "Review", desc: "Quick recall on the topics you are starting to forget.", icon: <RotateCcwIcon className="size-4" /> },
+	{ id: "exam", label: "Mock exam", desc: "A timed paper of real exam problems. No hints, marked at the end.", icon: <ClipboardCheckIcon className="size-4" /> },
 ];
 
 /** The warm-up switch is remembered per device (warm-up recall): on
@@ -191,15 +233,19 @@ export function StartDialogBody({
 	due,
 	notes,
 	minutes,
+	examMinutes = DEFAULT_EXAM_LENGTH,
+	pickedNotes = [],
 	busy,
 	error,
 	onMode,
 	onMinutes,
+	onExamMinutes = () => {},
 	warmup = true,
 	onWarmup,
 	onTopic,
 	onStart,
 	onNote,
+	onPickNote = () => {},
 	onClose,
 }: {
 	mode: StartMode;
@@ -210,24 +256,31 @@ export function StartDialogBody({
 	notes: NoteChip[];
 	/** The session length, for Learn and Practice (sets the session timer). */
 	minutes: number;
+	/** Mock exam: the time limit, and the notes it is written from. */
+	examMinutes?: number;
+	pickedNotes?: string[];
 	busy: boolean;
 	error: string | null;
 	onMode: (mode: StartMode) => void;
 	onMinutes: (minutes: number) => void;
+	onExamMinutes?: (minutes: number) => void;
 	/** Open Learn and Practice with a warm-up on due topics (warm-up recall). */
 	warmup?: boolean;
 	onWarmup?: (on: boolean) => void;
 	onTopic: (text: string) => void;
 	onStart: () => void;
 	onNote: (name: string) => void;
+	onPickNote?: (id: string) => void;
 	onClose: () => void;
 }) {
 	const topicRef = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => {
 		if (mode !== "review") topicRef.current?.focus();
 	}, [mode]);
-	const canStart = !busy && (mode === "review" ? (due ?? 0) > 0 : topic.trim().length > 0);
-	const verb = mode === "learn" ? "Start learning" : mode === "practice" ? "Start practice" : "Start review";
+	const canStart =
+		!busy &&
+		(mode === "review" ? (due ?? 0) > 0 : mode === "exam" ? topic.trim().length > 0 || pickedNotes.length > 0 : topic.trim().length > 0);
+	const verb = mode === "learn" ? "Start learning" : mode === "practice" ? "Start practice" : mode === "exam" ? "Write my exam" : "Start review";
 	return (
 		<div
 			role="dialog"
@@ -250,7 +303,7 @@ export function StartDialogBody({
 				</button>
 			</div>
 
-			<div role="group" aria-label="Kind of session" className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+			<div role="group" aria-label="Kind of session" className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
 				{MODES.map((m) => {
 					const badge = m.id === "review" && due !== null && due > 0 ? `${due} due` : null;
 					return (
@@ -287,7 +340,7 @@ export function StartDialogBody({
 			) : (
 				<div className="flex flex-col gap-2.5">
 					<label htmlFor="start-topic" className="text-sm font-semibold">
-						{mode === "practice" ? "What do you want to practise?" : "What do you want to learn?"}
+						{mode === "practice" ? "What do you want to practise?" : mode === "exam" ? "What does the exam cover?" : "What do you want to learn?"}
 					</label>
 					<textarea
 						id="start-topic"
@@ -302,13 +355,39 @@ export function StartDialogBody({
 								if (canStart) onStart();
 							}
 						}}
-						placeholder={mode === "practice" ? "e.g. entropy change problems" : "e.g. the Calvin cycle, or paste a question from your course"}
+						placeholder={
+							mode === "practice"
+								? "e.g. entropy change problems"
+								: mode === "exam"
+									? "e.g. Thermodynamics, chapters 2 and 3: first law, enthalpy, calorimetry"
+									: "e.g. the Calvin cycle, or paste a question from your course"
+						}
 						className="lh-input resize-none rounded-xl border bg-background px-3.5 py-3 font-prose text-lg outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
 					/>
-					{notes.length > 0 && (
+					{mode === "exam" && notes.length > 0 && (
+						<div className="flex flex-wrap items-center gap-2" data-testid="start-exam-notes">
+							<span className="text-sm text-muted-foreground">Write it from your notes:</span>
+							{notes.map((n) => (
+								<button
+									key={n.id}
+									type="button"
+									aria-pressed={pickedNotes.includes(n.id)}
+									disabled={busy}
+									onClick={() => onPickNote(n.id)}
+									className={cn(
+										"h-8 max-w-56 truncate rounded-full px-3 text-sm transition-colors disabled:opacity-50",
+										pickedNotes.includes(n.id) ? "bg-good-soft font-semibold text-good-ink ring-1 ring-good" : "bg-accent hover:bg-accent/70",
+									)}
+								>
+									{n.name}
+								</button>
+							))}
+						</div>
+					)}
+					{mode !== "exam" && notes.length > 0 && (
 						<div className="flex flex-wrap items-center gap-2" data-testid="start-notes">
 							<span className="text-sm text-muted-foreground">From your notes:</span>
-							{notes.map((n) => (
+							{notes.slice(0, 3).map((n) => (
 								<button
 									key={n.id}
 									type="button"
@@ -330,7 +409,37 @@ export function StartDialogBody({
 				</p>
 			)}
 
-			{mode !== "review" && (
+			{mode === "exam" && (
+				<div className="flex flex-col gap-2">
+					<div className="flex flex-wrap items-center gap-3">
+						<span id="start-exam-length-label" className="text-sm font-semibold">
+							Time limit
+						</span>
+						<div role="group" aria-labelledby="start-exam-length-label" data-testid="start-exam-length" className="flex gap-0.5 rounded-lg bg-accent/70 p-0.5">
+							{EXAM_LENGTHS.map((m) => (
+								<button
+									key={m}
+									type="button"
+									aria-pressed={examMinutes === m}
+									onClick={() => onExamMinutes(m)}
+									className={cn(
+										"h-8 rounded-md px-3 text-sm tabular-nums transition-colors",
+										examMinutes === m ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+									)}
+								>
+									{m} min
+								</button>
+							))}
+						</div>
+					</div>
+					<p className="text-sm text-muted-foreground">
+						{problemCountFor(examMinutes)} {problemCountFor(examMinutes) === 1 ? "problem" : "problems"}, each a scenario with several questions. Writing and
+						checking the paper takes a minute or two; the clock starts when you open it.
+					</p>
+				</div>
+			)}
+
+			{mode !== "review" && mode !== "exam" && (
 				<div className="flex flex-wrap items-center gap-3">
 					<span id="start-length-label" className="text-sm font-semibold">
 						How long?
@@ -354,7 +463,7 @@ export function StartDialogBody({
 				</div>
 			)}
 
-			{mode !== "review" && due !== null && due > 0 && onWarmup && (
+			{(mode === "learn" || mode === "practice") && minutes !== QUICK_SESSION_MINUTES && due !== null && due > 0 && onWarmup && (
 				<label data-testid="start-warmup" className="flex cursor-pointer items-start gap-2.5 text-sm">
 					<input
 						type="checkbox"
