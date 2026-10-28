@@ -75,6 +75,23 @@ describe("chat digests", () => {
 		assert.equal(server.calibrationAcrossSessions().answered, total - 1);
 	});
 
+	it("keeps what a session did after the last report, or before any report, when it is deleted", async () => {
+		const seen = chatStore.createChat("Seen once");
+		chatStore.saveMessages(seen.id, [quizResult("Seen", "2026-10-27T13:00:00.000Z", false, 90)] as never);
+		const before = server.calibrationAcrossSessions().answered; // writes the digest
+		await new Promise((r) => setTimeout(r, 15));
+		chatStore.saveMessages(seen.id, [
+			quizResult("Seen", "2026-10-27T13:00:00.000Z", false, 90),
+			quizResult("Seen", "2026-10-27T13:01:00.000Z", false, 80),
+		] as never); // studied more, no report read since
+		const unseen = chatStore.createChat("Never reported");
+		chatStore.saveMessages(unseen.id, [quizResult("Unseen", "2026-10-27T13:05:00.000Z", true, 70)] as never);
+
+		assert.equal((await server.deleteChatSession(seen.id, "preserve-graph")).ok, true);
+		assert.equal((await server.deleteChatSession(unseen.id, "preserve-graph")).ok, true);
+		assert.equal(server.calibrationAcrossSessions().answered, before + 2, "both sessions' answers survive");
+	});
+
 	it("keeps a corrupt chat's last digest instead of dropping it from every report", () => {
 		const chat = chatStore.createChat("Fragile");
 		chatStore.saveMessages(chat.id, [quizResult("Fragile", "2026-10-27T12:00:00.000Z", true, 70)] as never);

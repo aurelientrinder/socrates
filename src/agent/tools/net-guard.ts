@@ -18,7 +18,7 @@ export function setPublicResolverForTests(resolver: Resolver | null): void {
 	defaultResolver = resolver ?? systemResolver;
 }
 
-function ipv4Private(a: number, b: number): boolean {
+function ipv4Private(a: number, b: number, c = -1): boolean {
 	return (
 		a === 0 ||
 		a === 10 ||
@@ -27,7 +27,7 @@ function ipv4Private(a: number, b: number): boolean {
 		(a === 169 && b === 254) || // link-local, cloud metadata
 		(a === 172 && b >= 16 && b <= 31) ||
 		(a === 192 && b === 168) ||
-		(a === 192 && b === 0) ||
+		(a === 192 && b === 0 && (c === 0 || c === 2)) || // IETF protocol and documentation ranges only: the rest of 192.0.0.0/16 is public (WordPress.com)
 		(a === 198 && (b === 18 || b === 19)) ||
 		a >= 224 // multicast, reserved
 	);
@@ -36,8 +36,8 @@ function ipv4Private(a: number, b: number): boolean {
 export function isPrivateAddress(address: string): boolean {
 	const ip = address.replace(/^\[|\]$/g, "").split("%")[0]!.toLowerCase();
 	if (net.isIPv4(ip)) {
-		const [a, b] = ip.split(".").map(Number);
-		return ipv4Private(a!, b!);
+		const [a, b, c] = ip.split(".").map(Number);
+		return ipv4Private(a!, b!, c!);
 	}
 	if (net.isIPv6(ip)) {
 		if (ip === "::" || ip === "::1") return true;
@@ -46,7 +46,7 @@ export function isPrivateAddress(address: string): boolean {
 			if (mapped[1]) return isPrivateAddress(mapped[1]);
 			const hi = parseInt(mapped[2]!, 16);
 			const lo = parseInt(mapped[3]!, 16);
-			return ipv4Private(hi >> 8, hi & 255) && lo >= 0;
+			return ipv4Private(hi >> 8, hi & 255, lo >> 8);
 		}
 		const first = parseInt(ip.split(":")[0] || "0", 16);
 		return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80; // unique-local, link-local
