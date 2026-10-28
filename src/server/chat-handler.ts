@@ -46,6 +46,7 @@ import { applyParkedDismissal } from "./dismissal-park.ts";
 import { registerTurn, unregisterTurn } from "./turn-runs.ts";
 import { persistTurn, triggerExtraction } from "./turn-service.ts";
 import { hasProbeDone, danglingQuestionOf } from "../core/native-messages.ts";
+import { warmupActive } from "../core/review.ts";
 import { composeInstructions } from "../agent/teacher-agent.ts";
 import { ensureCompacted, kickCompaction, effectiveThresholdTokens } from "./compaction.ts";
 import { catalogContextLimits, refreshConnectionCatalog } from "./model-catalog.ts";
@@ -146,7 +147,7 @@ setJobRespawn((jobId) => void jobRunner.runJob(jobId));
 /** The route-facing entry: parse {chatId, input} and run one turn. */
 export async function handleChatRequest(
 	req: Request,
-	buildAgent?: (opts: AgentBuildOptions & { teaching: boolean }) => TeachingAgent,
+	buildAgent?: (opts: AgentBuildOptions & { teaching: boolean; warmingUp?: boolean }) => TeachingAgent,
 ): Promise<Response> {
 	let body: { chatId?: unknown; input?: unknown };
 	try {
@@ -176,7 +177,7 @@ export async function handleChatRequest(
 export async function handleChatInput(
 	chatId: string,
 	input: TurnInput,
-	buildAgent?: (opts: AgentBuildOptions & { teaching: boolean }) => TeachingAgent,
+	buildAgent?: (opts: AgentBuildOptions & { teaching: boolean; warmingUp?: boolean }) => TeachingAgent,
 ): Promise<Response> {
 	let record = stores.chatStore.getChat(chatId);
 	if (!record) {
@@ -348,6 +349,11 @@ export async function handleChatInput(
 	// Both share this whole composition (write-ahead persist, liveness,
 	// steers, usage, extraction) — only the agent differs.
 	const teaching = hasProbeDone(merged);
+	// WARM-UP RECALL: a learn or practice session that opened with a
+	// warm-up queue runs the reviewer until the warm-up is over (the
+	// warmup-done marker, appended by the input that finished or skipped
+	// it — already in `merged` on that turn), then its own agent.
+	const warmingUp = record.kind !== "review" && warmupActive(merged);
 	// BYOK (owner, 2026-09-22): the conversation chain was resolved by the
 	// turn gate above (chat.model override → strong slot → refused) — the
 	// engine build is pure from here; thinking levels clamp natively.
@@ -396,10 +402,11 @@ export async function handleChatInput(
 	// problem + conclude. buildAgent stays honored (the test seam is
 	// uniform across kinds).
 	const constructed: TeachingAgent = buildAgent
-		? buildAgent({ ...agentOpts, teaching })
-		: record.kind === "review"
+		? buildAgent({ ...agentOpts, teaching, warmingUp })
+		: record.kind === "review" || warmingUp
 			? // REVIEW BRANCH (spaced repetition): the reviewer from turn 1 —
-				// the review quiz only, validated against the session's queue.
+				// the review quiz only, validated against the session's queue
+				// (a review session's, or a learn/practice session's warm-up).
 				createReviewAgent({ chatId, chatStore: stores.chatStore }, agentOpts)
 		: record.kind === "practice"
 			? createPracticeAgent(
@@ -528,7 +535,8 @@ export async function handleChatInput(
 				// no extraction, no graph, no coverage (v1: the session itself
 				// is the deliverable). Review sessions likewise: their answers
 				// reach the memory model through the retention fold, not the graph.
-				if ((!requestCycle || requestCycle.dispatched) && record.kind !== "practice" && record.kind !== "review" && extractionEnabled(effective.graph)) {
+				// A warm-up turn is review too: nothing new to extract.
+				if ((!requestCycle || requestCycle.dispatched) && record.kind !== "practice" && record.kind !== "review" && !warmingUp && extractionEnabled(effective.graph)) {
 					// Fresh per-turn read of the graph section's chunk budget
 					// (extraction-UX redesign, 2026-09-24): the trigger compares
 					// against it and the pipeline's batches share it.

@@ -1,5 +1,15 @@
 import { parseTopicKey } from "../core/retention.ts";
-import { newReviewContextMessage, pickReviewTopics, reviewResults, REVIEW_SESSION_SIZE, type ReviewStatus, type ReviewTopic } from "../core/review.ts";
+import {
+	newReviewContextMessage,
+	newWarmupContextMessage,
+	pickReviewTopics,
+	reviewResults,
+	REVIEW_SESSION_SIZE,
+	WARMUP_SIZE,
+	type ReviewStatus,
+	type ReviewTopic,
+} from "../core/review.ts";
+import type { LhMarkerMessage } from "../core/native-messages.ts";
 import type { TopicRetention } from "../core/retention.ts";
 import { assignReviewFormats, composeSource, planNodeTeaching } from "../core/recall-review.ts";
 import type { GraphNode } from "../core/contracts.ts";
@@ -70,8 +80,10 @@ export function reviewStatus(now: number = Date.now()): ReviewStatus {
 	const due = retentionAcrossSessions(now).due.length;
 	const dayStart = startOfLocalDay(now);
 	let reviewedToday = 0;
+	// Any session kind: a learn or practice session's warm-up answers are
+	// reviews too.
 	for (const summary of listChats()) {
-		if (summary.kind !== "review" || Date.parse(summary.updatedAt) < dayStart) continue;
+		if (Date.parse(summary.updatedAt) < dayStart) continue;
 		const record = getChat(summary.id);
 		if (!record) continue;
 		reviewedToday += reviewResults(record.messages).filter((r) => r.outcome !== "skipped" && r.at >= dayStart).length;
@@ -95,4 +107,14 @@ export function startReviewSession(now: number = Date.now()): { id: string; titl
 	}
 	stores.chatStore.saveMessages(chat.id, [newReviewContextMessage(topics)]);
 	return { id: chat.id, title: chat.title, topics: topics.length };
+}
+
+/** A new learn or practice session's warm-up: the WARMUP_SIZE weakest due
+ *  topics, all multiple choice, as a warm-up review-context marker; null when nothing is due
+ *  (no warm-up — the memory model says every tested topic still holds). */
+export function warmupContextMessage(now: number = Date.now()): LhMarkerMessage | null {
+	// Multiple choice only: a warm-up is a minute of quick questions, so
+	// free recall (and its marking step) stays in review sessions.
+	const topics = reviewQueue(now, WARMUP_SIZE).map(({ format: _format, source: _source, ...t }) => t);
+	return topics.length > 0 ? newWarmupContextMessage(topics) : null;
 }

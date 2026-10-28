@@ -365,6 +365,16 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			});
 			return;
 		}
+		case "warmup-done": {
+			// The warm-up's end (warm-up recall): a divider between the
+			// earlier topics and the session's own work.
+			out.push({
+				id: marker.id,
+				role: "user",
+				parts: [{ type: "data-warmup-done", id: `wd_${marker.id}`, data: marker.details }],
+			});
+			return;
+		}
 		case "probe-handoff": {
 			out.push({
 				id: marker.id,

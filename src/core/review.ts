@@ -95,6 +95,10 @@ export function pickReviewTopics<T extends ReviewCandidate>(
 		.slice(0, Math.max(0, limit));
 }
 
+/** Warm-up questions at the start of a learn or practice session: two or
+ *  three is a warm-up, more would be a review session of its own. */
+export const WARMUP_SIZE = 3;
+
 /** The review-context marker (message[0] of a review session). The
  *  bracketed preamble marks it honestly as injected session context —
  *  custom markers reach the model in the user channel. */
@@ -122,6 +126,111 @@ export function newReviewContextMessage(topics: readonly ReviewTopic[]): LhMarke
 		details: { topics },
 		timestamp: Date.now(),
 	};
+}
+
+/**
+ * WARM-UP RECALL: a learn or practice session can open with a few due
+ * topics before its own work. The queue rides the same review-context
+ * marker (details.warmup = true), so the review tool, its validation and
+ * the tally all work unchanged; the review agent runs the session's turns
+ * until the warm-up is over, then the session's own agent takes over.
+ * The seam is a warmup-done marker, appended with the answer that
+ * finishes the warm-up (or the skip that ends it early). Its text tells
+ * the next agent the warm-up is behind it and the learner's request is
+ * what comes next.
+ */
+export function newWarmupContextMessage(topics: readonly ReviewTopic[]): LhMarkerMessage {
+	const lines = [
+		"[Session context] — a warm-up recall before this session's own work: these earlier topics are due, weakest first.",
+		"The review tool asks exactly one question per topic, in this order, before anything else happens in the session (topicId — title: what it covers):",
+		...topics.map((t) => `- [${t.key}] ${t.title}${t.summary ? `: ${t.summary}` : ""} — multiple choice (review)`),
+		"The learner's own request for this session comes after the warm-up.",
+	];
+	return {
+		id: newMessageId(),
+		role: "custom",
+		customType: "review-context",
+		content: lines.join("\n"),
+		display: true,
+		details: { topics, warmup: true },
+		timestamp: Date.now(),
+	};
+}
+
+function reviewContextOf(messages: readonly LhMessage[]): LhMarkerMessage | null {
+	for (const m of messages) {
+		if ((m as { role?: string }).role !== "custom") continue;
+		if ((m as LhMarkerMessage).customType === "review-context") return m as LhMarkerMessage;
+	}
+	return null;
+}
+
+/** Does this record open with a warm-up (finished or not)? */
+export function hasWarmup(messages: readonly LhMessage[]): boolean {
+	return (reviewContextOf(messages)?.details as { warmup?: unknown } | null)?.warmup === true;
+}
+
+/** Is the warm-up still running: a warm-up queue and no warmup-done
+ *  marker yet. While it is, the review agent takes the session's turns. */
+export function warmupActive(messages: readonly LhMessage[]): boolean {
+	if (!hasWarmup(messages)) return false;
+	return !messages.some((m) => (m as { role?: string }).role === "custom" && (m as LhMarkerMessage).customType === "warmup-done");
+}
+
+/** What the warmup-done marker carries for the transcript's divider. */
+export interface WarmupDoneData {
+	total: number;
+	recalled: number;
+	shaky: number;
+	missed: number;
+	/** The learner skipped the warm-up before its last question. */
+	skipped: boolean;
+}
+
+/** The model-facing text of the warmup-done marker. */
+export function warmupDoneText(data: WarmupDoneData): string {
+	const opener = data.skipped
+		? "[Warm-up skipped] The learner skipped the rest of the warm-up."
+		: `[Warm-up done] The warm-up is over: ${data.recalled} of ${data.total} recalled cleanly` +
+			(data.shaky > 0 ? `, ${data.shaky} right but unsure` : "") +
+			(data.missed > 0 ? `, ${data.missed} missed` : "") +
+			". The memory model has already rescheduled those topics.";
+	return `${opener} Now start the session itself on the learner's request above, as if it were the first message. Do not quiz or re-teach the warm-up topics; mention the warm-up in one short sentence at most.`;
+}
+
+export function newWarmupDoneMessage(data: WarmupDoneData): LhMarkerMessage {
+	return {
+		id: newMessageId(),
+		role: "custom",
+		customType: "warmup-done",
+		content: warmupDoneText(data),
+		display: true,
+		details: data,
+		timestamp: Date.now(),
+	};
+}
+
+/** The marker an input owes once it lands: the warm-up is still running
+ *  in `messages` (the record plus the input's own appends) and the input
+ *  just finished it (every topic answered) or skipped out of it (a
+ *  dismissed warm-up question ends the whole warm-up — one Skip, not
+ *  three). Empty otherwise. */
+export function warmupDoneAppends(messages: readonly LhMessage[]): LhMessage[] {
+	if (!warmupActive(messages)) return [];
+	const last = messages[messages.length - 1] as { role?: string; toolName?: string; details?: { dismissed?: unknown } } | undefined;
+	if (last?.role !== "toolResult" || last.toolName !== REVIEW_TOOL) return [];
+	const tally = reviewTally(messages);
+	const skipped = last.details?.dismissed === true;
+	if (!skipped && tally.done < tally.total) return [];
+	return [
+		newWarmupDoneMessage({
+			total: tally.total,
+			recalled: tally.recalled,
+			shaky: tally.shaky,
+			missed: tally.missed,
+			skipped: skipped && tally.done < tally.total,
+		}),
+	];
 }
 
 /** The queue a review record carries (empty when there is no marker). */
