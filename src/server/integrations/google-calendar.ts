@@ -29,7 +29,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { AUTH_FILE, PATHS } from "../../../config.ts";
-import { writeFileAtomic } from "../../store/fs-atomic.ts";
+import { renameWithRetry, writeFileAtomic } from "../../store/fs-atomic.ts";
 import type { StudyEvent } from "../../core/briefing.ts";
 import { keyValue } from "../keys.ts";
 
@@ -91,7 +91,7 @@ function writeCredentials(creds: StoredCredentials): void {
 	const tmp = path.join(dir, `.google-calendar.json.tmp-${process.pid}`);
 	fs.writeFileSync(tmp, `${JSON.stringify(creds, null, "\t")}\n`, { mode: 0o600 });
 	fs.chmodSync(tmp, 0o600);
-	fs.renameSync(tmp, CREDENTIALS_FILE);
+	renameWithRetry(tmp, CREDENTIALS_FILE);
 }
 
 function deleteCredentials(): void {

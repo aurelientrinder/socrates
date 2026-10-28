@@ -13,6 +13,7 @@
  * Idioms: sync fs, id-guarded paths, JSON with tab indentation.
  */
 
+import { renameWithRetry } from "./fs-atomic.ts";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -74,7 +75,7 @@ export const notesLibrary = {
 			fs.writeFileSync(path.join(tmp, TEXT), input.text, "utf-8");
 			fs.writeFileSync(path.join(tmp, META), JSON.stringify(meta, null, "\t"), "utf-8");
 			fs.rmSync(dir, { recursive: true, force: true });
-			fs.renameSync(tmp, dir);
+			renameWithRetry(tmp, dir);
 		} catch (err) {
 			fs.rmSync(tmp, { recursive: true, force: true });
 			throw err;

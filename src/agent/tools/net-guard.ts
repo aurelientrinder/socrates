@@ -41,7 +41,7 @@ export function isPrivateAddress(address: string): boolean {
 	}
 	if (net.isIPv6(ip)) {
 		if (ip === "::" || ip === "::1") return true;
-		const mapped = /^::ffff:(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/.exec(ip);
+		const mapped = /^(?:::ffff:|64:ff9b::)(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/.exec(ip);
 		if (mapped) {
 			if (mapped[1]) return isPrivateAddress(mapped[1]);
 			const hi = parseInt(mapped[2]!, 16);

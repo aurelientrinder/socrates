@@ -47,7 +47,7 @@ import type {
 	SessionCheckpoint,
 } from "../core/contracts.ts";
 import type { GraphStore } from "../core/ports.ts";
-import { writeFileAtomic } from "./fs-atomic.ts";
+import { renameWithRetry, writeFileAtomic } from "./fs-atomic.ts";
 
 // ─── JSONL primitives ────────────────────────────────────────────────────────
 
@@ -221,7 +221,7 @@ export const graphStore: GraphStore = {
 				// must see exactly what appendLine would have written.
 				const body = records.map((record) => JSON.stringify(record)).join("\n") + (records.length > 0 ? "\n" : "");
 				fs.writeFileSync(tmp, body, "utf-8");
-				fs.renameSync(tmp, file);
+				renameWithRetry(tmp, file);
 			} catch (err) {
 				try {
 					fs.unlinkSync(tmp);
@@ -267,7 +267,7 @@ function writePositionMap(positions: Record<string, Position>): void {
 	const tmp = `${POSITIONS_FILE}.tmp-${crypto.randomUUID().slice(0, 8)}`;
 	try {
 		fs.writeFileSync(tmp, JSON.stringify({ positions, updatedAt: new Date().toISOString() }, null, "\t"), "utf-8");
-		fs.renameSync(tmp, POSITIONS_FILE);
+		renameWithRetry(tmp, POSITIONS_FILE);
 	} catch (err) {
 		try {
 			fs.unlinkSync(tmp);
