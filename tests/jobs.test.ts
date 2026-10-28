@@ -75,6 +75,10 @@ import { projectView as projectNative } from "../src/core/view.ts";
 import { subscribe } from "../src/core/events.ts";
 import type { LhMessage } from "../src/core/native-messages.ts";
 import type { SteerInput, TurnInput } from "../src/core/input-events.ts";
+import { setPublicResolverForTests } from "../src/agent/tools/net-guard.ts";
+
+// These tests fake fetch with made-up hosts: fake DNS too, so the private-address guard never touches the network.
+setPublicResolverForTests(async () => ["93.184.216.34"]);
 
 const JOBS_DIR = path.join(PATHS.data, "jobs");
 

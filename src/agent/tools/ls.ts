@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
-import { capOutput, formatSize, MAX_OUTPUT_BYTES, resolveSourcePath } from "./fs-shared.ts";
+import { capOutput, formatSize, MAX_OUTPUT_BYTES, guardedSourcePath, protectedReason } from "./fs-shared.ts";
 
 /**
  * The ls tool — sources v1 (2026-09-19): a Node port of pi's
@@ -30,7 +30,7 @@ export const lsTool: AgentTool<typeof lsInput> = {
 	description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT} entries or ${formatSize(MAX_OUTPUT_BYTES)} (whichever is hit first).`,
 	parameters: lsInput,
 	execute: serverExecute("ls", lsInput, async (input) => {
-		const dirPath = resolveSourcePath(input.path);
+		const dirPath = await guardedSourcePath(input.path);
 
 		let stat;
 		try {
@@ -48,6 +48,7 @@ export const lsTool: AgentTool<typeof lsInput> = {
 		}
 
 		// pi: alphabetical, case-insensitive.
+		entries = entries.filter((e) => protectedReason(path.join(dirPath, e)) === null);
 		entries.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
 		const effectiveLimit = input.limit ?? DEFAULT_LIMIT;

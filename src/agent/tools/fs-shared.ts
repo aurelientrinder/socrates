@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
+import * as fsSync from "node:fs";
 import * as path from "node:path";
 
 /**
@@ -34,6 +35,60 @@ export const WALK_TIMEOUT_MS = 10_000;
  * Explicit paths (ls/read of ~/Library/…) are NOT filtered — only walks.
  */
 const EXCLUDED_DIR_NAMES = new Set(["node_modules", ".git", "Library", ".Trash"]);
+
+// ─── private files stay private ─────────────────────────────────────────────
+// The tutor reads PDFs, web pages and notes it cannot vouch for, and any of
+// them can contain instructions. So the fs tools refuse the places that hold
+// secrets, whoever asks: dot-folders in the home folder (.ssh, .aws, .config,
+// ...), key and credential files wherever they are, browser profiles, the
+// system's secret stores, and this app's own sign-ins. Walks skip them
+// silently; naming one directly gets a clear refusal.
+
+const SECRET_DIR_NAMES = new Set([".ssh", ".aws", ".gnupg", ".kube", ".docker", ".azure", ".gcloud", "appdata", "keychains", "bravesoftware"]);
+const SECRET_FILE_NAMES = new Set([
+	".netrc", ".npmrc", ".pgpass", ".git-credentials", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "known_hosts",
+	"credentials", "credentials.json", "auth.json", "google-calendar.json", "login data", "cookies", "local state",
+	"logins.json", "key4.db", "wallet.dat",
+]);
+const SECRET_FILE_PATTERNS = [/^\.env(\..*)?$/, /\.(pem|key|p12|pfx|kdbx|keychain|keychain-db|ppk)$/];
+const SYSTEM_SECRET_PREFIXES = ["/etc/", "/private/etc/", "/proc/", "/sys/", "/var/root/"];
+
+const REFUSAL = "private files, keys, browser data and app sign-ins are off limits to the tutor. Ask the learner to paste the part you need.";
+
+/** Why `absolute` (already realpath'd) is off limits, or null. */
+export function protectedReason(absolute: string, home: string = os.homedir()): string | null {
+	const norm = absolute.split(path.sep).join("/");
+	const lower = norm.toLowerCase();
+	if (SYSTEM_SECRET_PREFIXES.some((p) => lower.startsWith(p))) return "a system folder";
+	const segments = lower.split("/").filter(Boolean);
+	const name = segments.at(-1) ?? "";
+	if (segments.some((s) => SECRET_DIR_NAMES.has(s))) return "a credentials or browser-data folder";
+	if (SECRET_FILE_NAMES.has(name) || SECRET_FILE_PATTERNS.some((re) => re.test(name))) return "a key or credentials file";
+	const rel = path.relative(home, absolute).split(path.sep).filter(Boolean);
+	if (rel.length > 0 && !rel[0]!.startsWith("..") && rel[0]!.startsWith(".")) return "a hidden folder in the home folder";
+	return null;
+}
+
+/** The tool entry guard: resolve symlinks, then refuse protected targets.
+ *  Returns the path to use (the learner's spelling when it is fine). */
+export async function guardedSourcePath(p?: string): Promise<string> {
+	const requested = resolveSourcePath(p);
+	let real = requested;
+	try {
+		real = await fs.realpath(requested);
+	} catch {
+		// missing: the tool reports not-found; the spelling is still checked
+	}
+	let home = os.homedir();
+	try {
+		home = fsSync.realpathSync(home);
+	} catch {
+		// keep the plain home path
+	}
+	const why = protectedReason(real, home) ?? protectedReason(requested);
+	if (why) throw new Error(`Blocked: ${requested} is ${why}; ${REFUSAL}`);
+	return requested;
+}
 
 /** Resolve a tool path argument: absolute stays, relative/absent → home.
  *  (pi resolves against the project cwd; the harness's "project" is the
@@ -167,6 +222,7 @@ export async function walkFiles(
 				return true;
 			}
 			const full = path.join(dir, entry.name);
+			if (protectedReason(full) !== null) continue;
 			if (entry.isDirectory()) {
 				if (EXCLUDED_DIR_NAMES.has(entry.name)) continue;
 				if (await walkDir(full)) return true;

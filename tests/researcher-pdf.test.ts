@@ -19,6 +19,10 @@ import * as path from "node:path";
 import { after, describe, it } from "node:test";
 import { createPdfReadTools } from "../src/agent/tools/pdf-read.ts";
 import { createWebTools } from "../src/agent/tools/web.ts";
+import { setPublicResolverForTests } from "../src/agent/tools/net-guard.ts";
+
+// These tests fake fetch with made-up hosts: fake DNS too, so the private-address guard never touches the network.
+setPublicResolverForTests(async () => ["93.184.216.34"]);
 
 /** Build a valid N-page PDF in memory — ASCII-only so string offsets ARE
  *  byte offsets; xref entries computed as we assemble. */
