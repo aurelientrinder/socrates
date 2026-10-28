@@ -1,0 +1,40 @@
+name: Publish a release
+
+# Publishes a draft that "Desktop release" already built and verified. Run it
+# from main with the tag (default: v<package.json version>). Nothing happens
+# unless the draft exists and its release run passed verification.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag whose verified draft to publish (default: v<package.json version>)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publish the verified draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-v$(node -p 'require("./package.json").version')}"
+          draft=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+            --jq ".[] | select(.tag_name == \"$tag\") | .draft")
+          [ "$draft" = "true" ] || { echo "::error::No unpublished draft for $tag."; exit 1; }
+          ok=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?branch=$tag&event=workflow_dispatch&status=success&per_page=1" \
+            --jq '.total_count')
+          [ "$ok" -ge 1 ] || { echo "::error::No successful, verified release run for $tag."; exit 1; }
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false
+          echo "Published $tag."
