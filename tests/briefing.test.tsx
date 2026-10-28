@@ -28,6 +28,7 @@ import {
 	fallbackNote,
 	findFreeSlot,
 	planBriefing,
+	quickPrompt,
 	startPrompt,
 	suggestSessions,
 	type BriefingInput,
@@ -37,7 +38,7 @@ import type { TopicRetention } from "../src/core/retention.ts";
 import { validateKeyShape } from "../src/core/auth-keys.ts";
 import { toStudyEvent } from "../src/server/integrations/google-calendar.ts";
 import { todoistDueAt, todoistToStudyEvent } from "../src/server/integrations/todoist.ts";
-import { TodayShell, formatStudyTotal, type BriefingData, type IntegrationsData } from "../components/today-view.tsx";
+import { TodayShell, formatStudyTotal, streakMessage, type BriefingData, type IntegrationsData } from "../components/today-view.tsx";
 
 const DAY = 24 * 60 * 60 * 1000;
 // A Monday, 09:00 local.
@@ -198,6 +199,14 @@ describe("planBriefing", () => {
 		const plan = planBriefing(input({ sessions, topics: [eigen], events: [event({ id: "e1", title: "Linear Algebra Exam", start: NOW + 3 * DAY })] }));
 		assert.match(fallbackNote(plan), /about 15 minutes/);
 		assert.match(startPrompt(plan.items[0]!), /quiz me on Eigenvalues/);
+		assert.match(quickPrompt(plan.items[0]!), /^I only have 5 minutes: ask me two or three quick questions on Eigenvalues/);
+		assert.match(quickPrompt(plan.items[0]!), /stop there\. I have Linear Algebra Exam /);
+	});
+
+	it("the five-minute prompt for new material asks for one idea and one check", () => {
+		const plan = planBriefing(input({ events: [event({ id: "e2", title: "Chemistry Exam", start: NOW + 4 * DAY })] }));
+		assert.equal(plan.items[0]!.action, "learn");
+		assert.match(quickPrompt(plan.items[0]!), /single most important idea for Chemistry Exam, then ask me one question/);
 	});
 });
 
@@ -249,6 +258,7 @@ describe("TodayShell", () => {
 	const noop = () => {};
 	const handlers = {
 		onStart: noop,
+		onQuick: noop,
 		onPrimer: noop,
 		onPush: noop,
 		onRefresh: noop,
@@ -300,6 +310,8 @@ describe("TodayShell", () => {
 		assert.match(html, /today-upcoming/);
 		// One primary button starts the first step of the plan (redesign wave).
 		assert.match(html, /data-testid="today-start-first"/);
+		// …and a five-minute way in for a low day.
+		assert.match(html, /data-testid="today-quick"[^>]*>.*Only 5 minutes/);
 		assert.match(html, /today-plan/);
 		assert.doesNotMatch(html, /today-honesty/);
 	});
@@ -352,5 +364,32 @@ describe("TodayShell", () => {
 		);
 		assert.equal(html.match(/aria-pressed="true"/g)?.length, 1);
 		assert.match(html, /aria-pressed="true"[^>]*>30 min</);
+	});
+
+	it("shows a gentle streak in the week card, with five minutes to keep it", () => {
+		const render = (streak: { days: number; studiedToday: boolean; atRisk: boolean }) =>
+			renderToStaticMarkup(
+				<TodayShell
+					briefing={null}
+					integrations={disconnected}
+					budgetMinutes={45}
+					sessions={[]}
+					busy={false}
+					pushing={null}
+					error={null}
+					handlers={handlers}
+					week={{ minutes: [25, 0, 30, 20, 25, 0, 0], today: 4 }}
+					streak={streak}
+				/>,
+			);
+		const done = render({ days: 4, studiedToday: true, atRisk: false });
+		assert.match(done, /data-testid="today-streak"/);
+		assert.match(done, /4-day streak\. Today counts\./);
+		assert.doesNotMatch(done, /today-streak-quick/);
+		const risk = render({ days: 3, studiedToday: false, atRisk: true });
+		assert.match(risk, /3-day streak\. 5 minutes today keeps it going\./);
+		assert.match(risk, /data-testid="today-streak-quick"/);
+		assert.equal(streakMessage({ days: 0, studiedToday: false, atRisk: false }), "Start a streak today. Even 5 minutes counts.");
+		assert.equal(streakMessage({ days: 2, studiedToday: false, atRisk: false }), "2-day streak. Study today to add a day.");
 	});
 });

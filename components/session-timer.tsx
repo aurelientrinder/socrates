@@ -15,8 +15,11 @@ import { cn } from "@/lib/utils";
  * the chip).
  */
 
+/** The five-minute session for low-motivation days (2026-10-27): the
+ *  Start dialog's shortest length and Today's "Only 5 minutes". */
+export const QUICK_SESSION_MINUTES = 5;
 /** The session lengths the Start dialog offers. */
-export const SESSION_LENGTHS = [10, 25, 45] as const;
+export const SESSION_LENGTHS = [QUICK_SESSION_MINUTES, 10, 25, 45] as const;
 export const DEFAULT_SESSION_LENGTH = 25;
 
 const budgetKey = (chatId: string) => `lh:session-budget:${chatId}`;

@@ -332,6 +332,18 @@ export function startPrompt(item: BriefingItem): string {
 	}
 }
 
+/** The prompt for Today's "Only 5 minutes" (2026-10-27): the first plan
+ *  step cut down to one tiny session for a low-motivation day — a few
+ *  questions from memory, or one idea and one check, then stop. */
+export function quickPrompt(item: BriefingItem): string {
+	const forEvent = item.eventTitle ? ` I have ${item.eventTitle} ${whenLabel(item.eventStart ?? Date.now(), Date.now())}.` : "";
+	if (item.action === "learn") {
+		return `I only have 5 minutes: teach me the single most important idea for ${item.eventTitle ?? item.title}, then ask me one question to check it, and stop there.${forEvent}`;
+	}
+	const on = item.topicTitles.length > 0 ? item.topicTitles.join(", ") : (item.eventTitle ?? item.title);
+	return `I only have 5 minutes: ask me two or three quick questions on ${on}, from memory, then tell me how I did and stop there.${forEvent}`;
+}
+
 /** Waking hours a study block may be placed in (local). */
 export const BLOCK_DAY_START_HOUR = 8;
 export const BLOCK_DAY_END_HOUR = 21;

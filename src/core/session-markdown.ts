@@ -20,6 +20,7 @@
  * learning evidence); custom markers are invisible, same as the view.
  */
 
+import { isRecallMarkData, RECALL_MARK_TOOL } from "./recall-review.ts";
 import type { LhMessage } from "./native-messages.ts";
 import {
 	PRACTICE_CONCLUDE_TOOL,
@@ -94,6 +95,7 @@ function toolResultBody(result: ToolResultMessage, ctx?: MarkdownContext): { hea
 		result.toolName === "quiz" ||
 		result.toolName === "probe" ||
 		result.toolName === "review" ||
+		result.toolName === "review_recall" ||
 		result.toolName === "explain" ||
 		result.toolName === "recall"
 	) {
@@ -104,6 +106,8 @@ function toolResultBody(result: ToolResultMessage, ctx?: MarkdownContext): { hea
 					? "Probe"
 					: result.toolName === "review"
 						? "Review"
+					: result.toolName === "review_recall"
+						? "Review · explain from memory"
 					: result.toolName === "recall"
 						? "Recall"
 						: "Recall check"; // explain — the teach free-recall name
@@ -139,6 +143,15 @@ function toolResultBody(result: ToolResultMessage, ctx?: MarkdownContext): { hea
 		const solution = typeof input?.modelSolution === "string" && input.modelSolution.trim() ? input.modelSolution.trim() : undefined;
 		if (solution !== undefined) body.push(`> **Model solution**\n>\n> ${solution.replace(/\n/g, "\n> ")}`);
 		return { heading: "Concluded", body };
+	}
+
+	if (result.toolName === RECALL_MARK_TOOL && isRecallMarkData(result.details)) {
+		const mark = result.details;
+		const sign = { covered: "✓", partial: "~", missed: "✗" } as const;
+		const body = [`**${mark.grade === 3 ? "Recalled" : mark.grade === 2 ? "Partly recalled" : "Not recalled"}.**`];
+		for (const p of mark.points) body.push(`- ${sign[p.status]} ${p.point}${p.evidence ? ` — “${p.evidence}”` : ""}`);
+		for (const e of mark.errors) body.push(`- Correction: “${e.claim}” → ${e.correction}`);
+		return { heading: "Marked", body };
 	}
 
 	if (result.toolName === "ask_user_question") {
