@@ -16,27 +16,36 @@
  *   solid" but has not been tested for CHECK_STALE_DAYS before an exam gets
  *   a quick check instead of being skipped;
  * - an exam with nothing studied for it is the loudest line.
+ *
+ * The day-by-day plan up to each exam (and the prep before tough classes)
+ * lives in core/study-plan.ts; today's list is its first day.
  */
 
-import { TARGET_RETENTION, retentionAt, type TopicRetention } from "./retention.ts";
+import { retentionAt, type TopicRetention } from "./retention.ts";
+import {
+	EXAM_HORIZON_DAYS,
+	WEEK_DAYS,
+	planChanges,
+	planStudy,
+	whenLabel,
+	type PlanClass,
+	type PlanSnapshot,
+	type PlanTarget,
+	type StudyPlan,
+} from "./study-plan.ts";
+
+export { CHECK_STALE_DAYS, ITEM_MINUTES, MAX_ITEMS, whenLabel } from "./study-plan.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** How far ahead the briefing looks. */
+/** How far ahead the briefing looks for deadlines (exams: EXAM_HORIZON_DAYS). */
 export const HORIZON_DAYS = 14;
-export const MAX_ITEMS = 3;
 export const DEFAULT_BUDGET_MINUTES = 45;
 export const BUDGET_CHOICES = [15, 30, 45, 60, 90] as const;
 /** The briefing day starts at this local hour (before it, yesterday's stands). */
 export const BRIEFING_HOUR = 5;
-/** Before an exam, a topic untested this long gets a quick check. */
-export const CHECK_STALE_DAYS = 14;
 /** Confident misses newer than this boost their session's topics. */
 export const CONFIDENT_MISS_DAYS = 21;
-/** Topics listed per review item (the rest ride along unnamed). */
-const TOPICS_PER_ITEM = 3;
-
-export const ITEM_MINUTES = { review: 15, check: 10, learn: 25 } as const;
 
 export type EventKind = "exam" | "deadline" | "class" | "other";
 
@@ -154,7 +163,8 @@ export function topicsForEvent(
 
 // ─── Ranking ─────────────────────────────────────────────────────────────────
 
-export type ItemAction = "review" | "check" | "learn";
+/** "rehearse" is an exam-style run before an exam; "prep" a short review before a tough class. */
+export type ItemAction = "review" | "check" | "learn" | "rehearse" | "prep";
 
 export interface BriefingItem {
 	id: string;
@@ -198,11 +208,16 @@ export interface BriefingPlan {
 	day: string;
 	generatedAt: number;
 	budgetMinutes: number;
+	/** Today's list: the study plan's first day. */
 	items: BriefingItem[];
 	upcoming: UpcomingEntry[];
 	todayClasses: ClassEntry[];
 	/** Tracked topics in the retention report (0 = nothing tested yet). */
 	trackedTopics: number;
+	/** The day-by-day plan up to each exam (absent on briefings saved before it existed). */
+	study?: StudyPlan;
+	/** How the plan changed since the last one, in plain words. */
+	changes?: string[];
 }
 
 export interface BriefingInput {
@@ -214,6 +229,8 @@ export interface BriefingInput {
 	/** Sessions with a recent wrong answer given at ≥ 70% confidence. */
 	confidentMissChats: ReadonlySet<string>;
 	budgetMinutes?: number;
+	/** The last saved plan from an earlier day, to say what changed. */
+	previous?: PlanSnapshot | null;
 }
 
 /** The local calendar day a moment belongs to, shifted so the day starts at BRIEFING_HOUR. */
@@ -223,52 +240,32 @@ export function briefingDay(now: number): string {
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** "today", "tomorrow", "in 4 days", "Mon 3 Nov" past a week. */
-export function whenLabel(at: number, now: number): string {
-	const startOfDay = (t: number) => {
-		const d = new Date(t);
-		d.setHours(0, 0, 0, 0);
-		return d.getTime();
-	};
-	const days = Math.round((startOfDay(at) - startOfDay(now)) / DAY_MS);
-	if (days <= 0) return "today";
-	if (days === 1) return "tomorrow";
-	if (days < 7) return `in ${days} days`;
-	return new Date(at).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-}
-
-const pct = (x: number) => `${Math.round(x * 100)}%`;
-
-/** 1 today, 0.5 in 3 days, ~0.18 in two weeks. */
-function urgency(daysAway: number): number {
-	return 1 / (1 + Math.max(0, daysAway) / 3);
-}
-
-interface Candidate extends BriefingItem {
-	/** Grouping key so one session is not listed twice. */
-	group: string;
-}
-
-/** The deterministic plan: rank, then fill the minute budget, capped at MAX_ITEMS. */
+/**
+ * The deterministic plan: match exams, deadlines and this week's classes to
+ * topics, hand them to the study planner (core/study-plan.ts), and take its
+ * first day as today's list.
+ */
 export function planBriefing(input: BriefingInput): BriefingPlan {
 	const { now, topics, sessions, links, confidentMissChats } = input;
 	const budget = input.budgetMinutes ?? DEFAULT_BUDGET_MINUTES;
-	const horizon = now + HORIZON_DAYS * DAY_MS;
+	const reach = (kind: EventKind) => now + (kind === "exam" ? EXAM_HORIZON_DAYS : kind === "class" ? WEEK_DAYS : HORIZON_DAYS) * DAY_MS;
 	const events = input.events
-		.filter((e) => e.end >= now && e.start <= horizon)
 		.map((e) => ({ ...e, kind: e.kind ?? classifyEvent(e.title, e.source) }))
+		.filter((e) => e.end >= now && e.start <= reach(e.kind))
 		.sort((a, b) => a.start - b.start);
 
-	// Per topic: the strongest reason any upcoming exam/deadline gives it.
-	const best = new Map<string, { score: number; event: StudyEvent; projected: number; stale: boolean }>();
 	const upcoming: UpcomingEntry[] = [];
-	const candidates: Candidate[] = [];
-
+	const targets: PlanTarget[] = [];
+	const classes: PlanClass[] = [];
 	for (const event of events) {
+		if (event.kind === "class") {
+			const match = topicsForEvent(event, topics, links, sessions);
+			classes.push({ event, course: match.course, topics: match.topics, chatIds: match.chatIds });
+			continue;
+		}
 		if (event.kind !== "exam" && event.kind !== "deadline") continue;
 		const match = topicsForEvent(event, topics, links, sessions);
 		const at = Math.max(event.start, now);
-		const daysAway = (at - now) / DAY_MS;
 		const projections = match.topics.map((t) => retentionAt(t, at));
 		upcoming.push({
 			event,
@@ -279,128 +276,27 @@ export function planBriefing(input: BriefingInput): BriefingPlan {
 			topicCount: match.topics.length,
 			readiness: projections.length > 0 ? projections.reduce((a, b) => a + b, 0) / projections.length : null,
 		});
-		const weight = event.kind === "exam" ? 1 : 0.8;
-		if (match.topics.length === 0 && match.chatIds.length === 0) {
-			// Nothing studied for it in Socrates: the loudest line before an exam.
-			candidates.push({
-				id: `learn:${event.id}`,
-				group: `learn:${event.id}`,
-				action: "learn",
-				title: `Start on ${match.course.label || event.title}`,
-				reason: `${event.title} is ${whenLabel(event.start, now)} and nothing has been studied for it here yet.`,
-				minutes: ITEM_MINUTES.learn,
-				score: weight * urgency(daysAway) * 1.5,
-				topicKeys: [],
-				topicTitles: [],
-				eventId: event.id,
-				eventTitle: event.title,
-				eventStart: event.start,
-			});
-			continue;
-		}
-		match.topics.forEach((t, i) => {
-			const projected = projections[i]!;
-			const gap = Math.max(0, TARGET_RETENTION - projected) / TARGET_RETENTION;
-			const stale = projected >= TARGET_RETENTION && now - t.lastReviewedAt > CHECK_STALE_DAYS * DAY_MS && daysAway <= 7;
-			const boost = confidentMissChats.has(t.chatId) ? 0.3 : 0;
-			const score = weight * urgency(daysAway) * (stale ? 0.4 : 0.2 + 2 * gap) + boost;
-			if (gap === 0 && !stale && boost === 0) return; // will still be solid on the day
-			const prev = best.get(t.key);
-			if (!prev || score > prev.score) best.set(t.key, { score, event, projected, stale });
-		});
+		targets.push({ event, kind: event.kind, label: match.course.label || event.title, topics: match.topics, chatIds: match.chatIds });
 	}
 
-	// Topics due regardless of any event (the decay thread's due list).
-	for (const t of topics) {
-		if (best.has(t.key) || !t.due) continue;
-		const boost = confidentMissChats.has(t.chatId) ? 0.3 : 0;
-		candidates.push({
-			id: `due:${t.key}`,
-			group: `chat:${t.chatId}:due`,
-			action: "review",
-			title: `Review ${t.title}`,
-			reason: `Recall has dropped to ${pct(t.retention)}.`,
-			minutes: ITEM_MINUTES.review,
-			score: 0.25 * (TARGET_RETENTION - t.retention) + boost,
-			chatId: t.chatId,
-			chatTitle: t.chatTitle,
-			topicKeys: [t.key],
-			topicTitles: [t.title],
-		});
-	}
-
-	// Event-linked topics, grouped per session and event so one item covers a few topics.
-	const groups = new Map<string, { topics: TopicRetention[]; score: number; event: StudyEvent; stale: boolean; worst: number }>();
-	for (const t of topics) {
-		const b = best.get(t.key);
-		if (!b) continue;
-		const key = `chat:${t.chatId}:${b.event.id}:${b.stale ? "check" : "review"}`;
-		const g = groups.get(key) ?? { topics: [], score: 0, event: b.event, stale: b.stale, worst: 1 };
-		g.topics.push(t);
-		g.score = Math.max(g.score, b.score);
-		g.worst = Math.min(g.worst, b.projected);
-		groups.set(key, g);
-	}
-	for (const [key, g] of groups) {
-		g.topics.sort((a, b) => retentionAt(a, g.event.start) - retentionAt(b, g.event.start));
-		const named = g.topics.slice(0, TOPICS_PER_ITEM).map((t) => t.title);
-		const more = g.topics.length - named.length;
-		const first = g.topics[0]!;
-		const when = `${g.event.title} is ${whenLabel(g.event.start, now)}`;
-		const miss = confidentMissChats.has(first.chatId) ? " You recently missed a question here while feeling sure." : "";
-		candidates.push({
-			id: key,
-			group: key,
-			action: g.stale ? "check" : "review",
-			title: `${g.stale ? "Quick check" : "Review"}: ${named.join(", ")}${more > 0 ? ` +${more}` : ""}`,
-			reason: g.stale
-				? `${when}. Not tested for over ${CHECK_STALE_DAYS} days, so a short check before trusting it.${miss}`
-				: `${when}. Recall on the day would be about ${pct(g.worst)} without a review.${miss}`,
-			minutes: g.stale ? ITEM_MINUTES.check : ITEM_MINUTES.review,
-			score: g.score,
-			chatId: first.chatId,
-			chatTitle: first.chatTitle,
-			topicKeys: g.topics.map((t) => t.key),
-			topicTitles: g.topics.map((t) => t.title),
-			eventId: g.event.id,
-			eventTitle: g.event.title,
-			eventStart: g.event.start,
-		});
-	}
-
-	// Fill the budget, best first; the first item always fits so a tight budget still gets one.
-	candidates.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-	const items: BriefingItem[] = [];
-	const seen = new Set<string>();
-	let used = 0;
-	for (const c of candidates) {
-		if (items.length >= MAX_ITEMS) break;
-		if (seen.has(c.group)) continue;
-		if (items.length > 0 && used + c.minutes > budget) continue;
-		seen.add(c.group);
-		used += c.minutes;
-		const { group: _group, ...item } = c;
-		items.push({ ...item, score: Math.round(c.score * 1000) / 1000 });
-	}
+	const study = planStudy({ now, budgetMinutes: budget, targets, classes, topics, confidentMissChats });
 
 	const todayEnd = new Date(now);
 	todayEnd.setHours(23, 59, 59, 999);
-	const todayClasses: ClassEntry[] = events
-		.filter((e) => e.kind === "class" && e.start <= todayEnd.getTime() && e.end >= now)
-		.map((event) => {
-			const course = courseOf(event.title);
-			const link = course.key ? links[course.key] : undefined;
-			return { event, course, chatIds: link ? link.chatIds : suggestSessions(course.label, sessions) };
-		});
+	const todayClasses: ClassEntry[] = classes
+		.filter((c) => c.event.start <= todayEnd.getTime())
+		.map(({ event, course, chatIds }) => ({ event, course, chatIds }));
 
 	return {
 		day: briefingDay(now),
 		generatedAt: now,
 		budgetMinutes: budget,
-		items,
+		items: study.days[0]?.items ?? [],
 		upcoming,
 		todayClasses,
 		trackedTopics: topics.length,
+		study,
+		changes: planChanges(input.previous, study, topics, now),
 	};
 }
 
@@ -413,7 +309,8 @@ export function fallbackNote(plan: BriefingPlan): string {
 			: "Everything linked to your upcoming exams and deadlines should still be solid on the day. Keep it that way with a short session.";
 	}
 	const total = plan.items.reduce((a, i) => a + i.minutes, 0);
-	return `${plan.items.length} thing${plan.items.length === 1 ? "" : "s"} today, about ${total} minutes in all.${exam ? ` Next exam: ${exam.event.title}, ${whenLabel(exam.event.start, plan.generatedAt)}.` : ""} Start with the first one.`;
+	const change = plan.changes?.[0] ? ` ${plan.changes[0]}` : "";
+	return `${plan.items.length} thing${plan.items.length === 1 ? "" : "s"} today, about ${total} minutes in all.${exam ? ` Next exam: ${exam.event.title}, ${whenLabel(exam.event.start, plan.generatedAt)}.` : ""}${change} Start with the first one.`;
 }
 
 /** The prompt text for a Start button: a fresh session seeded with the item. */
@@ -423,7 +320,13 @@ export function startPrompt(item: BriefingItem): string {
 		case "learn":
 			return `Teach me the essentials for ${item.eventTitle ?? item.title}.${forEvent} Start by asking what I already know.`;
 		case "check":
-			return `Quick check, about 10 minutes: quiz me on ${item.topicTitles.join(", ")} before I trust that I know it.${forEvent}`;
+			return item.topicTitles.length > 0
+				? `Quick check, about 10 minutes: quiz me on ${item.topicTitles.join(", ")} before I trust that I know it.${forEvent}`
+				: `Quick check, about 10 minutes: find out what I really know of ${item.eventTitle ?? item.title} with a few questions, before anything else.${forEvent}`;
+		case "rehearse":
+			return `Exam rehearsal, about 30 minutes, on ${item.topicTitles.join(", ")}.${forEvent} Give me one or two exam-style problems: a scenario with several questions that build on it, not multiple choice. No hints while I work. Keep the scenario's data fixed throughout, then grade each answer against it at the end and tell me what to review.`;
+		case "prep":
+			return `Before my class (${item.eventTitle ?? "today"}), about 10 minutes: quiz me on ${item.topicTitles.join(", ")}, the parts of this course I keep getting wrong, and reteach whatever I miss.`;
 		default:
 			return `Review session, about 15 minutes: quiz me on ${item.topicTitles.join(", ")} and reteach whatever I miss.${forEvent}`;
 	}
@@ -437,7 +340,8 @@ export function quickPrompt(item: BriefingItem): string {
 	if (item.action === "learn") {
 		return `I only have 5 minutes: teach me the single most important idea for ${item.eventTitle ?? item.title}, then ask me one question to check it, and stop there.${forEvent}`;
 	}
-	return `I only have 5 minutes: ask me two or three quick questions on ${item.topicTitles.join(", ")}, from memory, then tell me how I did and stop there.${forEvent}`;
+	const on = item.topicTitles.length > 0 ? item.topicTitles.join(", ") : (item.eventTitle ?? item.title);
+	return `I only have 5 minutes: ask me two or three quick questions on ${on}, from memory, then tell me how I did and stop there.${forEvent}`;
 }
 
 /** Waking hours a study block may be placed in (local). */

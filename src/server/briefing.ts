@@ -9,7 +9,9 @@
  *
  * Files (data dir): briefing/<YYYY-MM-DD>.json (one per day),
  * briefing/courses.json (course → linked sessions, the learner's
- * confirmations), briefing/prefs.json (daily minute budget).
+ * confirmations), briefing/prefs.json (daily minute budget),
+ * briefing/plan-history.json (the study plan as it stood on recent days,
+ * so the next one can say what changed: core/study-plan.ts planChanges).
  */
 
 import fs from "node:fs";
@@ -19,7 +21,6 @@ import {
 	BUDGET_CHOICES,
 	CONFIDENT_MISS_DAYS,
 	DEFAULT_BUDGET_MINUTES,
-	HORIZON_DAYS,
 	briefingDay,
 	fallbackNote,
 	findFreeSlot,
@@ -31,6 +32,7 @@ import {
 	type CourseLinks,
 	type StudyEvent,
 } from "../core/briefing.ts";
+import { EXAM_HORIZON_DAYS, planSnapshot, type PlanSnapshot } from "../core/study-plan.ts";
 import { resolveRoleSpec } from "../core/settings-resolution.ts";
 import { piEngineForSpec } from "../agent/models.ts";
 import { runSubagent } from "../agent/subagents/pi-run.ts";
@@ -44,6 +46,9 @@ const NOTE_TIMEOUT_MS = 45_000;
 const DIR = path.join(PATHS.data, "briefing");
 const COURSES_FILE = path.join(DIR, "courses.json");
 const PREFS_FILE = path.join(DIR, "prefs.json");
+const HISTORY_FILE = path.join(DIR, "plan-history.json");
+/** Plan snapshots kept (one per day). */
+const HISTORY_DAYS = 14;
 
 export interface SourceState {
 	connected: boolean;
@@ -120,12 +125,50 @@ export function writeBriefingPrefs(prefs: BriefingPrefs): BriefingPrefs | null {
 	return prefs;
 }
 
+// ─── Plan history ────────────────────────────────────────────────────────────
+
+function readPlanHistory(): PlanSnapshot[] {
+	const raw = readJson<{ snapshots?: unknown }>(HISTORY_FILE);
+	if (!raw || !Array.isArray(raw.snapshots)) return [];
+	return raw.snapshots.filter(
+		(s): s is PlanSnapshot =>
+			!!s && typeof s === "object" && typeof (s as PlanSnapshot).day === "string" && Array.isArray((s as PlanSnapshot).sessions),
+	);
+}
+
+/** The latest plan from a day before `day`: what today's plan is compared with. */
+export function previousPlan(day: string): PlanSnapshot | null {
+	return (
+		readPlanHistory()
+			.filter((s) => s.day < day)
+			.sort((a, b) => b.day.localeCompare(a.day))[0] ?? null
+	);
+}
+
+/**
+ * Save today's plan. A refresh later the same day replaces the future days
+ * but keeps what was first planned for today, so tomorrow can tell whether
+ * it was done.
+ */
+function savePlanSnapshot(snapshot: PlanSnapshot): void {
+	const history = readPlanHistory();
+	const same = history.find((s) => s.day === snapshot.day);
+	if (same) {
+		const ids = new Set(snapshot.sessions.map((s) => s.id));
+		const kept = same.sessions.filter((s) => s.date === snapshot.day && !ids.has(s.id));
+		snapshot = { ...snapshot, sessions: [...kept, ...snapshot.sessions] };
+	}
+	const next = [...history.filter((s) => s.day !== snapshot.day), snapshot].sort((a, b) => a.day.localeCompare(b.day)).slice(-HISTORY_DAYS);
+	writeJson(HISTORY_FILE, { snapshots: next });
+}
+
 // ─── The note ───────────────────────────────────────────────────────────────
 
 const NOTE_SYSTEM = `You write the two-to-four sentence opening of a student's daily study briefing.
 The ranked plan below was computed from their calendar and from measured recall (quiz results, not feelings). Do not reorder it or add items.
 Rules: plain, warm, direct; no hype, no emoji, no lists. Name the single most important thing and why, using the numbers given.
 Never tell the student they know something; if a topic only "feels" solid, say a quick check will confirm it.
+If the plan changed since yesterday (missed sessions, a topic that slipped, a new exam), say the most important change in one sentence, without blame.
 If an exam has nothing studied for it, say so plainly. Mention the total time so it feels doable. Answer with the paragraph only.`;
 
 function noteInput(plan: BriefingPlan): string {
@@ -133,11 +176,20 @@ function noteInput(plan: BriefingPlan): string {
 	const upcoming = plan.upcoming
 		.slice(0, 6)
 		.map((u) => `- ${u.event.title} (${u.kind}, ${whenLabel(u.event.start, plan.generatedAt)}): ${u.readiness === null ? "no studied topics linked" : `projected recall on the day ${Math.round(u.readiness * 100)}%`}`);
+	const exams = (plan.study?.exams ?? []).map(
+		(e) =>
+			`- ${e.title} (${whenLabel(e.start, plan.generatedAt)}): ${e.sessions} sessions planned (${e.minutes} min)${e.readinessNow === null ? "" : `, recall on the day ${Math.round(e.readinessNow * 100)}% now${e.readinessPlanned === null ? "" : `, about ${Math.round(e.readinessPlanned * 100)}% with the plan`}`}${e.unscheduledMinutes > 0 ? `, ${e.unscheduledMinutes} min do not fit the daily budget` : ""}`,
+	);
 	return [
 		`Today: ${new Date(plan.generatedAt).toDateString()}. Daily budget: ${plan.budgetMinutes} minutes.`,
 		`Plan:\n${items.length > 0 ? items.join("\n") : "(nothing urgent)"}`,
-		`Next two weeks:\n${upcoming.length > 0 ? upcoming.join("\n") : "(no exams or deadlines found)"}`,
+		`Coming up:\n${upcoming.length > 0 ? upcoming.join("\n") : "(no exams or deadlines found)"}`,
 		`Classes today: ${plan.todayClasses.map((c) => c.event.title).join(", ") || "none"}.`,
+		...(exams.length > 0 ? [`Exam plans:\n${exams.join("\n")}`] : []),
+		...(plan.study && plan.study.tough.length > 0
+			? [`Tough classes this week: ${plan.study.tough.map((t) => `${t.label} (${t.reason})`).join("; ")}`]
+			: []),
+		...(plan.changes && plan.changes.length > 0 ? [`Changes since the last plan:\n${plan.changes.map((c) => `- ${c}`).join("\n")}`] : []),
 	].join("\n\n");
 }
 
@@ -174,7 +226,7 @@ function inFlight(): { current?: Promise<Briefing> } {
 
 async function generate(now: number): Promise<Briefing> {
 	const from = now - 60 * 60 * 1000;
-	const to = now + HORIZON_DAYS * DAY_MS;
+	const to = now + EXAM_HORIZON_DAYS * DAY_MS;
 	const google: GoogleCalendarStatus = googleCalendarStatus();
 	const events: StudyEvent[] = [];
 	const calendar: SourceState = { connected: google.connected, count: 0 };
@@ -207,6 +259,7 @@ async function generate(now: number): Promise<Briefing> {
 			.confidentMisses.filter((m) => Date.parse(m.answeredAt) >= missFloor)
 			.map((m) => m.chatId),
 	);
+	const day = briefingDay(now);
 	const plan = planBriefing({
 		now,
 		events,
@@ -215,7 +268,9 @@ async function generate(now: number): Promise<Briefing> {
 		links: readCourseLinks(),
 		confidentMissChats,
 		budgetMinutes: readBriefingPrefs().budgetMinutes,
+		previous: previousPlan(day),
 	});
+	if (plan.study) savePlanSnapshot(planSnapshot(plan.day, plan.study, retention.topics));
 	const { note, source } = await writeNote(plan);
 	const briefing: Briefing = { plan, note, noteSource: source, sources: { calendar, todo }, events, pushed: {} };
 	writeJson(dayFile(plan.day), briefing);

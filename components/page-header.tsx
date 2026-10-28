@@ -57,6 +57,7 @@ export const PROGRESS_TABS = [
 	{ id: "memory", label: "Memory", href: "/progress" },
 	{ id: "weak-spots", label: "Weak spots", href: "/progress?tab=weak-spots" },
 	{ id: "calibration", label: "Calibration", href: "/progress?tab=calibration" },
+	{ id: "cards", label: "Flashcards", href: "/progress?tab=cards" },
 	{ id: "map", label: "Map", href: "/map" },
 ];
 

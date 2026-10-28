@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { NOTES_ACCEPT, NotesImportErrors, useNotesImport } from "@/components/notes-import.tsx";
 import { useActivity } from "@/components/activity-dock";
 import { SectionHeading } from "@/components/page-header";
+import { NoteFlashcards } from "@/components/note-flashcards";
 
 /** Transport-only mirror of src/store/notes.ts NoteMeta. */
 export interface SavedNote {
@@ -20,8 +21,8 @@ export interface SavedNote {
 /**
  * THE NOTES PAGE: every file the learner imported, kept by the app (the
  * notes library, data/notes). Import more, open the original, read the
- * text the app pulled out of it, run it through the map again, or remove
- * the saved copy. The tutor searches the same files (the `notes` tool).
+ * text the app pulled out of it, run it through the map again, make
+ * flashcards from it (note-flashcards.tsx), or remove the saved copy. The tutor searches the same files (the `notes` tool).
  */
 export function NotesView() {
 	const [notes, setNotes] = useState<SavedNote[] | null>(null);
@@ -188,6 +189,7 @@ function NoteRow({ note, onChanged }: { note: SavedNote; onChanged: () => Promis
 					</Button>
 				</div>
 			</div>
+			<NoteFlashcards noteId={note.id} disabled={scannedAll} />
 			{message && (
 				<p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-xs text-destructive" : "text-xs text-good-ink"}>
 					{message.text}
