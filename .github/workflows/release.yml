@@ -84,8 +84,18 @@ jobs:
               core.info(`Reusing draft ${matches[0].id} for ${tag}`);
               return;
             }
+            // Friendly notes live in docs/release-notes/<tag>.md when present.
+            let body;
+            try {
+              const {data: file} = await github.rest.repos.getContent({
+                owner, repo, path: `docs/release-notes/${tag}.md`, ref: context.sha,
+              });
+              body = Buffer.from(file.content, "base64").toString("utf8");
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
             const {data} = await github.rest.repos.createRelease({
-              owner, repo, tag_name: tag, name: version, draft: true,
+              owner, repo, tag_name: tag, name: version, draft: true, body,
             });
             core.info(`Created draft ${data.id} for ${tag}`);
 
