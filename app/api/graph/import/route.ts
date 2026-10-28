@@ -11,13 +11,17 @@
  * text is pulled out locally (pdfjs) and every file is SAVED to the notes
  * library (data/notes), so the Notes page and the tutor keep the original.
  *
+ * Course groups (2026-10-28): an optional "course" field (a group key)
+ * puts every saved file in that group as soon as it is saved, so a file
+ * whose map run fails still belongs to its course.
+ *
  * Small concurrency cap: the model calls are the slow part, and a burst of
  * 25 simultaneous runs would trip provider rate limits — a 3-wide worker
  * pool keeps the run registry (the dock's status chips) and the ledgers
  * healthy. The dock's chips + graph refetch track progress live through
  * /api/graph/status, as with session runs.
  */
-import { extraction, NotesImportError, prepareNote, SCANNED_PDF_MESSAGE } from "@/src/server";
+import { addNotesToCourse, courseExists, extraction, NotesImportError, prepareNote, SCANNED_PDF_MESSAGE } from "@/src/server";
 import {
 	ModelsNotConfiguredError,
 	PROVIDER_KEY_MISSING_CODE,
@@ -52,6 +56,11 @@ export async function POST(request: Request) {
 	if (files.length === 0) {
 		return Response.json({ results: [] as ImportResult[], error: "no files" }, { status: 400 });
 	}
+	const courseField = form.get("course");
+	const course = typeof courseField === "string" && courseField ? courseField : null;
+	if (course && !courseExists(course)) {
+		return Response.json({ results: [] as ImportResult[], error: "That course is gone. Reload the page." }, { status: 404 });
+	}
 
 	const results: ImportResult[] = [];
 	const queue = files.map((file, requestIndex) => ({ file, requestIndex }));
@@ -62,6 +71,7 @@ export async function POST(request: Request) {
 			const { file, requestIndex } = next;
 			try {
 				const note = await prepareNote(file.name, new Uint8Array(await file.arrayBuffer()));
+				if (course) addNotesToCourse(course, [note.meta.id]);
 				if (!note.text) {
 					results.push({ filePath: file.name, requestIndex, outcome: "failed", ok: false, error: SCANNED_PDF_MESSAGE });
 					continue;

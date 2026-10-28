@@ -70,8 +70,40 @@ export interface SessionRef {
 	title: string;
 }
 
-/** Course key → the sessions the learner linked to it (courses.json). */
-export type CourseLinks = Record<string, { label: string; chatIds: string[] }>;
+/**
+ * A course group (courses.json, keyed by the courseOf key it was made
+ * from): the sessions the learner linked to it and the notes they put in
+ * it. `chatIds` absent = sessions not confirmed yet (title matching still
+ * runs); `aliases` are other course keys whose events belong to it (a
+ * calendar class added to a group made by hand).
+ */
+export interface CourseGroup {
+	label: string;
+	chatIds?: string[];
+	noteIds?: string[];
+	aliases?: string[];
+	/** ISO time the group was made (absent on links saved before groups). */
+	createdAt?: string;
+}
+
+/** Course key → its group (courses.json). */
+export type CourseLinks = Record<string, CourseGroup>;
+
+/** What a group's notes bring, resolved server-side: the tracked topics
+ *  learned from them (prop: keys) and the files themselves. */
+export interface CourseMaterial {
+	topicKeys: string[];
+	notes: { id: string; name: string }[];
+}
+
+/** The group an event's course key belongs to: its own, or one listing it as an alias. */
+export function courseGroupFor(links: CourseLinks, courseKey: string): { key: string; group: CourseGroup } | null {
+	if (!courseKey) return null;
+	const own = links[courseKey];
+	if (own) return { key: courseKey, group: own };
+	for (const [key, group] of Object.entries(links)) if (group.aliases?.includes(courseKey)) return { key, group };
+	return null;
+}
 
 // ─── Event kind and course ───────────────────────────────────────────────────
 
@@ -141,24 +173,40 @@ export function suggestSessions(courseLabel: string, sessions: readonly SessionR
 
 /**
  * The topics an event is about. Linked course sessions count whole; without
- * a confirmed link, topics match on shared words with the event title (and
- * the suggested sessions count whole).
+ * confirmed sessions, topics match on shared words with the event title (and
+ * the suggested sessions count whole). Topics learned from the course
+ * group's notes count too, and the notes come along for the session prompts.
  */
 export function topicsForEvent(
 	event: StudyEvent,
 	topics: readonly TopicRetention[],
 	links: CourseLinks,
 	sessions: readonly SessionRef[],
-): { topics: TopicRetention[]; course: { key: string; label: string }; linked: boolean; chatIds: string[] } {
-	const course = courseOf(event.title);
-	const link = course.key ? links[course.key] : undefined;
-	const chatIds = link ? link.chatIds : course.key ? suggestSessions(course.label, sessions) : [];
+	material: Readonly<Record<string, CourseMaterial>> = {},
+): {
+	topics: TopicRetention[];
+	course: { key: string; label: string };
+	linked: boolean;
+	chatIds: string[];
+	notes: { id: string; name: string }[];
+} {
+	const raw = courseOf(event.title);
+	const found = courseGroupFor(links, raw.key);
+	// A group's key and (renamed) label win, so every event of it reads the same.
+	const course = found ? { key: found.key, label: found.group.label } : raw;
+	const confirmed = found?.group.chatIds;
+	const chatIds = confirmed ?? (raw.key ? suggestSessions(raw.label, sessions) : []);
 	const chatSet = new Set(chatIds);
+	const fromNotes = new Set(found ? (material[found.key]?.topicKeys ?? []) : []);
 	const words = tokens(event.title);
 	const matched = topics.filter(
-		(t) => chatSet.has(t.chatId) || (!link && words.size > 0 && overlaps(words, tokens(`${t.title} ${t.chatTitle}`))),
+		(t) =>
+			chatSet.has(t.chatId) ||
+			fromNotes.has(t.key) ||
+			(!confirmed && words.size > 0 && overlaps(words, tokens(`${t.title} ${t.chatTitle}`))),
 	);
-	return { topics: matched, course, linked: link !== undefined, chatIds };
+	const notes = found ? (material[found.key]?.notes ?? []) : [];
+	return { topics: matched, course, linked: confirmed !== undefined, chatIds, notes };
 }
 
 // ─── Ranking ─────────────────────────────────────────────────────────────────
@@ -184,6 +232,11 @@ export interface BriefingItem {
 	eventId?: string;
 	eventTitle?: string;
 	eventStart?: number;
+	/** The course group's notes, when the event's course has some: the
+	 *  session prompt points the tutor at them, a rehearsal can be a mock
+	 *  exam written from them. */
+	noteIds?: string[];
+	noteNames?: string[];
 }
 
 export interface UpcomingEntry {
@@ -193,6 +246,8 @@ export interface UpcomingEntry {
 	linked: boolean;
 	chatIds: string[];
 	topicCount: number;
+	/** Files in the course group (0 when none or no group). */
+	noteCount?: number;
 	/** Mean projected recall of the linked topics at the event, 0-1; null when none. */
 	readiness: number | null;
 }
@@ -201,6 +256,8 @@ export interface ClassEntry {
 	event: StudyEvent;
 	course: { key: string; label: string };
 	chatIds: string[];
+	/** The course group's notes (empty when none). */
+	notes?: { id: string; name: string }[];
 }
 
 export interface BriefingPlan {
@@ -226,6 +283,8 @@ export interface BriefingInput {
 	topics: readonly TopicRetention[];
 	sessions: readonly SessionRef[];
 	links: CourseLinks;
+	/** Group key → what its notes bring (topics learned from them, the files). */
+	material?: Readonly<Record<string, CourseMaterial>>;
 	/** Sessions with a recent wrong answer given at ≥ 70% confidence. */
 	confidentMissChats: ReadonlySet<string>;
 	budgetMinutes?: number;
@@ -247,6 +306,7 @@ export function briefingDay(now: number): string {
  */
 export function planBriefing(input: BriefingInput): BriefingPlan {
 	const { now, topics, sessions, links, confidentMissChats } = input;
+	const material = input.material ?? {};
 	const budget = input.budgetMinutes ?? DEFAULT_BUDGET_MINUTES;
 	const reach = (kind: EventKind) => now + (kind === "exam" ? EXAM_HORIZON_DAYS : kind === "class" ? WEEK_DAYS : HORIZON_DAYS) * DAY_MS;
 	const events = input.events
@@ -259,12 +319,12 @@ export function planBriefing(input: BriefingInput): BriefingPlan {
 	const classes: PlanClass[] = [];
 	for (const event of events) {
 		if (event.kind === "class") {
-			const match = topicsForEvent(event, topics, links, sessions);
-			classes.push({ event, course: match.course, topics: match.topics, chatIds: match.chatIds });
+			const match = topicsForEvent(event, topics, links, sessions, material);
+			classes.push({ event, course: match.course, topics: match.topics, chatIds: match.chatIds, notes: match.notes });
 			continue;
 		}
 		if (event.kind !== "exam" && event.kind !== "deadline") continue;
-		const match = topicsForEvent(event, topics, links, sessions);
+		const match = topicsForEvent(event, topics, links, sessions, material);
 		const at = Math.max(event.start, now);
 		const projections = match.topics.map((t) => retentionAt(t, at));
 		upcoming.push({
@@ -274,9 +334,17 @@ export function planBriefing(input: BriefingInput): BriefingPlan {
 			linked: match.linked,
 			chatIds: match.chatIds,
 			topicCount: match.topics.length,
+			noteCount: match.notes.length,
 			readiness: projections.length > 0 ? projections.reduce((a, b) => a + b, 0) / projections.length : null,
 		});
-		targets.push({ event, kind: event.kind, label: match.course.label || event.title, topics: match.topics, chatIds: match.chatIds });
+		targets.push({
+			event,
+			kind: event.kind,
+			label: match.course.label || event.title,
+			topics: match.topics,
+			chatIds: match.chatIds,
+			notes: match.notes,
+		});
 	}
 
 	const study = planStudy({ now, budgetMinutes: budget, targets, classes, topics, confidentMissChats });
@@ -285,7 +353,7 @@ export function planBriefing(input: BriefingInput): BriefingPlan {
 	todayEnd.setHours(23, 59, 59, 999);
 	const todayClasses: ClassEntry[] = classes
 		.filter((c) => c.event.start <= todayEnd.getTime())
-		.map(({ event, course, chatIds }) => ({ event, course, chatIds }));
+		.map(({ event, course, chatIds, notes }) => ({ event, course, chatIds, notes: notes ?? [] }));
 
 	return {
 		day: briefingDay(now),
@@ -313,8 +381,23 @@ export function fallbackNote(plan: BriefingPlan): string {
 	return `${plan.items.length} thing${plan.items.length === 1 ? "" : "s"} today, about ${total} minutes in all.${exam ? ` Next exam: ${exam.event.title}, ${whenLabel(exam.event.start, plan.generatedAt)}.` : ""}${change} Start with the first one.`;
 }
 
+/** Course files named in a prompt (the rest: "and N more"). */
+const PROMPT_NOTES = 4;
+
+/** The sentence that points the tutor at a course group's files. */
+export function courseNotesLine(names: readonly string[] | undefined): string {
+	if (!names || names.length === 0) return "";
+	const shown = names.slice(0, PROMPT_NOTES).map((n) => `"${n}"`).join(", ");
+	const more = names.length > PROMPT_NOTES ? ` and ${names.length - PROMPT_NOTES} more` : "";
+	return ` My course notes for this are saved in the app: ${shown}${more}. Work from them and stick to what they say.`;
+}
+
 /** The prompt text for a Start button: a fresh session seeded with the item. */
 export function startPrompt(item: BriefingItem): string {
+	return basePrompt(item) + courseNotesLine(item.noteNames);
+}
+
+function basePrompt(item: BriefingItem): string {
 	const forEvent = item.eventTitle ? ` I have ${item.eventTitle} ${whenLabel(item.eventStart ?? Date.now(), Date.now())}.` : "";
 	switch (item.action) {
 		case "learn":
@@ -338,7 +421,7 @@ export function startPrompt(item: BriefingItem): string {
 export function quickPrompt(item: BriefingItem): string {
 	const forEvent = item.eventTitle ? ` I have ${item.eventTitle} ${whenLabel(item.eventStart ?? Date.now(), Date.now())}.` : "";
 	if (item.action === "learn") {
-		return `I only have 5 minutes: teach me the single most important idea for ${item.eventTitle ?? item.title}, then ask me one question to check it, and stop there.${forEvent}`;
+		return `I only have 5 minutes: teach me the single most important idea for ${item.eventTitle ?? item.title}, then ask me one question to check it, and stop there.${forEvent}${courseNotesLine(item.noteNames)}`;
 	}
 	const on = item.topicTitles.length > 0 ? item.topicTitles.join(", ") : (item.eventTitle ?? item.title);
 	return `I only have 5 minutes: ask me two or three quick questions on ${on}, from memory, then tell me how I did and stop there.${forEvent}`;

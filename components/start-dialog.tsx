@@ -25,7 +25,16 @@ import { cn } from "@/lib/utils";
 
 export type StartMode = "learn" | "practice" | "review" | "exam";
 
-const StartDialogContext = createContext<{ open: (mode?: StartMode, minutes?: number) => void }>({ open: () => {} });
+/** What a caller can fill in ahead (a course's "Mock exam": its name and files). */
+export interface StartPreset {
+	topic?: string;
+	notes?: NoteChip[];
+}
+
+/** A mock exam is written from at most this many files (src/server/exams.ts). */
+const EXAM_MAX_NOTES = 5;
+
+const StartDialogContext = createContext<{ open: (mode?: StartMode, minutes?: number, preset?: StartPreset) => void }>({ open: () => {} });
 
 /** Open the Start dialog from anywhere under the app shell. */
 export function useStartDialog() {
@@ -38,14 +47,19 @@ export const OPEN_START_EVENT = "lh:open-start";
 export function StartDialogProvider({ children }: { children: React.ReactNode }) {
 	const [mode, setMode] = useState<StartMode | null>(null);
 	const [minutes, setMinutes] = useState<number>(DEFAULT_SESSION_LENGTH);
-	const open = useCallback((m: StartMode = "learn", length: number = DEFAULT_SESSION_LENGTH) => {
+	const [preset, setPreset] = useState<StartPreset | undefined>(undefined);
+	const open = useCallback((m: StartMode = "learn", length: number = DEFAULT_SESSION_LENGTH, p?: StartPreset) => {
 		setMinutes(length);
+		setPreset(p);
 		setMode(m);
 	}, []);
 	useEffect(() => {
 		const onOpen = () =>
 			setMode((m) => {
-				if (m === null) setMinutes(DEFAULT_SESSION_LENGTH);
+				if (m === null) {
+					setMinutes(DEFAULT_SESSION_LENGTH);
+					setPreset(undefined);
+				}
 				return m ?? "learn";
 			});
 		window.addEventListener(OPEN_START_EVENT, onOpen);
@@ -54,7 +68,7 @@ export function StartDialogProvider({ children }: { children: React.ReactNode })
 	return (
 		<StartDialogContext.Provider value={{ open }}>
 			{children}
-			{mode !== null && <StartDialog initialMode={mode} initialMinutes={minutes} onClose={() => setMode(null)} />}
+			{mode !== null && <StartDialog initialMode={mode} initialMinutes={minutes} preset={preset} onClose={() => setMode(null)} />}
 		</StartDialogContext.Provider>
 	);
 }
@@ -80,15 +94,25 @@ export function quickSessionPrompt(mode: "learn" | "practice", text: string): st
 	return `${text.trim()}\n\n(${scope})`;
 }
 
-function StartDialog({ initialMode, initialMinutes, onClose }: { initialMode: StartMode; initialMinutes: number; onClose: () => void }) {
+function StartDialog({
+	initialMode,
+	initialMinutes,
+	preset,
+	onClose,
+}: {
+	initialMode: StartMode;
+	initialMinutes: number;
+	preset?: StartPreset;
+	onClose: () => void;
+}) {
 	const router = useRouter();
 	const [mode, setMode] = useState<StartMode>(initialMode);
-	const [topic, setTopic] = useState("");
+	const [topic, setTopic] = useState(preset?.topic ?? "");
 	const [due, setDue] = useState<number | null>(null);
 	const [notes, setNotes] = useState<NoteChip[]>([]);
 	const [minutes, setMinutes] = useState<number>(initialMinutes);
 	const [examMinutes, setExamMinutes] = useState<number>(DEFAULT_EXAM_LENGTH);
-	const [pickedNotes, setPickedNotes] = useState<string[]>([]);
+	const [pickedNotes, setPickedNotes] = useState<string[]>(() => (preset?.notes ?? []).slice(0, EXAM_MAX_NOTES).map((n) => n.id));
 	const [warmup, setWarmup] = useState<boolean>(readWarmupPreference);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -103,16 +127,17 @@ function StartDialog({ initialMode, initialMinutes, onClose }: { initialMode: St
 			.catch(() => setDue(0));
 		void fetch("/api/notes")
 			.then((r) => (r.ok ? r.json() : null))
-			.then((body: { notes: (NoteChip & { importedAt: string })[] } | null) =>
-				setNotes(
-					[...(body?.notes ?? [])]
-						.sort((a, b) => b.importedAt.localeCompare(a.importedAt))
-						.slice(0, 6)
-						.map(({ id, name }) => ({ id, name })),
-				),
-			)
-			.catch(() => setNotes([]));
-	}, []);
+			.then((body: { notes: (NoteChip & { importedAt: string })[] } | null) => {
+				const recent = [...(body?.notes ?? [])]
+					.sort((a, b) => b.importedAt.localeCompare(a.importedAt))
+					.slice(0, 6)
+					.map(({ id, name }) => ({ id, name }));
+				// A course's files come first, all of them; then the recent ones.
+				const given = preset?.notes ?? [];
+				setNotes(given.length > 0 ? given : recent);
+			})
+			.catch(() => setNotes(preset?.notes ?? []));
+	}, [preset]);
 
 	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
@@ -191,7 +216,9 @@ function StartDialog({ initialMode, initialMinutes, onClose }: { initialMode: St
 				onTopic={setTopic}
 				onStart={() => void go(topic)}
 				onNote={(name) => void go(notePrompt(mode === "practice" ? "practice" : "learn", name))}
-				onPickNote={(id) => setPickedNotes((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))}
+				onPickNote={(id) =>
+					setPickedNotes((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : ids.length >= EXAM_MAX_NOTES ? ids : [...ids, id]))
+				}
 				onClose={onClose}
 			/>
 		</div>,
@@ -346,7 +373,7 @@ export function StartDialogBody({
 					/>
 					{mode === "exam" && notes.length > 0 && (
 						<div className="flex flex-wrap items-center gap-2" data-testid="start-exam-notes">
-							<span className="text-sm text-muted-foreground">Write it from your notes:</span>
+							<span className="text-sm text-muted-foreground">Write it from your notes (up to {EXAM_MAX_NOTES}):</span>
 							{notes.map((n) => (
 								<button
 									key={n.id}

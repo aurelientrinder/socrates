@@ -44,11 +44,13 @@ export const NOTES_ACCEPT = ".pdf,.md,.markdown,.txt";
 
 /** Mirrors the server's per-file cap (src/server/notes.ts MAX_NOTE_BYTES):
  *  refuse up front instead of uploading a file the server will refuse. */
-const MAX_NOTE_BYTES = 50 * 1024 * 1024;
+export const MAX_NOTE_BYTES = 50 * 1024 * 1024;
 
-export async function postNotesImport(files: readonly File[]): Promise<NotesImportResult[]> {
+/** `course`: a course group key — every saved file goes into that group. */
+export async function postNotesImport(files: readonly File[], course?: string): Promise<NotesImportResult[]> {
 	const form = new FormData();
 	for (const file of files) form.append("files", file);
+	if (course) form.append("course", course);
 	const response = await fetch("/api/graph/import", { method: "POST", body: form });
 	let body: unknown;
 	try { body = await response.json(); }

@@ -59,6 +59,8 @@ export * from "./reply-language.ts";
 // The daily briefing planner (calendar + to-do + retention). Pure, browser-safe.
 export * from "./briefing.ts";
 export * from "./study-plan.ts";
+// Course groups: calendar classes suggested as groups of notes + sessions. Pure.
+export * from "./courses.ts";
 // Spaced-repetition review sessions: the queue marker + progress tally. Pure.
 export * from "./review.ts";
 // Flashcards from imported notes: decks, quote checks, FSRS scheduling. Pure.
