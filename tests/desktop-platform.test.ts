@@ -172,11 +172,12 @@ describe("desktop release workflow", () => {
 	type Release = { id: number; tag_name: string; draft: boolean };
 
 	/** Execute the REAL action script with an in-memory GitHub API. */
-	async function prepareDraft(releases: Release[]) {
+	async function prepareDraft(releases: Release[], notes?: string) {
 		const created: Record<string, unknown>[] = [];
 		const listReleases = () => {};
 		await runInNewContext(`(async () => { ${script} })()`, {
 			context: { repo: { owner: "test-owner", repo: "test-repo" }, ref: "refs/tags/v0.3.0" },
+			Buffer,
 			core: { info() {} },
 			github: {
 				paginate: async (method: unknown, options: unknown) => {
@@ -188,6 +189,11 @@ describe("desktop release workflow", () => {
 				},
 				rest: { repos: {
 					listReleases,
+					getContent: async (options: Record<string, unknown>) => {
+						assert.equal(options.path, "docs/release-notes/v0.3.0.md");
+						if (notes === undefined) throw Object.assign(new Error("Not Found"), { status: 404 });
+						return { data: { content: Buffer.from(notes).toString("base64") } };
+					},
 					createRelease: async (options: Record<string, unknown>) => {
 						created.push(JSON.parse(JSON.stringify(options)));
 						return { data: { id: 123 } };
@@ -238,6 +244,13 @@ describe("desktop release workflow", () => {
 	it("creates exactly one unpublished draft when none matches", async () => {
 		assert.deepEqual(await prepareDraft([{ id: 9, tag_name: "v0.2.0", draft: false }]), [{
 			owner: "test-owner", repo: "test-repo", tag_name: "v0.3.0", name: "0.3.0", draft: true,
+		}]);
+	});
+
+	it("uses docs/release-notes/<tag>.md as the draft's body when it exists", async () => {
+		assert.deepEqual(await prepareDraft([], "## What's new\n- Friendly notes"), [{
+			owner: "test-owner", repo: "test-repo", tag_name: "v0.3.0", name: "0.3.0", draft: true,
+			body: "## What's new\n- Friendly notes",
 		}]);
 	});
 
