@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CheckIcon, ChevronRightIcon, MinusIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ReviewMode, ReviewOutcome, ReviewTopic } from "@/src/core";
+import type { ReviewMode, ReviewOutcome, ReviewTopic, WarmupDoneData } from "@/src/core";
 
 /**
  * The review-context card (spaced repetition): message[0] of a review
@@ -17,6 +17,9 @@ export interface ReviewContextData {
 	topics: ReviewTopic[];
 	/** "drill" for a weak-spot drill; absent on a due-topics review. */
 	mode?: ReviewMode;
+	/** A learn or practice session's warm-up (warm-up recall), not a
+	 *  review session. */
+	warmup?: boolean;
 }
 
 const OUTCOME_LABEL: Record<ReviewOutcome, string> = {
@@ -57,9 +60,13 @@ export function ReviewContextCard({
 				className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border/70 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
 			>
 				<ChevronRightIcon aria-hidden="true" className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
-				<span className="font-medium">{drill ? "Drill" : "Review"}</span>
+				<span className="font-medium">{data?.warmup ? "Warm-up" : drill ? "Drill" : "Review"}</span>
 				<span className="min-w-0 flex-1 truncate">
-					{topics.length} {drill ? (topics.length === 1 ? "weak spot" : "weak spots") : topics.length === 1 ? "topic due" : "topics due"} · {done} done
+					{data?.warmup
+						? `${topics.length} earlier ${topics.length === 1 ? "topic" : "topics"} · ${done} done`
+						: drill
+							? `${topics.length} weak ${topics.length === 1 ? "spot" : "spots"} · ${done} done`
+							: `${topics.length} ${topics.length === 1 ? "topic" : "topics"} due · ${done} done`}
 				</span>
 			</button>
 			{open && (
@@ -81,6 +88,29 @@ export function ReviewContextCard({
 					))}
 				</div>
 			)}
+		</div>
+	);
+}
+
+/**
+ * The warm-up's end (warm-up recall): the divider between the earlier
+ * topics and the session's own work, with how the warm-up went.
+ */
+export function WarmupDoneDivider({ data }: { data: WarmupDoneData }) {
+	const parts = data.skipped
+		? ["Warm-up skipped"]
+		: [
+				`Warm-up done · ${data.recalled} of ${data.total} recalled`,
+				...(data.shaky > 0 ? [`${data.shaky} unsure`] : []),
+				...(data.missed > 0 ? [`${data.missed} missed`] : []),
+			];
+	return (
+		<div className="my-4 flex w-full items-center gap-3" data-testid="warmup-done">
+			<span className="h-0 flex-1 border-t-2 border-dotted border-border/50" aria-hidden />
+			<span className="rounded-full border border-border/80 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+				{parts.join(" · ")}
+			</span>
+			<span className="h-0 flex-1 border-t-2 border-dotted border-border/50" aria-hidden />
 		</div>
 	);
 }

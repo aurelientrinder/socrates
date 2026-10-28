@@ -8,7 +8,7 @@ import { BookOpenIcon, ClipboardCheckIcon, DumbbellIcon, Loader2Icon, PlayIcon, 
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { startDraftSession } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
-import { DEFAULT_EXAM_LENGTH, EXAM_LENGTHS, problemCountFor, REVIEW_SESSION_SIZE } from "@/src/core";
+import { DEFAULT_EXAM_LENGTH, EXAM_LENGTHS, problemCountFor, REVIEW_SESSION_SIZE, WARMUP_SIZE } from "@/src/core";
 import { DEFAULT_SESSION_LENGTH, QUICK_SESSION_MINUTES, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
 import { cn } from "@/lib/utils";
 
@@ -89,6 +89,7 @@ function StartDialog({ initialMode, initialMinutes, onClose }: { initialMode: St
 	const [minutes, setMinutes] = useState<number>(initialMinutes);
 	const [examMinutes, setExamMinutes] = useState<number>(DEFAULT_EXAM_LENGTH);
 	const [pickedNotes, setPickedNotes] = useState<string[]>([]);
+	const [warmup, setWarmup] = useState<boolean>(readWarmupPreference);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const backdropDismiss = useBackdropDismiss(() => {
@@ -147,8 +148,12 @@ function StartDialog({ initialMode, initialMinutes, onClose }: { initialMode: St
 				target = `/chat/${body.id}?prompt=${encodeURIComponent(REVIEW_START_PROMPT)}`;
 			} else {
 				const kind = mode === "practice" ? "practice" : "learn";
-				const firstMessage = minutes === QUICK_SESSION_MINUTES ? quickSessionPrompt(kind, text) : undefined;
-				target = await startDraftSession(text, fetch, kind === "practice" ? "practice" : undefined, undefined, firstMessage);
+				const quick = minutes === QUICK_SESSION_MINUTES;
+				const firstMessage = quick ? quickSessionPrompt(kind, text) : undefined;
+				// A five-minute session is one idea and one question: no warm-up.
+				target = await startDraftSession(text, fetch, kind === "practice" ? "practice" : undefined, undefined, firstMessage, {
+					warmup: warmup && !quick,
+				});
 				if (target) setSessionBudget(target, minutes);
 			}
 			if (!target) {
@@ -178,6 +183,11 @@ function StartDialog({ initialMode, initialMinutes, onClose }: { initialMode: St
 				onMode={setMode}
 				onMinutes={setMinutes}
 				onExamMinutes={setExamMinutes}
+				warmup={warmup}
+				onWarmup={(on) => {
+					setWarmup(on);
+					writeWarmupPreference(on);
+				}}
 				onTopic={setTopic}
 				onStart={() => void go(topic)}
 				onNote={(name) => void go(notePrompt(mode === "practice" ? "practice" : "learn", name))}
@@ -196,6 +206,26 @@ const MODES: { id: StartMode; label: string; desc: string; icon: React.ReactNode
 	{ id: "exam", label: "Mock exam", desc: "A timed paper of real exam problems. No hints, marked at the end.", icon: <ClipboardCheckIcon className="size-4" /> },
 ];
 
+/** The warm-up switch is remembered per device (warm-up recall): on
+ *  unless the learner turned it off. */
+const WARMUP_PREFERENCE_KEY = "lh:warmup";
+
+function readWarmupPreference(): boolean {
+	try {
+		return window.localStorage.getItem(WARMUP_PREFERENCE_KEY) !== "off";
+	} catch {
+		return true;
+	}
+}
+
+function writeWarmupPreference(on: boolean): void {
+	try {
+		window.localStorage.setItem(WARMUP_PREFERENCE_KEY, on ? "on" : "off");
+	} catch {
+		// Private windows: the switch still works for this session.
+	}
+}
+
 /** The dialog's pure body: the render-test seam (state lives in the wrapper). */
 export function StartDialogBody({
 	mode,
@@ -210,6 +240,8 @@ export function StartDialogBody({
 	onMode,
 	onMinutes,
 	onExamMinutes = () => {},
+	warmup = true,
+	onWarmup,
 	onTopic,
 	onStart,
 	onNote,
@@ -232,6 +264,9 @@ export function StartDialogBody({
 	onMode: (mode: StartMode) => void;
 	onMinutes: (minutes: number) => void;
 	onExamMinutes?: (minutes: number) => void;
+	/** Open Learn and Practice with a warm-up on due topics (warm-up recall). */
+	warmup?: boolean;
+	onWarmup?: (on: boolean) => void;
 	onTopic: (text: string) => void;
 	onStart: () => void;
 	onNote: (name: string) => void;
@@ -426,6 +461,24 @@ export function StartDialogBody({
 						))}
 					</div>
 				</div>
+			)}
+
+			{(mode === "learn" || mode === "practice") && minutes !== QUICK_SESSION_MINUTES && due !== null && due > 0 && onWarmup && (
+				<label data-testid="start-warmup" className="flex cursor-pointer items-start gap-2.5 text-sm">
+					<input
+						type="checkbox"
+						checked={warmup}
+						onChange={(e) => onWarmup(e.target.checked)}
+						className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary"
+					/>
+					<span>
+						<span className="font-semibold">Warm up first</span>
+						<span className="text-foreground/70">
+							{" "}
+							· {Math.min(due, WARMUP_SIZE)} quick {Math.min(due, WARMUP_SIZE) === 1 ? "question" : "questions"} on earlier topics you are starting to forget
+						</span>
+					</span>
+				</label>
 			)}
 
 			<div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-5">

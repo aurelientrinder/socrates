@@ -81,7 +81,8 @@ export interface LhMarkerMessage {
 		| "practice-next"
 		| "problem-dismissed"
 		| "compaction"
-		| "review-context";
+		| "review-context"
+		| "warmup-done";
 	/** The model-facing text ("" for plan blocks — UI-only). */
 	content: string;
 	display: boolean;
@@ -735,7 +736,8 @@ export function nativeInputCause(message: AgentMessage, history: readonly AgentM
 	if (message.role === "system" || message.role === "assistant") return "neutral";
 	if (message.role === "custom") {
 		if (["probe-handoff", "subagent-steer", "subagent-abort"].includes(message.customType)) return "automatic";
-		if (["practice-thinking", "practice-next"].includes(message.customType)) return "learner";
+		// warmup-done rides the learner's own answer (or skip) that ended the warm-up.
+		if (["practice-thinking", "practice-next", "warmup-done"].includes(message.customType)) return "learner";
 		return ["graph-context", "review-context", "plan-block", "problem-dismissed", "compaction"].includes(message.customType) ? "neutral" : "unrecognizable";
 	}
 	if (message.role === "toolResult") {
@@ -779,6 +781,9 @@ export function reconstructRequestCause(messages: readonly LhMessage[]): Reconst
 
 export function needsContinuation(messages: readonly LhMessage[]): boolean {
 	const last = messages[messages.length - 1];
+	// A warm-up skipped through the silent dismissal route ends on its
+	// warmup-done marker: the session's own agent still owes its opening.
+	if ((last as { role?: string } | undefined)?.role === "custom" && (last as LhMarkerMessage).customType === "warmup-done") return true;
 	if (!last || (last as { role?: string }).role !== "toolResult") return false;
 	// The trailing results batch (contiguous by construction — the agent
 	// appends its batch; the question gate keeps a quiz call and its

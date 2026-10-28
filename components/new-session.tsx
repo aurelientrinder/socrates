@@ -47,6 +47,9 @@ export async function startDraftSession(
 	mode?: "practice",
 	picks?: readonly DraftPick[],
 	firstMessage?: string,
+	/** warmup: false opens the session without the warm-up recall (the
+	 *  server's default is on whenever topics are due). */
+	options?: { warmup?: boolean },
 ): Promise<string | null> {
 	const t = text.trim();
 	if (!t) return null;
@@ -57,11 +60,12 @@ export async function startDraftSession(
 	const res = await fetchLike("/api/chats", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(
-			mode === "practice"
+		body: JSON.stringify({
+			...(mode === "practice"
 				? { title: t, kind: "practice", ...(picks && picks.length > 0 ? { graphContext: { propositions: picks } } : {}) }
-				: { title: t },
-		),
+				: { title: t }),
+			...(options?.warmup === false ? { warmup: false } : {}),
+		}),
 	});
 	const { id } = (await res.json()) as { id: string };
 	// No settings PUT on create (per-session models, owner 2026-09-28):

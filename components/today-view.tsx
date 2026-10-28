@@ -742,7 +742,7 @@ export function TodayView({
 		onQuick: async (item) => {
 			try {
 				// The step's title names the session; turn 1 carries the five-minute scope.
-				const target = await startDraftSession(item.title, fetch, undefined, undefined, quickPrompt(item));
+				const target = await startDraftSession(item.title, fetch, undefined, undefined, quickPrompt(item), { warmup: false });
 				if (target) {
 					setSessionBudget(target, QUICK_SESSION_MINUTES);
 					router.push(target);
