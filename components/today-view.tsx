@@ -802,7 +802,13 @@ export function TodayView({
 			}
 		},
 		onPrimer: async (entry) => {
-			const text = `5-minute primer before my ${entry.event.title} class: remind me where we left off and ask me one prediction question about what comes next.`;
+			const ask =
+				entry.session === "tutorial"
+					? "give me one short exercise on what we are likely to practise, and check my method"
+					: entry.session === "lab"
+						? "ask me one question on the theory and the method behind it"
+						: "remind me where we left off and ask me one prediction question about what comes next";
+			const text = `5-minute primer before my ${entry.event.title} class: ${ask}.`;
 			try {
 				// Five minutes, like "Only 5 minutes": no warm-up.
 				const target = await startDraftSession(text, fetch, undefined, undefined, undefined, { warmup: false });

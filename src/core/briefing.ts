@@ -22,6 +22,9 @@
  */
 
 import { retentionAt, type TopicRetention } from "./retention.ts";
+import { GROUP_SRC, LAB_SRC, LECTURE_SRC, OTHER_CLASS_SRC, TUTORIAL_SRC, CLASS_RE, sessionTypeOf, type SessionType } from "./session-type.ts";
+
+export { sessionTypeOf, type SessionType };
 import {
 	EXAM_HORIZON_DAYS,
 	WEEK_DAYS,
@@ -110,7 +113,6 @@ export function courseGroupFor(links: CourseLinks, courseKey: string): { key: st
 // English + French: the learner studies in both.
 const EXAM_RE = /\b(exams?|examens?|midterms?|mid-terms?|finals?|partiels?|quiz(?:zes)?|tests?|contr[oô]les?|interros?|interrogations?|oral)\b/i;
 const DEADLINE_RE = /\b(due|deadlines?|submissions?|submit|rendus?|[àa] rendre|remise|projects?|projets?|assignments?|devoirs?|homework|dm|report|rapport)\b/i;
-const CLASS_RE = /\b(lectures?|class(?:es)?|cours|courses?|td|tp|tutorials?|tutorats?|seminars?|s[ée]minaires?|labs?|amphi|cm|recitations?)\b/i;
 
 /** Keyword classification; exam beats deadline beats class. */
 export function classifyEvent(title: string, source: StudyEvent["source"] = "calendar"): EventKind {
@@ -121,25 +123,73 @@ export function classifyEvent(title: string, source: StudyEvent["source"] = "cal
 	return source === "todo" ? "deadline" : "other";
 }
 
-const KIND_WORDS = new RegExp(`${EXAM_RE.source}|${DEADLINE_RE.source}|${CLASS_RE.source}`, "gi");
+const KIND_WORDS = new RegExp(
+	`${EXAM_RE.source}|${DEADLINE_RE.source}|\\b(?:${LECTURE_SRC}|${TUTORIAL_SRC}|${LAB_SRC}|${OTHER_CLASS_SRC}|${GROUP_SRC})\\b`,
+	"gi",
+);
 const COURSE_CODE_RE = /\b([A-Z]{2,5})\s?-?(\d{2,4}[A-Z]?)\b/;
+
+/** A title with its meeting type and group words taken out ("TD2 Analyse - groupe B" → "Analyse"). */
+function withoutSessionWords(title: string): string {
+	return title.replace(new RegExp(`\\b(?:${LECTURE_SRC}|${TUTORIAL_SRC}|${LAB_SRC}|${GROUP_SRC})\\b`, "gi"), " ");
+}
 
 /**
  * The course an event belongs to, as a stable key + a display label.
  * "MATH201 Lecture 7: Eigenvalues" → math201; "Linear Algebra - Exam" →
- * "linear algebra". Empty key when nothing course-like is left.
+ * "linear algebra"; "CM Analyse", "TD2 Analyse (groupe B)" and "Analyse - TP"
+ * are all "analyse". Empty key when nothing course-like is left.
  */
 export function courseOf(title: string): { key: string; label: string } {
-	const code = COURSE_CODE_RE.exec(title);
+	const bare = withoutSessionWords(title);
+	const code = COURSE_CODE_RE.exec(bare);
 	if (code) return { key: `${code[1]}${code[2]}`.toLowerCase(), label: `${code[1]}${code[2]}` };
-	const head = title.split(/[:|(\[]/)[0] ?? title;
+	// Empty brackets are what "(TD)" leaves; the subtitle after ":" or "(" is dropped.
+	const tidy = bare.replace(/[(\[]\s*[)\]]/g, " ").replace(/^[\s:|\-–—_/,.&+]+/, "");
+	const head = tidy.split(/[:|(\[]/)[0] ?? tidy;
 	const label = head
 		.replace(KIND_WORDS, " ")
 		.replace(/#?\d+/g, " ")
-		.replace(/[-–—_/,.]+/g, " ")
+		.replace(/[-–—_/,.&+]+/g, " ")
 		.replace(/\s+/g, " ")
+		// "Cours de thermodynamique", "TD d'analyse": the course is what follows.
+		.replace(/^(?:de l['’]\s*|de la\s+|du\s+|des\s+|de\s+|d['’]\s*|l['’]\s*)(?=\S)/i, (_m) => "\u0000")
+		.replace(/^\u0000(.)/, (_m, c: string) => c.toUpperCase())
 		.trim();
 	return { key: label.toLowerCase(), label };
+}
+
+/**
+ * Group keys made before CM, TD and TP were one course ("td analyse",
+ * "cm analyse") folded into the key they now belong to, merging their notes
+ * and sessions. A key that is nothing but meeting words, or that no longer
+ * reads as a course, stays as it is.
+ */
+export function foldSessionKeys(links: CourseLinks): CourseLinks {
+	const out: CourseLinks = {};
+	const owner = (key: string) => {
+		const folded = withoutSessionWords(key).replace(/[-–—_/,.&+]+/g, " ").replace(/\s+/g, " ").trim();
+		return folded && folded !== key ? folded : key;
+	};
+	for (const [key, group] of Object.entries(links)) {
+		const at = owner(key);
+		const into = out[at];
+		if (!into) {
+			out[at] = at === key ? group : { ...group, aliases: [...new Set([...(group.aliases ?? []), key])] };
+			continue;
+		}
+		const union = (a?: string[], b?: string[]) => (a || b ? [...new Set([...(a ?? []), ...(b ?? [])])] : undefined);
+		const chatIds = union(into.chatIds, group.chatIds);
+		const noteIds = union(into.noteIds, group.noteIds);
+		const aliases = union(into.aliases, [...(group.aliases ?? []), ...(at === key ? [] : [key])]);
+		out[at] = {
+			...into,
+			...(chatIds ? { chatIds } : {}),
+			...(noteIds ? { noteIds } : {}),
+			...(aliases ? { aliases } : {}),
+		};
+	}
+	return out;
 }
 
 // ─── Matching ────────────────────────────────────────────────────────────────
@@ -237,6 +287,8 @@ export interface BriefingItem {
 	 *  exam written from them. */
 	noteIds?: string[];
 	noteNames?: string[];
+	/** For a prep before a class: how it meets (lecture, tutorial or lab). */
+	session?: SessionType;
 }
 
 export interface UpcomingEntry {
@@ -258,6 +310,8 @@ export interface ClassEntry {
 	chatIds: string[];
 	/** The course group's notes (empty when none). */
 	notes?: { id: string; name: string }[];
+	/** How this class meets (CM / TD / TP), when its title says. */
+	session?: SessionType | null;
 }
 
 export interface BriefingPlan {
@@ -353,7 +407,7 @@ export function planBriefing(input: BriefingInput): BriefingPlan {
 	todayEnd.setHours(23, 59, 59, 999);
 	const todayClasses: ClassEntry[] = classes
 		.filter((c) => c.event.start <= todayEnd.getTime())
-		.map(({ event, course, chatIds, notes }) => ({ event, course, chatIds, notes: notes ?? [] }));
+		.map(({ event, course, chatIds, notes }) => ({ event, course, chatIds, notes: notes ?? [], session: sessionTypeOf(event.title) }));
 
 	return {
 		day: briefingDay(now),
@@ -392,6 +446,18 @@ export function courseNotesLine(names: readonly string[] | undefined): string {
 	return ` My course notes for this are saved in the app: ${shown}${more}. Work from them and stick to what they say.`;
 }
 
+/** What a prep asks for depends on how the class meets: recall before a lecture, method before an exercise class, procedure before a lab. */
+const PREP_OPENING: Record<SessionType, (event: string) => string> = {
+	lecture: (e) => `Before my lecture (${e})`,
+	tutorial: (e) => `Before my tutorial (${e})`,
+	lab: (e) => `Before my lab (${e})`,
+};
+const PREP_TASK: Record<SessionType, (topics: string) => string> = {
+	lecture: (t) => `quiz me on ${t}, the parts of this course I keep getting wrong, and reteach whatever I miss.`,
+	tutorial: (t) => `give me one or two short exercises on ${t}, like the ones a tutorial sets, check my method step by step, and reteach whatever I get wrong.`,
+	lab: (t) => `ask me the theory behind the lab on ${t}: the formulas, the units, what I will measure and why, and reteach whatever I miss.`,
+};
+
 /** The prompt text for a Start button: a fresh session seeded with the item. */
 export function startPrompt(item: BriefingItem): string {
 	return basePrompt(item) + courseNotesLine(item.noteNames);
@@ -409,7 +475,7 @@ function basePrompt(item: BriefingItem): string {
 		case "rehearse":
 			return `Exam rehearsal, about 30 minutes, on ${item.topicTitles.join(", ")}.${forEvent} Give me one or two exam-style problems: a scenario with several questions that build on it, not multiple choice. No hints while I work. Keep the scenario's data fixed throughout, then grade each answer against it at the end and tell me what to review.`;
 		case "prep":
-			return `Before my class (${item.eventTitle ?? "today"}), about 10 minutes: quiz me on ${item.topicTitles.join(", ")}, the parts of this course I keep getting wrong, and reteach whatever I miss.`;
+			return `${PREP_OPENING[item.session ?? "lecture"](item.eventTitle ?? "today")}, about 10 minutes: ${PREP_TASK[item.session ?? "lecture"](item.topicTitles.join(", "))}`;
 		default:
 			return `Review session, about 15 minutes: quiz me on ${item.topicTitles.join(", ")} and reteach whatever I miss.${forEvent}`;
 	}

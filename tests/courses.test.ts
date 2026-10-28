@@ -11,7 +11,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { after, describe, it } from "node:test";
 import { folderNoteName, isNotesFile, suggestCourses } from "../src/core/courses.ts";
-import { courseGroupFor, planBriefing, startPrompt, topicsForEvent, type StudyEvent } from "../src/core/briefing.ts";
+import { classifyEvent, courseGroupFor, courseOf, foldSessionKeys, planBriefing, sessionTypeOf, startPrompt, topicsForEvent, type StudyEvent } from "../src/core/briefing.ts";
 import type { TopicRetention } from "../src/core/retention.ts";
 
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-courses-"));
@@ -129,6 +129,76 @@ describe("a course's notes in the plan", () => {
 	});
 });
 
+describe("CM, TD and TP are one course", () => {
+	const same: [string, string][] = [
+		["CM Analyse", "lecture"], ["TD Analyse", "tutorial"], ["TP Analyse", "lab"],
+		["TD1 Analyse", "tutorial"], ["TD 2 - Analyse", "tutorial"], ["TP-3 Analyse", "lab"], ["TD2A Analyse G2", "tutorial"],
+		["Analyse (TD)", "tutorial"], ["(TP) Analyse", "lab"], ["Analyse - TP groupe B", "lab"], ["Analyse : TD Gr 3", "tutorial"],
+		["CM/TD Analyse 2", "lecture"], ["Cours magistral d'Analyse", "lecture"], ["Travaux dirigés Analyse", "tutorial"],
+		["Travaux pratiques - Analyse", "lab"], ["Analyse – Amphi A", "lecture"], ["TD de l'Analyse (salle B12)", "tutorial"],
+		["Analyse - cours", "lecture"],
+	];
+	it("gives every spelling the same course key and keeps the meeting type", () => {
+		for (const [title, type] of same) {
+			assert.equal(courseOf(title).key, "analyse", title);
+			assert.equal(courseOf(title).label, "Analyse", title);
+			assert.equal(sessionTypeOf(title), type, title);
+			assert.equal(classifyEvent(title), "class", title);
+		}
+		assert.equal(sessionTypeOf("Analyse 2"), null);
+	});
+
+	it("keeps course codes whole and never mistakes a group number for a code", () => {
+		assert.equal(courseOf("TD01 MAT101").key, "mat101");
+		assert.equal(courseOf("MATH201 TP3").key, "math201");
+		assert.equal(courseOf("TD12 Algo").key, "algo");
+	});
+
+	it("suggests one course for a timetable that names the types, and says how it meets", () => {
+		const events: StudyEvent[] = [];
+		for (let w = 0; w < 4; w++) events.push(ev("CM Analyse", w * 7 + 1), ev("TD1 Analyse", w * 7 + 2), ev("Analyse - TP", w * 7 + 3), ev("TD2 Analyse", w * 7 + 4));
+		const got = suggestCourses(events, {}, [], NOW);
+		assert.equal(got.length, 1);
+		assert.equal(got[0]!.key, "analyse");
+		assert.deepEqual(got[0]!.sessions, { lecture: 4, tutorial: 8, lab: 4 });
+		assert.match(got[0]!.reason, /16 classes \(4 lectures, 8 tutorials, 4 labs\)/);
+	});
+
+	it("folds groups made under split keys into one, keeping notes and sessions", () => {
+		const folded = foldSessionKeys({
+			"td analyse": { label: "TD Analyse", noteIds: ["src_aaaaaaaaaaaa"], chatIds: ["c1"] },
+			"cm analyse": { label: "CM Analyse", noteIds: ["src_bbbbbbbbbbbb"] },
+			analyse: { label: "Analyse", noteIds: ["src_aaaaaaaaaaaa"], chatIds: ["c2"] },
+			math201: { label: "MATH201" },
+		});
+		assert.deepEqual(Object.keys(folded).sort(), ["analyse", "math201"]);
+		assert.deepEqual(folded.analyse!.noteIds?.sort(), ["src_aaaaaaaaaaaa", "src_bbbbbbbbbbbb"]);
+		assert.deepEqual(folded.analyse!.chatIds?.sort(), ["c1", "c2"]);
+		assert.deepEqual(folded.analyse!.aliases?.sort(), ["cm analyse", "td analyse"]);
+		assert.deepEqual(foldSessionKeys({ "td analyse": { label: "TD Analyse" } }), { analyse: { label: "TD Analyse", aliases: ["td analyse"] } });
+	});
+
+	it("plans a different prep before a tutorial than before a lab, in the same course", () => {
+		const topic = (key: string): TopicRetention => ({
+			key, kind: "proposition", title: key, chatId: "x", chatTitle: "Analyse", answers: 4, reviews: 3, lapses: 3, lastReviewedAt: NOW - 20 * DAY,
+			lastGrade: 1, stability: 1, difficulty: 8, retention: 0.3, dueAt: NOW - DAY, due: true,
+		});
+		const links = { analyse: { label: "Analyse", chatIds: ["x"] } };
+		const prep = (title: string) => {
+			const plan = planBriefing({ now: NOW, events: [ev(title, 1)], topics: [topic("t1")], sessions: [], links, confidentMissChats: new Set() });
+			return plan.study!.days.flatMap((d) => d.items).find((i) => i.action === "prep")!;
+		};
+		const td = prep("TD2 Analyse");
+		const tp = prep("TP Analyse");
+		assert.equal(td.session, "tutorial");
+		assert.match(td.title, /^Before the tutorial/);
+		assert.match(startPrompt(td), /exercises.*check my method/);
+		assert.equal(tp.session, "lab");
+		assert.match(startPrompt(tp), /theory behind the lab/);
+		assert.equal(planBriefing({ now: NOW, events: [ev("CM Analyse", 1), ev("TD Analyse", 1)], topics: [topic("t1")], sessions: [], links, confidentMissChats: new Set() }).todayClasses.length, 0);
+	});
+});
+
 describe("folder helpers", () => {
 	it("names a folder file by its path and takes only notes files", () => {
 		assert.equal(folderNoteName("Analyse/Ch 1/slides.pdf"), "Analyse › Ch 1 › slides.pdf");
@@ -191,5 +261,17 @@ describe("course groups on disk", () => {
 		fs.writeFileSync(path.join(TMP_DATA, "briefing", "courses.json"), JSON.stringify({ old: { label: "Old", chatIds: ["c1"] } }));
 		assert.deepEqual(courses.readCourseLinks(), { old: { label: "Old", chatIds: ["c1"] } });
 		assert.throws(() => courses.deleteCourse("missing"), /gone/);
+	});
+});
+
+describe("groups saved before CM, TD and TP were one course", () => {
+	it("are folded when read, and the merged file is saved", () => {
+		const file = path.join(TMP_DATA, "briefing", "courses.json");
+		fs.writeFileSync(file, JSON.stringify({ "td analyse": { label: "TD Analyse", chatIds: ["c1"] }, "cm analyse": { label: "CM Analyse", noteIds: [] } }));
+		const links = courses.readCourseLinks();
+		assert.deepEqual(Object.keys(links), ["analyse"]);
+		assert.deepEqual(links.analyse!.chatIds, ["c1"]);
+		assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(file, "utf-8"))), ["analyse"]);
+		assert.equal(courses.listCourses([{ id: "x", title: "TP2 Analyse", start: NOW + DAY, end: NOW + DAY + HOUR, allDay: false, source: "calendar" }], NOW).courses[0]!.next?.title, "TP2 Analyse");
 	});
 });

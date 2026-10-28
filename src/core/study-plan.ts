@@ -33,6 +33,7 @@
 
 import { GRADE_GOOD, GRADE_HARD, TARGET_RETENTION, nextState, retentionAt, retrievability, type TopicRetention } from "./retention.ts";
 import type { BriefingItem, StudyEvent } from "./briefing.ts";
+import { sessionTypeOf, type SessionType } from "./session-type.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -127,6 +128,9 @@ export function dayLabel(date: string, now: number): string {
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+/** How a class meets, in a plan step's title ("Before the tutorial: …"). */
+const SESSION_NOUN: Record<SessionType, string> = { lecture: "the lecture", tutorial: "the tutorial", lab: "the lab" };
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** 1 today, 0.5 in 3 days, ~0.18 in two weeks. */
@@ -600,13 +604,14 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 					.slice(0, TOPICS_PER_ITEM);
 				if (course.length === 0) break;
 				const stats = courseStats(klass.topics, misses);
+				const session = sessionTypeOf(klass.event.title);
 				const time = klass.event.allDay
 					? ""
 					: ` at ${new Date(klass.event.start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
 				out.push({
 					...base,
 					action: "prep",
-					title: `Before class: ${course.map((t) => t.title).join(", ")}`,
+					title: `Before ${session ? SESSION_NOUN[session] : "class"}: ${course.map((t) => t.title).join(", ")}`,
 					reason: `${klass.event.title} is ${whenLabel(klass.event.start, now)}${time}. ${klass.course.label || "This course"} is a tough one: recall averages ${pct(stats.recall)}${stats.lapses > 0 ? `, ${stats.lapses} of ${plural(stats.reviews, "review")} slipped` : ""}.`,
 					minutes: ITEM_MINUTES.prep,
 					chatId: course[0]!.chatId,
@@ -616,6 +621,7 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 					eventId: klass.event.id,
 					eventTitle: klass.event.title,
 					eventStart: klass.event.start,
+					...(session ? { session } : {}),
 					...material,
 				});
 				break;
