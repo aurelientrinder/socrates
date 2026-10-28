@@ -5,6 +5,8 @@ import {
 	TARGET_RETENTION,
 	UPCOMING_DAYS,
 	relativeDays,
+	isExamId,
+	sessionHref,
 	type RetentionReport,
 	type ReviewStatus,
 	type TopicRetention,
@@ -30,8 +32,8 @@ export function ReviewView({ report, status }: { report: RetentionReport; status
 					{headline(report)}
 				</p>
 				<p className="text-sm text-muted-foreground">
-					Each topic&apos;s memory is estimated from how you actually did when tested (quiz checks after teaching, and
-					practice problems), never from how sure you felt. It fades over time, and a topic is due once its estimated
+					Each topic&apos;s memory is estimated from how you actually did when tested (quiz checks after teaching,
+					practice problems and mock exams), never from how sure you felt. It fades over time, and a topic is due once its estimated
 					recall drops under {target}%. Each successful review makes it last longer.
 				</p>
 			</header>
@@ -83,11 +85,11 @@ function TopicList({ topics, now, testId }: { topics: TopicRetention[]; now: num
 		<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
 			{topics.map((t) => (
 				<li key={t.key} data-testid={testId}>
-					<Link href={`/chat/${t.chatId}`} className="flex items-center gap-3 px-4 py-2.5 text-base transition-colors hover:bg-accent">
+					<Link href={sessionHref(t.chatId)} className="flex items-center gap-3 px-4 py-2.5 text-base transition-colors hover:bg-accent">
 						<div className="min-w-0 flex-1">
 							<p className="truncate">{t.title}</p>
 							<p className="truncate text-xs text-muted-foreground">
-								{t.kind === "proposition" ? "Practice" : "Lesson"} · {t.chatTitle} · {lastResult(t)}{" "}
+								{isExamId(t.chatId) ? "Mock exam" : t.kind === "proposition" ? "Practice" : "Lesson"} · {t.chatTitle} · {lastResult(t)}{" "}
 								{relativeDays(t.lastReviewedAt, now)}
 							</p>
 						</div>

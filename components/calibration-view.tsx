@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CALIBRATED_WITHIN, CONFIDENT_MISS_FLOOR, calibrationVerdict, type CalibrationReport } from "@/src/core";
+import { CALIBRATED_WITHIN, CONFIDENT_MISS_FLOOR, calibrationVerdict, sessionHref, type CalibrationReport } from "@/src/core";
 import { SectionHeading } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
@@ -88,7 +88,7 @@ export function CalibrationView({ report }: { report: CalibrationReport }) {
 										<span className="w-11 shrink-0 font-semibold tabular-nums text-warn-ink">{miss.confidence}%</span>
 										<div className="min-w-0 flex-1">
 											<p className="line-clamp-2">{miss.questionText}</p>
-											<Link href={`/chat/${miss.chatId}`} className="text-xs text-muted-foreground hover:text-foreground">
+											<Link href={sessionHref(miss.chatId)} className="text-xs text-muted-foreground hover:text-foreground">
 												{miss.chatTitle}
 											</Link>
 										</div>
@@ -108,7 +108,7 @@ export function CalibrationView({ report }: { report: CalibrationReport }) {
 								<span className="w-16 text-right">Right</span>
 							</div>
 							{report.sessions.map((s) => (
-								<Link key={s.chatId} href={`/chat/${s.chatId}`} className="flex gap-3 px-4 py-2.5 transition-colors hover:bg-accent">
+								<Link key={s.chatId} href={sessionHref(s.chatId)} className="flex gap-3 px-4 py-2.5 transition-colors hover:bg-accent">
 									<span className="min-w-0 flex-1 truncate">{s.title}</span>
 									<span className="w-16 text-right tabular-nums">{s.answered}</span>
 									<span className="w-20 text-right tabular-nums">{Math.round(s.meanConfidence)}%</span>
