@@ -145,6 +145,8 @@ export interface PlanTarget {
 	topics: TopicRetention[];
 	/** Sessions linked or suggested for its course. */
 	chatIds: string[];
+	/** The course group's notes. */
+	notes?: { id: string; name: string }[];
 }
 
 /** A class this week with its course's topics. */
@@ -153,6 +155,7 @@ export interface PlanClass {
 	course: { key: string; label: string };
 	topics: TopicRetention[];
 	chatIds: string[];
+	notes?: { id: string; name: string }[];
 }
 
 export interface StudyPlanInput {
@@ -502,13 +505,16 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 		const base = { id, day: task.day, latest, score };
 		const target = task.target;
 		const when = target ? `${target.event.title} is ${whenLabel(target.event.start, now)}` : "";
+		const notes = target?.notes ?? task.klass?.notes ?? [];
+		const material = notes.length > 0 ? { noteIds: notes.map((n) => n.id), noteNames: notes.map((n) => n.name) } : {};
 		const event = target
 			? {
 					eventId: target.event.id,
 					eventTitle: target.event.title,
 					eventStart: target.event.start,
+					...material,
 				}
-			: {};
+			: material;
 		const topics = group.flatMap((t) => (t.topic ? [t.topic] : []));
 		const at = target ? target.event.start : studyAt(task.day, now);
 		topics.sort((a, b) => retentionAt(a, at) - retentionAt(b, at));
@@ -562,7 +568,10 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 					...event,
 					action: "learn",
 					title: `Start on ${target!.label}`,
-					reason: `${when} and nothing has been studied for it here yet.`,
+					reason:
+						notes.length > 0
+							? `${when} and nothing has been studied for it here yet. The tutor works from your ${plural(notes.length, "course file")}.`
+							: `${when} and nothing has been studied for it here yet.`,
 					minutes: ITEM_MINUTES.learn,
 				});
 				break;
@@ -607,6 +616,7 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 					eventId: klass.event.id,
 					eventTitle: klass.event.title,
 					eventStart: klass.event.start,
+					...material,
 				});
 				break;
 			}

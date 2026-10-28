@@ -612,6 +612,11 @@ function UpcomingRow({
 						<span className="tabular-nums text-xs text-muted-foreground">{pct(r)} recall</span>
 					</span>
 				)}
+				{(entry.noteCount ?? 0) > 0 && (
+					<span className="text-xs text-muted-foreground" title="Files in this course's group">
+						{entry.noteCount} {entry.noteCount === 1 ? "file" : "files"}
+					</span>
+				)}
 				<span className="text-xs text-muted-foreground">{entry.kind}</span>
 				{entry.course.key && (
 					<button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setEditing((v) => !v)}>

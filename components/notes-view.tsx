@@ -7,6 +7,9 @@ import { useActivity } from "@/components/activity-dock";
 import { SectionHeading } from "@/components/page-header";
 import { NoteFlashcards } from "@/components/note-flashcards";
 
+/** Fired when notes were saved from elsewhere on the page (a course's folder import). */
+export const NOTES_CHANGED_EVENT = "lh:notes-changed";
+
 /** Transport-only mirror of src/store/notes.ts NoteMeta. */
 export interface SavedNote {
 	id: string;
@@ -42,6 +45,9 @@ export function NotesView() {
 	}, []);
 	useEffect(() => {
 		void load();
+		// Course folders (components/courses-view.tsx) save notes too.
+		window.addEventListener(NOTES_CHANGED_EVENT, load);
+		return () => window.removeEventListener(NOTES_CHANGED_EVENT, load);
 	}, [load]);
 
 	// The import POST waits for the whole extraction; the file itself is

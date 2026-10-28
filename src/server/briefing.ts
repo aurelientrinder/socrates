@@ -8,8 +8,8 @@
  * write paths (addItemToTodo, blockItemTime) run only from a click.
  *
  * Files (data dir): briefing/<YYYY-MM-DD>.json (one per day),
- * briefing/courses.json (course → linked sessions, the learner's
- * confirmations), briefing/prefs.json (daily minute budget),
+ * briefing/courses.json (the course groups: src/server/courses.ts),
+ * briefing/prefs.json (daily minute budget),
  * briefing/plan-history.json (the study plan as it stood on recent days,
  * so the next one can say what changed: core/study-plan.ts planChanges).
  */
@@ -29,7 +29,6 @@ import {
 	whenLabel,
 	type BriefingItem,
 	type BriefingPlan,
-	type CourseLinks,
 	type StudyEvent,
 } from "../core/briefing.ts";
 import { EXAM_HORIZON_DAYS, planSnapshot, type PlanSnapshot } from "../core/study-plan.ts";
@@ -37,6 +36,7 @@ import { resolveRoleSpec } from "../core/settings-resolution.ts";
 import { piEngineForSpec } from "../agent/models.ts";
 import { runSubagent } from "../agent/subagents/pi-run.ts";
 import { calibrationAcrossSessions, listChats, retentionAcrossSessions } from "./chats.ts";
+import { courseMaterial, readCourseLinks } from "./courses.ts";
 import { stores } from "./stores.ts";
 import { createStudyBlock, googleCalendarStatus, listCalendarEvents, type GoogleCalendarStatus } from "./integrations/google-calendar.ts";
 import { TASK_PROVIDERS } from "./integrations/todoist.ts";
@@ -44,7 +44,6 @@ import { TASK_PROVIDERS } from "./integrations/todoist.ts";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOTE_TIMEOUT_MS = 45_000;
 const DIR = path.join(PATHS.data, "briefing");
-const COURSES_FILE = path.join(DIR, "courses.json");
 const PREFS_FILE = path.join(DIR, "prefs.json");
 const HISTORY_FILE = path.join(DIR, "plan-history.json");
 /** Plan snapshots kept (one per day). */
@@ -90,26 +89,6 @@ function writeJson(file: string, value: unknown): void {
 }
 
 const dayFile = (day: string) => path.join(DIR, `${day}.json`);
-
-export function readCourseLinks(): CourseLinks {
-	const raw = readJson<CourseLinks>(COURSES_FILE);
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-	const out: CourseLinks = {};
-	for (const [key, v] of Object.entries(raw)) {
-		if (v && typeof v.label === "string" && Array.isArray(v.chatIds)) {
-			out[key] = { label: v.label, chatIds: v.chatIds.filter((id): id is string => typeof id === "string") };
-		}
-	}
-	return out;
-}
-
-/** Confirm which sessions belong to a course (empty list = "none of them"). */
-export function setCourseLink(key: string, label: string, chatIds: string[]): CourseLinks {
-	const links = readCourseLinks();
-	links[key] = { label, chatIds: [...new Set(chatIds)] };
-	writeJson(COURSES_FILE, links);
-	return links;
-}
 
 export function readBriefingPrefs(): BriefingPrefs {
 	const raw = readJson<Partial<BriefingPrefs>>(PREFS_FILE);
@@ -260,12 +239,14 @@ async function generate(now: number): Promise<Briefing> {
 			.map((m) => m.chatId),
 	);
 	const day = briefingDay(now);
+	const links = readCourseLinks();
 	const plan = planBriefing({
 		now,
 		events,
 		topics: retention.topics,
 		sessions: listChats().map((c) => ({ id: c.id, title: c.title })),
-		links: readCourseLinks(),
+		links,
+		material: courseMaterial(links),
 		confidentMissChats,
 		budgetMinutes: readBriefingPrefs().budgetMinutes,
 		previous: previousPlan(day),

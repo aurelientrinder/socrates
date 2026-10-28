@@ -52,6 +52,8 @@ export * from "./model-catalog.ts";
 export { sessionCost } from "./pricing.ts";
 // The daily briefing (calendar + to-do + retention → what to study first).
 export * from "./briefing.ts";
+// Course groups: one per class, with its notes and sessions.
+export * from "./courses.ts";
 export {
 	googleCalendarStatus,
 	startGoogleSignIn,
