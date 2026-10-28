@@ -13,6 +13,10 @@ on:
         description: "Publish the release automatically once it is verified"
         type: boolean
         default: false
+      retag:
+        description: "Move an existing tag to main (only while its release is still unpublished)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,13 +34,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH: ${{ inputs.publish }}
+          RETAG: ${{ inputs.retag }}
         run: |
           set -euo pipefail
           tag="v$(node -p 'require("./package.json").version')"
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
-            echo "::error::$tag already exists; bump package.json's version first."
-            exit 1
+            if [ "$RETAG" != "true" ]; then
+              echo "::error::$tag already exists; bump package.json's version first."
+              exit 1
+            fi
+            # Installed apps update from published releases only, so a tag whose
+            # release was never published can still be moved to a newer main.
+            if gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+              --jq ".[] | select(.tag_name == \"$tag\" and .draft == false) | .id" | grep -q .; then
+              echo "::error::$tag is already published; bump package.json's version instead."
+              exit 1
+            fi
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
           fi
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
           gh workflow run release.yml --ref "$tag" -f publish="$PUBLISH"
           echo "Started Desktop release on $tag"
