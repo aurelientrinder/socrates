@@ -8,6 +8,7 @@ import { fuzzyScore } from "@/src/core";
 import { SectionHeading } from "@/components/page-header";
 import { timeAgo } from "@/components/sidebar";
 import { useServerResync } from "@/components/server-events";
+import { useClasses } from "@/components/use-class-colors";
 import { cn } from "@/lib/utils";
 
 type KindFilter = "all" | ChatKind;
@@ -32,6 +33,9 @@ export function SessionLibrary() {
 	const [error, setError] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<KindFilter>("all");
+	const classes = useClasses();
+	const [classKey, setClassKey] = useState<string | null>(null);
+	const activeClass = classes.find((c) => c.key === classKey) ?? null;
 
 	const load = useCallback(async () => {
 		try {
@@ -50,7 +54,7 @@ export function SessionLibrary() {
 
 	const shown = useMemo(() => {
 		if (!chats) return null;
-		const byKind = chats.filter((c) => filter === "all" || (c.kind ?? "teach") === filter);
+		const byKind = chats.filter((c) => (filter === "all" || (c.kind ?? "teach") === filter) && (!activeClass || activeClass.sessions.includes(c.id)));
 		const q = query.trim();
 		if (!q) return [...byKind].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 		return byKind
@@ -58,7 +62,7 @@ export function SessionLibrary() {
 			.filter((x) => x.score !== null)
 			.sort((a, b) => (b.score as number) - (a.score as number))
 			.map((x) => x.c);
-	}, [chats, filter, query]);
+	}, [chats, filter, query, activeClass]);
 
 	return (
 		<section data-testid="session-library" aria-labelledby="sessions-heading" className="flex flex-col gap-4">
@@ -101,6 +105,31 @@ export function SessionLibrary() {
 				</div>
 			</div>
 
+			{classes.length > 0 && (
+				<div role="group" aria-label="Filter by class" data-testid="library-classes" className="flex flex-wrap gap-1.5">
+					<button
+						type="button"
+						aria-pressed={classKey === null}
+						onClick={() => setClassKey(null)}
+						className={cn("h-8 rounded-full px-3 text-sm", classKey === null ? "bg-foreground font-semibold text-background" : "bg-accent text-muted-foreground hover:text-foreground")}
+					>
+						All classes
+					</button>
+					{classes.map((c) => (
+						<button
+							key={c.key}
+							type="button"
+							aria-pressed={classKey === c.key}
+							onClick={() => setClassKey(classKey === c.key ? null : c.key)}
+							className={cn(`cal-c${c.color}`, "flex h-8 items-center gap-1.5 rounded-full px-3 text-sm", classKey === c.key ? "bg-foreground font-semibold text-background" : "bg-accent text-muted-foreground hover:text-foreground")}
+						>
+							<span className="size-2 rounded-[3px]" style={{ background: "var(--bar)" }} />
+							{c.label}
+						</button>
+					))}
+				</div>
+			)}
+
 			{error && (
 				<p role="alert" className="text-sm text-destructive">
 					{error}
@@ -121,7 +150,13 @@ export function SessionLibrary() {
 								data-testid="library-session"
 								className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 transition-colors hover:bg-accent"
 							>
-								<span className="min-w-0 flex-1 basis-60 truncate font-prose text-lg">{c.title}</span>
+								<span className="flex min-w-0 flex-1 basis-60 items-center gap-2.5">
+									{(() => {
+										const cls = classes.find((k) => k.sessions.includes(c.id));
+										return cls ? <span className={cn(`cal-c${cls.color}`, "size-2.5 shrink-0 rounded-[3px]")} style={{ background: "var(--bar)" }} title={cls.label} /> : null;
+									})()}
+									<span className="truncate font-prose text-lg">{c.title}</span>
+								</span>
 								<span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-foreground/80">
 									{KIND_LABEL[c.kind ?? "teach"]}
 								</span>

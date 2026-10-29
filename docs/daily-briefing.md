@@ -67,6 +67,8 @@ Without Google Calendar connected, the tab shows the events of today's briefing;
 
 A class owns its sessions (confirmed chats and imported notes files), so anything that knows a session knows its class. On **Progress → Map**, the class chips at the top left show one class and what it connects to: its own nodes plus whatever they link to in other classes (two hops, through the implication nodes). Connections across classes are never cut off, and "All classes" shows the whole map. Class colours are the calendar's, so a class has the same colour everywhere (`/api/courses/lens`).
 
+The same idea shows up elsewhere: the **Start** dialog has a row of classes (pick one and its name becomes the topic and its notes are the ones on offer, for a lesson or a mock exam), **Progress → Memory** has a "By class" summary (topics, how many are due, mean recall; sessions no class owns are grouped last), **Today** puts the class colour next to an exam or deadline, and **Library → Sessions** can be filtered by class and marks each session with its class.
+
 ## Files
 
 | Path (data folder) | What |
