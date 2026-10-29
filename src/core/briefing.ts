@@ -65,6 +65,11 @@ export interface StudyEvent {
 	kind?: EventKind;
 	/** Calendar link / task link, when the provider gives one. */
 	url?: string;
+	/** The group the learner filed this event under by hand (course-calendar.ts
+	 *  applyPins): read instead of what the title says. */
+	courseKey?: string;
+	/** The learner said it is not a class. */
+	ignored?: boolean;
 }
 
 /** A session the learner can link to a course (chat summary subset). */
@@ -106,6 +111,11 @@ export function courseGroupFor(links: CourseLinks, courseKey: string): { key: st
 	if (own) return { key: courseKey, group: own };
 	for (const [key, group] of Object.entries(links)) if (group.aliases?.includes(courseKey)) return { key, group };
 	return null;
+}
+
+/** The course key an event is read under: a hand-filed group, else what its title says. */
+export function courseKeyOfEvent(event: Pick<StudyEvent, "title" | "courseKey">): string {
+	return event.courseKey ?? courseOf(event.title).key;
 }
 
 // ─── Event kind and course ───────────────────────────────────────────────────
@@ -240,7 +250,7 @@ export function topicsForEvent(
 	chatIds: string[];
 	notes: { id: string; name: string }[];
 } {
-	const raw = courseOf(event.title);
+	const raw = event.courseKey && links[event.courseKey] ? { key: event.courseKey, label: links[event.courseKey]!.label } : courseOf(event.title);
 	const found = courseGroupFor(links, raw.key);
 	// A group's key and (renamed) label win, so every event of it reads the same.
 	const course = found ? { key: found.key, label: found.group.label } : raw;

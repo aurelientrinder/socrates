@@ -20,7 +20,7 @@ export const REPEAT_MIN = 3;
 export const CLASS_MIN = 2;
 
 /** Recurring things that are not classes, English + French. */
-const NOT_A_CLASS_RE =
+export const NOT_A_CLASS_RE =
 	/\b(gym|sport|workout|run|running|football|foot|basket|tennis|swim|swimming|piscine|yoga|lunch|dinner|d[ée]jeuner|d[îi]ner|breakfast|work|travail|job|shift|meeting|r[ée]union|standup|stand-up|call|birthday|anniversaire|rdv|appointment|dentist|dentiste|m[ée]decin|doctor|therapy|church|messe|choir|chorale|party|soir[ée]e|vacances|holiday|holidays|f[ée]ri[ée])\b/i;
 
 export interface CourseSuggestion {
@@ -57,9 +57,11 @@ export function suggestCourses(
 	const skip = new Set(dismissed);
 	const byKey = new Map<string, { sessions: Record<SessionType, number>; labels: Map<string, number>; titles: Set<string>; classes: number; exams: number; repeats: number; next: number | null; code: boolean }>();
 	for (const e of events) {
-		if (e.source !== "calendar") continue;
+		if (e.source !== "calendar" || e.ignored) continue;
 		const kind = e.kind ?? classifyEvent(e.title, e.source);
 		if (kind === "deadline") continue;
+		// An event the learner filed by hand is decided: it counts toward no suggestion.
+		if (e.courseKey) continue;
 		const course = courseOf(e.title);
 		if (course.key.length < 2 || skip.has(course.key) || courseGroupFor(groups, course.key)) continue;
 		if (kind === "other" && (e.allDay || NOT_A_CLASS_RE.test(e.title))) continue;

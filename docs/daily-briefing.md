@@ -51,12 +51,22 @@ Todoist → Settings → Integrations → Developer → copy the API token, then
 
 Each event's course is guessed from its title (a course code like `MATH201`, or the title without words like "lecture" or "exam"). Sessions whose title shares a word with the course are linked automatically. Use **Link sessions** next to an event to pick the right ones; the choice is remembered for every event of that course (`briefing/courses.json` in the data folder).
 
+## The class calendar
+
+**Library → Calendar** shows eight weeks of your calendar as a week grid. Each event is **filed** under a course, marked **not a class**, or **needs a class** (dashed amber). The counter at the top reads "N of M filed", so you can see whether the classifier missed anything.
+
+Click an event, or drag it onto a course in the left rail, to file it. "All N like this" files every event with that title (a repeating class or lab); "Only this one" files just that event (the right choice for an exam). Everything has **Undo**. Your choices are kept in `briefing/course-pins.json`, apart from the course groups, so reading the calendar again or changing a group never undoes them. The study plan and the briefing read a hand-filed exam as that course's exam the next time the briefing is made.
+
+Without Google Calendar connected, the tab shows the events of today's briefing; with it, the events are read at most every ten minutes (or with the refresh button) and kept in `briefing/calendar-window.json`.
+
 ## Files
 
 | Path (data folder) | What |
 | --- | --- |
 | `briefing/<YYYY-MM-DD>.json` | That day's briefing, so reopening the app shows the same one |
-| `briefing/courses.json` | Your course → session links |
+| `briefing/courses.json` | Your course groups: sessions, notes, calendar aliases |
+| `briefing/course-pins.json` | Calendar events you filed by hand (or marked "not a class") |
+| `briefing/calendar-window.json` | The last eight weeks of calendar events read for the Calendar tab |
 | `briefing/prefs.json` | Daily minute budget |
 | `briefing/socrates-calendar.json` | The id of the calendar Socrates made for itself |
 | `briefing/plan-history.json` | The study plan as it stood on the last 14 days, to say what changed |

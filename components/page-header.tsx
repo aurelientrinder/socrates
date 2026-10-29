@@ -61,6 +61,12 @@ export const PROGRESS_TABS = [
 	{ id: "map", label: "Map", href: "/map" },
 ];
 
+/** The Library's views: everything you studied from, and the class calendar. */
+export const LIBRARY_TABS = [
+	{ id: "overview", label: "Overview", href: "/library" },
+	{ id: "calendar", label: "Calendar", href: "/library?tab=calendar" },
+];
+
 /** Underlined tabs as links (?tab=…), so each tab is a real address. */
 export function PageTabs({ tabs, active }: { tabs: { id: string; label: string; href: string }[]; active: string }) {
 	return (
