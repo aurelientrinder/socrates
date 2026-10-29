@@ -19,14 +19,18 @@ import { PATHS } from "../../config.ts";
 import {
 	classifyEvent,
 	courseGroupFor,
-	courseOf,
+	courseKeyOfEvent,
 	courseKeyFor,
 	foldSessionKeys,
 	suggestCourses,
+	IGNORED,
+	prunePins,
+	type CoursePins,
 	type CourseGroup,
 	type CourseLinks,
 	type CourseMaterial,
 	type CourseSuggestion,
+	type PinScope,
 	type StudyEvent,
 } from "../core/index.ts";
 import type { NoteMeta } from "../core/contracts.ts";
@@ -36,6 +40,7 @@ import { stores } from "./stores.ts";
 const DIR = path.join(PATHS.data, "briefing");
 const COURSES_FILE = path.join(DIR, "courses.json");
 const DISMISSED_FILE = path.join(DIR, "course-dismissed.json");
+const PINS_FILE = path.join(DIR, "course-pins.json");
 const MAX_LABEL = 120;
 const NOTE_ID = /^src_[0-9a-f]{12}$/;
 const CHAT_ID = /^[A-Za-z0-9_-]+$/;
@@ -172,13 +177,58 @@ export function updateCourse(
 	return links;
 }
 
-/** Remove a group. Its notes stay in the library, its sessions stay sessions. */
+/** Remove a group. Its notes stay in the library, its sessions stay sessions;
+ *  events the learner filed under it go back to unplaced. */
 export function deleteCourse(key: string): CourseLinks {
 	const links = readCourseLinks();
 	requireGroup(links, key);
 	delete links[key];
 	writeCourseLinks(links);
+	writeCoursePins(prunePins(readCoursePins(), links));
 	return links;
+}
+
+// ─── The learner's hand-filed calendar events ────────────────────────────────
+
+const pinMap = (v: unknown): Record<string, string> => {
+	if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+	return Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === "string"));
+};
+
+/** Pins live in their own file so no classifier pass or group edit can overwrite them. */
+export function readCoursePins(): CoursePins {
+	const raw = readJson<{ events?: unknown; titles?: unknown }>(PINS_FILE);
+	return { events: pinMap(raw?.events), titles: pinMap(raw?.titles) };
+}
+
+function writeCoursePins(pins: CoursePins): void {
+	writeJson(PINS_FILE, pins);
+}
+
+export type PinChange = { scope: PinScope; id: string; value: string | null };
+
+/**
+ * Set or clear pins, all or none. `id` is the event id (scope "event") or the
+ * titleKey (scope "title"); value is a group key, IGNORED, or null to clear.
+ * Returns the previous values in the same shape, so the caller can undo.
+ */
+export function setCoursePins(changes: readonly PinChange[]): { pins: CoursePins; undo: PinChange[] } {
+	const links = readCourseLinks();
+	const pins = readCoursePins();
+	for (const c of changes) {
+		if (c.scope !== "event" && c.scope !== "title") throw new CourseError("Unknown pin scope.");
+		if (typeof c.id !== "string" || !c.id || c.id.length > 400) throw new CourseError("Missing event.");
+		if (c.value !== null && c.value !== IGNORED && !links[c.value]) throw new CourseError("That course is gone. Reload the page.", 404);
+	}
+	const undo: PinChange[] = [];
+	for (const c of changes) {
+		const map = c.scope === "event" ? pins.events : pins.titles;
+		undo.unshift({ scope: c.scope, id: c.id, value: map[c.id] ?? null });
+		if (c.value === null) delete map[c.id];
+		else map[c.id] = c.value;
+	}
+	writeCoursePins(pins);
+	return { pins, undo };
 }
 
 /** "Not a class": stop suggesting this calendar course. */
@@ -255,8 +305,8 @@ export function listCourses(events: readonly StudyEvent[], now: number = Date.no
 	const links = readCourseLinks();
 	const nextOf = new Map<string, CourseView["next"]>();
 	for (const e of [...events].sort((a, b) => a.start - b.start)) {
-		if (e.end < now) continue;
-		const found = courseGroupFor(links, courseOf(e.title).key);
+		if (e.end < now || e.ignored) continue;
+		const found = courseGroupFor(links, courseKeyOfEvent(e));
 		if (found && !nextOf.has(found.key)) nextOf.set(found.key, { title: e.title, start: e.start, kind: e.kind ?? classifyEvent(e.title, e.source) });
 	}
 	const courses = Object.entries(links)

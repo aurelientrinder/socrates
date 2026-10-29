@@ -32,12 +32,13 @@ import {
 	type BriefingPlan,
 	type StudyEvent,
 } from "../core/briefing.ts";
+import { applyPins } from "../core/course-calendar.ts";
 import { EXAM_HORIZON_DAYS, planSnapshot, type PlanSnapshot } from "../core/study-plan.ts";
 import { resolveRoleSpec } from "../core/settings-resolution.ts";
 import { piEngineForSpec } from "../agent/models.ts";
 import { runSubagent } from "../agent/subagents/pi-run.ts";
 import { calibrationAcrossSessions, listChats, retentionAcrossSessions } from "./chats.ts";
-import { courseMaterial, readCourseLinks } from "./courses.ts";
+import { courseMaterial, readCoursePins, readCourseLinks } from "./courses.ts";
 import { stores } from "./stores.ts";
 import { createStudyBlock, googleCalendarStatus, listCalendarEvents, type GoogleCalendarStatus } from "./integrations/google-calendar.ts";
 import { syncReminders } from "./reminders.ts";
@@ -242,9 +243,11 @@ async function generate(now: number): Promise<Briefing> {
 	);
 	const day = briefingDay(now);
 	const links = readCourseLinks();
+	// The learner's hand-filed events (the class calendar) read as the group they chose.
+	const pinned = applyPins(events, links, readCoursePins());
 	const plan = planBriefing({
 		now,
-		events,
+		events: pinned,
 		topics: retention.topics,
 		sessions: listChats().map((c) => ({ id: c.id, title: c.title })),
 		links,
@@ -255,7 +258,7 @@ async function generate(now: number): Promise<Briefing> {
 	});
 	if (plan.study) savePlanSnapshot(planSnapshot(plan.day, plan.study, retention.topics));
 	const { note, source } = await writeNote(plan);
-	const briefing: Briefing = { plan, note, noteSource: source, sources: { calendar, todo }, events, pushed: {} };
+	const briefing: Briefing = { plan, note, noteSource: source, sources: { calendar, todo }, events: pinned, pushed: {} };
 	writeJson(dayFile(plan.day), briefing);
 	return briefing;
 }

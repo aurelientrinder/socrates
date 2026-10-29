@@ -94,6 +94,13 @@
 	   wash of ink on the paper page; the dark palette swaps in a black
 	   wash, since ink there is near-white and would LIGHTEN the page. */
 	--lh-scrim: color-mix(in srgb, var(--foreground) 20%, transparent);
+	/* The class calendar's six class colors: a bar, a soft tint and a readable ink each. */
+	--cal-0-bar: #2c5d84; --cal-0-tint: #e3ecf5; --cal-0-ink: #1d4566;
+	--cal-1-bar: #3d7650; --cal-1-tint: #e1eee4; --cal-1-ink: #244a31;
+	--cal-2-bar: #7d4b93; --cal-2-tint: #efe6f3; --cal-2-ink: #4f2b61;
+	--cal-3-bar: #b0532f; --cal-3-tint: #f6e5dc; --cal-3-ink: #74321a;
+	--cal-4-bar: #2f7f86; --cal-4-tint: #dfeff0; --cal-4-ink: #1d5156;
+	--cal-5-bar: #9a7b1f; --cal-5-tint: #f3ecd0; --cal-5-ink: #5c4a0c;
 	/* THE TYPEFACE SETS (light theme wave). The @theme font tokens below
 	   point at these runtime variables, so <html data-typeface> swaps the
 	   whole set with no re-render. "classic" = the original JetBrains Mono
@@ -145,6 +152,12 @@ html[data-typeface="claude"] {
 	--lh-warn-soft: #33271a;
 	--lh-surface: #1c1c1c;
 	--lh-scrim: rgb(0 0 0 / 0.55);
+	--cal-0-bar: #6fa3cc; --cal-0-tint: #1d2a36; --cal-0-ink: #b5d3ec;
+	--cal-1-bar: #74b388; --cal-1-tint: #1c2b21; --cal-1-ink: #b4dcc0;
+	--cal-2-bar: #b48ac6; --cal-2-tint: #2a2130; --cal-2-ink: #dcc4e6;
+	--cal-3-bar: #de8a68; --cal-3-tint: #33221b; --cal-3-ink: #f0c4b0;
+	--cal-4-bar: #62b3ba; --cal-4-tint: #1a2c2e; --cal-4-ink: #b0dde0;
+	--cal-5-bar: #d1b25a; --cal-5-tint: #2d2815; --cal-5-ink: #ecdc9d;
 }
 
 /* CMU Serif bold (titles) — bundled local file, no CDN dependency. */
@@ -681,3 +694,11 @@ body {
 	outline: 1px solid var(--border);
 	border-radius: 0.25rem;
 }
+
+/* Class calendar: a class's three colors as --bar / --tint / --ink (components/course-calendar.tsx). */
+.cal-c0 { --bar: var(--cal-0-bar); --tint: var(--cal-0-tint); --ink: var(--cal-0-ink); }
+.cal-c1 { --bar: var(--cal-1-bar); --tint: var(--cal-1-tint); --ink: var(--cal-1-ink); }
+.cal-c2 { --bar: var(--cal-2-bar); --tint: var(--cal-2-tint); --ink: var(--cal-2-ink); }
+.cal-c3 { --bar: var(--cal-3-bar); --tint: var(--cal-3-tint); --ink: var(--cal-3-ink); }
+.cal-c4 { --bar: var(--cal-4-bar); --tint: var(--cal-4-tint); --ink: var(--cal-4-ink); }
+.cal-c5 { --bar: var(--cal-5-bar); --tint: var(--cal-5-tint); --ink: var(--cal-5-ink); }
