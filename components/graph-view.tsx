@@ -67,7 +67,8 @@ import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, use
 import { NOTES_ACCEPT, NotesImportErrors, useNotesImport } from "@/components/notes-import.tsx";
 import Link from "next/link";
 import { FileTextIcon, ListTreeIcon, Loader2Icon, SearchIcon, SettingsIcon, UploadIcon, WaypointsIcon } from "lucide-react";
-import { incrementalLayout, propositionSessionHref, type GraphCostSummary, type GraphNode, type GraphSnapshot } from "@/src/core";
+import { classView, incrementalLayout, propositionSessionHref, type GraphCostSummary, type GraphNode, type GraphSnapshot, type LensClass } from "@/src/core";
+import { cn } from "@/lib/utils";
 import { GraphCanvasRenderer, type GraphRenderSettings } from "./graph-canvas.ts";
 import { usePopoverDismiss } from "@/components/popover-dismiss";
 import { useActivity } from "@/components/activity-dock";
@@ -1055,16 +1056,35 @@ export function GraphView({
 	const rendererRef = useRef<GraphCanvasRenderer | null>(null);
 	const posRef = useRef<Map<string, { x: number; y: number }> | null>(null);
 
+	// CLASS LENS (2026-10-29): look at one class and what it connects to.
+	const [classes, setClasses] = useState<LensClass[]>([]);
+	const [classKey, setClassKey] = useState<string | null>(null);
+	useEffect(() => {
+		let live = true;
+		fetch("/api/courses/lens")
+			.then((r) => (r.ok ? (r.json() as Promise<{ classes: LensClass[] }>) : { classes: [] }))
+			.then((d) => live && setClasses(d.classes))
+			.catch(() => undefined);
+		return () => {
+			live = false;
+		};
+	}, []);
+	const activeClass = classes.find((c) => c.key === classKey) ?? null;
+	const classShown = useMemo(
+		() => (snapshot && activeClass ? classView(snapshot.nodes, snapshot.edges, activeClass) : null),
+		[snapshot, activeClass],
+	);
+
 	// The id set that survives the current search — consumed by the
 	// visibility feed and the "no matches" hint.
 	const visibleIds = useMemo(() => {
 		const set = new Set<string>();
 		if (snapshot)
 			for (const node of snapshot.nodes) {
-				if (isNodeVisible(node, query)) set.add(node.id);
+				if (isNodeVisible(node, query) && (!classShown || classShown.shown.has(node.id))) set.add(node.id);
 			}
 		return set;
-	}, [snapshot, query]);
+	}, [snapshot, query, classShown]);
 
 	// Fetch the derived graph. Re-runs when a background pipeline run
 	// finishes (refreshTick) — its merges just landed in the ledger.
@@ -1445,10 +1465,10 @@ export function GraphView({
 	// Feed #3 — visibility: hidden nodes drop out of rendering, picking,
 	// hover, AND labels; edges drop when either endpoint is hidden.
 	useEffect(() => {
-		rendererRef.current?.setVisible(query.trim() ? visibleIds : null);
+		rendererRef.current?.setVisible(query.trim() || classShown ? visibleIds : null);
 		// The open detail card cannot outlive its node's visibility.
 		setSelected((sel) => (sel && visibleIds.has(sel.node.id) ? sel : null));
-	}, [visibleIds, query]);
+	}, [visibleIds, query, classShown]);
 
 	// Feed #4 — region tuning. `isEmpty` in the deps (same as Feed #2):
 	// the settings fetch resolves BEFORE the snapshot creates the renderer,
@@ -1562,6 +1582,39 @@ export function GraphView({
 			/>
 
 
+
+			{classes.length > 0 && (
+				<div className="lh-no-drag absolute left-3 top-3 z-10 flex max-w-[calc(100%-26rem)] flex-col gap-1.5" data-testid="map-class-lens">
+					{activeClass && classShown && (
+						<p className="rounded-lg bg-card/90 px-2.5 py-1 text-xs text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur">
+							{activeClass.label} and what it connects to · {classShown.own.size} of its own, {classShown.shown.size - classShown.own.size} from elsewhere
+						</p>
+					)}
+					<div className="flex flex-wrap gap-1.5">
+						<button
+							type="button"
+							aria-pressed={classKey === null}
+							onClick={() => setClassKey(null)}
+							className={cn("rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-border backdrop-blur", classKey === null ? "bg-foreground text-background" : "bg-card/90 text-muted-foreground hover:text-foreground")}
+						>
+							All classes
+						</button>
+						{classes.map((c) => (
+							<button
+								key={c.key}
+								type="button"
+								aria-pressed={classKey === c.key}
+								data-testid="map-class-chip"
+								onClick={() => setClassKey(classKey === c.key ? null : c.key)}
+								className={cn(`cal-c${c.color}`, "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-border backdrop-blur", classKey === c.key ? "bg-foreground text-background" : "bg-card/90 text-muted-foreground hover:text-foreground")}
+							>
+								<span className="size-2 rounded-[3px]" style={{ background: "var(--bar)" }} />
+								{c.label}
+							</button>
+						))}
+					</div>
+				</div>
+			)}
 
 			{/* Legend + filters: search box and per-state toggle rows. */}
 			{/* Top-right controls — separate floating containers (owner,
