@@ -24,7 +24,9 @@ import {
 	foldSessionKeys,
 	suggestCourses,
 	IGNORED,
+	colorsFor,
 	mergeGroups,
+	type LensClass,
 	prunePins,
 	unmergeGroups,
 	type MergeRestore,
@@ -355,4 +357,19 @@ export function listCourses(events: readonly StudyEvent[], now: number = Date.no
 		}))
 		.sort((a, b) => (a.next?.start ?? Infinity) - (b.next?.start ?? Infinity) || a.label.localeCompare(b.label));
 	return { courses, suggestions: suggestCourses(events, links, readDismissedCourses(), now) };
+}
+
+/** Every class that owns sessions, for screens that colour or filter by class. */
+export function courseLens(): LensClass[] {
+	const links = readCourseLinks();
+	const colors = colorsFor(Object.keys(links));
+	return Object.entries(links)
+		.map(([key, g]): LensClass => ({
+			key,
+			label: g.label,
+			sessions: [...new Set([...(g.chatIds ?? []), ...(g.noteIds ?? [])])],
+			color: colors.get(key) ?? 0,
+		}))
+		.filter((c) => c.sessions.length > 0)
+		.sort((a, b) => a.label.localeCompare(b.label));
 }

@@ -63,6 +63,10 @@ Without Google Calendar connected, the tab shows the events of today's briefing;
 
 **Merging courses.** If the classifier split one course in two, drag one class in the rail onto the other (or use "Merge into…" on its card in Library → Courses). Notes and sessions are combined, the target keeps its name, and the merged course's name stays as an alias of the target, so reading the calendar again never splits them. Events you filed by hand move too. Undo puts both back exactly as they were.
 
+## Classes across the app
+
+A class owns its sessions (confirmed chats and imported notes files), so anything that knows a session knows its class. On **Progress → Map**, the class chips at the top left show one class and what it connects to: its own nodes plus whatever they link to in other classes (two hops, through the implication nodes). Connections across classes are never cut off, and "All classes" shows the whole map. Class colours are the calendar's, so a class has the same colour everywhere (`/api/courses/lens`).
+
 ## Files
 
 | Path (data folder) | What |

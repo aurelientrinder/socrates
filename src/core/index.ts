@@ -62,6 +62,7 @@ export * from "./study-plan.ts";
 // Course groups: calendar classes suggested as groups of notes + sessions. Pure.
 export * from "./courses.ts";
 export * from "./course-calendar.ts";
+export * from "./course-lens.ts";
 export * from "./calendar-layout.ts";
 // Spaced-repetition review sessions: the queue marker + progress tally. Pure.
 export * from "./review.ts";
