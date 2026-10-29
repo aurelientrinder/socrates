@@ -8,7 +8,7 @@ import fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { after, describe, it } from "node:test";
-import { applyPins, coverage, guessGroup, IGNORED, NO_PINS, placeEvent, placeEvents, prunePins, titleKey } from "../src/core/course-calendar.ts";
+import { applyPins, coverage, guessGroup, IGNORED, mergeGroups, NO_PINS, placeEvent, placeEvents, prunePins, titleKey, unmergeGroups } from "../src/core/course-calendar.ts";
 import { courseKeyOfEvent, planBriefing, topicsForEvent, type CourseLinks, type StudyEvent } from "../src/core/briefing.ts";
 import { suggestCourses } from "../src/core/courses.ts";
 
@@ -176,5 +176,58 @@ describe("hand-filed pins on disk", () => {
 		assert.equal(cal.source, "none");
 		assert.equal(cal.events.length, 0);
 		assert.equal(cal.coverage.total, 0);
+	});
+});
+
+describe("merging groups", () => {
+	const two: CourseLinks = {
+		thermo: { label: "Thermodynamique", noteIds: ["n1"], chatIds: ["c1"], aliases: ["thermo s1"] },
+		thermodynamique: { label: "Thermodynamique 2", noteIds: ["n1", "n2"], aliases: [] },
+	};
+	const pins = { events: { e1: "thermo", e2: "analyse" }, titles: { "tp thermo": "thermo", gym: IGNORED } };
+
+	it("combines notes and sessions, keeps the target's name, and keeps the old key as an alias", () => {
+		const m = mergeGroups(two, pins, "thermo", "thermodynamique")!;
+		assert.equal(m.links.thermo, undefined);
+		const g = m.links.thermodynamique!;
+		assert.equal(g.label, "Thermodynamique 2");
+		assert.deepEqual(g.noteIds, ["n1", "n2"]);
+		assert.deepEqual(g.chatIds, ["c1"]);
+		assert.deepEqual(g.aliases, ["thermo s1", "thermo"]);
+	});
+
+	it("repoints hand-filed events and titles, and leaves the others alone", () => {
+		const m = mergeGroups(two, pins, "thermo", "thermodynamique")!;
+		assert.deepEqual(m.pins, { events: { e1: "thermodynamique", e2: "analyse" }, titles: { "tp thermo": "thermodynamique", gym: IGNORED } });
+	});
+
+	it("keeps filing what the old group matched, so a re-read cannot split them", () => {
+		const m = mergeGroups(two, pins, "thermo", "thermodynamique")!;
+		const p = placeEvent(ev("CM Thermo"), m.links, m.pins, []).placement;
+		assert.deepEqual(p, { state: "filed", key: "thermodynamique", by: "auto" });
+	});
+
+	it("refuses a merge of a group into itself or into one that does not exist", () => {
+		assert.equal(mergeGroups(two, pins, "thermo", "thermo"), null);
+		assert.equal(mergeGroups(two, pins, "thermo", "nope"), null);
+	});
+
+	it("undoes to exactly what it was", () => {
+		const m = mergeGroups(two, pins, "thermo", "thermodynamique")!;
+		const back = unmergeGroups(m.links, m.pins, m.restore);
+		assert.deepEqual(back.links, two);
+		assert.deepEqual(back.pins, pins);
+	});
+
+	it("persists through the server and undoes there too", () => {
+		courses.createCourse({ label: "Optique" });
+		courses.createCourse({ label: "Optique geometrique" });
+		const before = courses.readCourseLinks();
+		const [from, into] = Object.keys(before).slice(-2) as [string, string];
+		const { restore } = courses.mergeCourses(from, into);
+		assert.equal(courses.readCourseLinks()[from], undefined);
+		assert.ok(courses.readCourseLinks()[into]!.aliases?.includes(from));
+		courses.unmergeCourses(restore);
+		assert.deepEqual(courses.readCourseLinks(), before);
 	});
 });

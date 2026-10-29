@@ -93,6 +93,9 @@ interface Toast {
 	undo: () => Promise<void>;
 }
 
+/** The drag type of a class row (events drag as plain text). */
+const COURSE_DRAG = "application/x-socrates-course";
+
 export function CourseCalendar() {
 	const [data, setData] = useState<CalendarData | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -289,11 +292,37 @@ export function CourseCalendar() {
 		};
 	}, [pop, week, data]);
 
+	// ── merging classes ────────────────────────────────────────────────────
+	/** Fold class `from` into `into`; the toast's Undo puts both back. */
+	const merge = async (from: string, into: string) => {
+		const a = groupOf.get(from)?.label ?? "the class";
+		const b = groupOf.get(into)?.label ?? "the class";
+		try {
+			const res = await request<{ restore: unknown; calendar: CalendarData }>("/api/courses/merge", "POST", { from, into });
+			setData(res.calendar);
+			setError(null);
+			setPop(null);
+			if (focus === from) setFocus(into);
+			say(`Merged ${a} into ${b}`, async () => {
+				const back = await request<{ calendar: CalendarData }>("/api/courses/unmerge", "POST", { restore: res.restore });
+				setData(back.calendar);
+				setToast(null);
+			});
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		}
+	};
+
 	// ── drag and drop ──────────────────────────────────────────────────────
 	const [over, setOver] = useState<string | null>(null);
 	const dropOn = (target: string) => (ev: React.DragEvent) => {
 		ev.preventDefault();
 		setOver(null);
+		const dragged = ev.dataTransfer.getData(COURSE_DRAG);
+		if (dragged) {
+			if (groupOf.has(target) && target !== dragged) void merge(dragged, target);
+			return;
+		}
 		const e = byId.get(ev.dataTransfer.getData("text/plain"));
 		if (!e) return;
 		if (target === "new") openEvent(e, "new");
@@ -356,6 +385,7 @@ export function CourseCalendar() {
 							Classes
 						</h3>
 						{groups.length === 0 && <p className="px-1.5 text-sm text-muted-foreground">No classes yet. File an event under “New class” to make one.</p>}
+						{groups.length > 1 && <p className="mb-1 px-1.5 text-xs text-muted-foreground">Drag a class onto another to merge them.</p>}
 						<ul className="flex flex-col gap-0.5">
 							{groups.map((g) => (
 								<li key={g.key}>
@@ -364,6 +394,8 @@ export function CourseCalendar() {
 										data-testid="cal-class"
 										aria-pressed={focus === g.key}
 										onClick={() => setFocus(focus === g.key ? null : g.key)}
+										draggable
+										onDragStart={(ev) => ev.dataTransfer.setData(COURSE_DRAG, g.key)}
 										{...dropProps(g.key)}
 										className={cn(
 											`cal-c${colorOf.get(g.key) ?? 0}`,
