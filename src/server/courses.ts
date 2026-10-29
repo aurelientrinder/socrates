@@ -24,7 +24,10 @@ import {
 	foldSessionKeys,
 	suggestCourses,
 	IGNORED,
+	mergeGroups,
 	prunePins,
+	unmergeGroups,
+	type MergeRestore,
 	type CoursePins,
 	type CourseGroup,
 	type CourseLinks,
@@ -203,6 +206,34 @@ export function readCoursePins(): CoursePins {
 
 function writeCoursePins(pins: CoursePins): void {
 	writeJson(PINS_FILE, pins);
+}
+
+/**
+ * Merge course `from` into `into` (core/course-calendar.ts mergeGroups): notes
+ * and sessions combine, `from`'s calendar titles now belong to `into`, hand-filed
+ * events follow. Returns what is needed to undo it.
+ */
+export function mergeCourses(from: string, into: string): { restore: MergeRestore } {
+	const links = readCourseLinks();
+	requireGroup(links, from);
+	requireGroup(links, into);
+	const result = mergeGroups(links, readCoursePins(), from, into);
+	if (!result) throw new CourseError("Pick two different courses to merge.");
+	writeCourseLinks(result.links);
+	writeCoursePins(result.pins);
+	return { restore: result.restore };
+}
+
+/** Undo a merge: both courses come back as they were (only those two, and the pins that moved). */
+export function unmergeCourses(restore: MergeRestore): void {
+	const ok = (g: unknown): g is CourseGroup => !!g && typeof (g as CourseGroup).label === "string";
+	if (!restore || typeof restore.from?.key !== "string" || typeof restore.into?.key !== "string" || !ok(restore.from.group) || !ok(restore.into.group) || !Array.isArray(restore.pins)) {
+		throw new CourseError("That merge can't be undone.");
+	}
+	const pins = restore.pins.filter((p) => (p.scope === "event" || p.scope === "title") && typeof p.id === "string" && p.value === restore.from.key);
+	const { links, pins: nextPins } = unmergeGroups(readCourseLinks(), readCoursePins(), { ...restore, pins });
+	writeCourseLinks(links);
+	writeCoursePins(nextPins);
 }
 
 export type PinChange = { scope: PinScope; id: string; value: string | null };

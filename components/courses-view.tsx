@@ -173,7 +173,7 @@ export function CoursesView() {
 			{courses.length > 0 && (
 				<ul className="flex flex-col gap-3">
 					{courses.map((c) => (
-						<CourseCard key={c.key} course={c} onChanged={load} run={run} />
+						<CourseCard key={c.key} course={c} others={courses.filter((o) => o.key !== c.key)} onChanged={load} run={run} />
 					))}
 				</ul>
 			)}
@@ -210,10 +210,12 @@ function SuggestionRow({ s, onAdd, onDismiss }: { s: CourseSuggestion; onAdd: (l
 
 function CourseCard({
 	course,
+	others,
 	onChanged,
 	run,
 }: {
 	course: CourseData;
+	others: CourseData[];
 	onChanged: () => Promise<void>;
 	run: (job: () => Promise<CoursesPayload>) => Promise<void>;
 }) {
@@ -295,6 +297,18 @@ function CourseCard({
 		const first = `Teach me ${course.label}, starting from what I already know.${courseNotesLine(course.notes.map((n) => n.name))}`;
 		const target = await startDraftSession(text, fetch, undefined, undefined, first);
 		if (target) router.push(target);
+	};
+
+	const mergeInto = async (key: string) => {
+		const target = others.find((o) => o.key === key);
+		if (!target) return;
+		if (!window.confirm(`Merge "${course.label}" into "${target.label}"? Their notes and sessions are combined, and the calendar files both under "${target.label}".`)) return;
+		try {
+			await api("/api/courses/merge", "POST", { from: course.key, into: key });
+			await onChanged();
+		} catch (err) {
+			window.alert(err instanceof Error ? err.message : String(err));
+		}
 	};
 
 	const remove = () => {
@@ -463,6 +477,22 @@ function CourseCard({
 				<Button size="sm" variant="ghost" onClick={() => { setLabel(course.label); setRenaming((v) => !v); }}>
 					Rename
 				</Button>
+				{others.length > 0 && (
+					<select
+						aria-label={`Merge ${course.label} into another course`}
+						data-testid="course-merge"
+						value=""
+						onChange={(e) => void mergeInto(e.target.value)}
+						className="h-8 rounded-md bg-transparent px-2 text-sm font-medium text-muted-foreground hover:bg-accent"
+					>
+						<option value="">Merge into…</option>
+						{others.map((o) => (
+							<option key={o.key} value={o.key}>
+								{o.label}
+							</option>
+						))}
+					</select>
+				)}
 				<Button size="sm" variant="ghost" onClick={remove}>
 					Delete
 				</Button>

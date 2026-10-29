@@ -21,6 +21,7 @@ import {
 	courseGroupFor,
 	courseOf,
 	tokens,
+	type CourseGroup,
 	type CourseLinks,
 	type EventKind,
 	type StudyEvent,
@@ -158,4 +159,63 @@ export function coverage(placed: readonly CalendarEvent[]): { total: number; fil
 		else unplaced++;
 	}
 	return { total: placed.length, filed, ignored, unplaced };
+}
+
+// ─── Merging groups ──────────────────────────────────────────────────────────
+
+/** What `mergeGroups` took, so the merge can be undone without touching anything else. */
+export interface MergeRestore {
+	from: { key: string; group: CourseGroup };
+	into: { key: string; group: CourseGroup };
+	/** The pins that pointed at `from`, as they were. */
+	pins: { scope: PinScope; id: string; value: string }[];
+}
+
+const union = (a?: string[], b?: string[]): string[] | undefined => (a || b ? [...new Set([...(a ?? []), ...(b ?? [])])] : undefined);
+
+/**
+ * Fold group `from` into group `into`: the notes and confirmed sessions are
+ * combined, `into` keeps its name, and `from`'s key and aliases become
+ * aliases of `into`, so every calendar title that found `from` finds `into`
+ * and a later re-read of the calendar cannot split them again. Events the
+ * learner filed under `from` by hand move with it.
+ */
+export function mergeGroups(
+	links: CourseLinks,
+	pins: CoursePins,
+	from: string,
+	into: string,
+): { links: CourseLinks; pins: CoursePins; restore: MergeRestore } | null {
+	const a = links[from];
+	const b = links[into];
+	if (!a || !b || from === into) return null;
+	const chatIds = union(b.chatIds, a.chatIds);
+	const noteIds = union(b.noteIds, a.noteIds);
+	const aliases = union(b.aliases, [...(a.aliases ?? []), from]);
+	const merged: CourseGroup = { ...b, ...(chatIds ? { chatIds } : {}), ...(noteIds ? { noteIds } : {}), ...(aliases ? { aliases } : {}) };
+	const nextLinks: CourseLinks = { ...links, [into]: merged };
+	delete nextLinks[from];
+
+	const moved: MergeRestore["pins"] = [];
+	const move = (scope: PinScope, map: Record<string, string>): Record<string, string> =>
+		Object.fromEntries(
+			Object.entries(map).map(([id, value]) => {
+				if (value !== from) return [id, value];
+				moved.push({ scope, id, value: from });
+				return [id, into];
+			}),
+		);
+	const nextPins: CoursePins = { events: move("event", pins.events), titles: move("title", pins.titles) };
+	return { links: nextLinks, pins: nextPins, restore: { from: { key: from, group: a }, into: { key: into, group: b }, pins: moved } };
+}
+
+/** Put two merged groups back as they were: both groups whole, and the pins that moved. */
+export function unmergeGroups(
+	links: CourseLinks,
+	pins: CoursePins,
+	restore: MergeRestore,
+): { links: CourseLinks; pins: CoursePins } {
+	const nextPins: CoursePins = { events: { ...pins.events }, titles: { ...pins.titles } };
+	for (const p of restore.pins) (p.scope === "event" ? nextPins.events : nextPins.titles)[p.id] = p.value;
+	return { links: { ...links, [restore.into.key]: restore.into.group, [restore.from.key]: restore.from.group }, pins: nextPins };
 }
