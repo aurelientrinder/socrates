@@ -3,7 +3,7 @@ import { FlashcardReview } from "@/components/flashcard-review";
 import { PageFrame, PageTabs, PROGRESS_TABS } from "@/components/page-header";
 import { ReviewView } from "@/components/review-view";
 import { WeakSpotsView } from "@/components/weak-spots-view";
-import { calibrationAcrossSessions, retentionAcrossSessions, reviewStatus, weakSpotsAcrossSessions } from "@/src/server";
+import { calibrationAcrossSessions, courseLens, retentionAcrossSessions, reviewStatus, weakSpotsAcrossSessions } from "@/src/server";
 
 // Dynamic: retention decays with the clock and every visit re-reads the
 // session records, so both tabs are always as of now.
@@ -32,7 +32,7 @@ export default async function ProgressPage({ searchParams }: { searchParams: Pro
 			) : active === "cards" ? (
 				<FlashcardReview key={deck ?? "all"} deck={deck} />
 			) : (
-				<ReviewView report={retentionAcrossSessions(now)} status={reviewStatus(now)} />
+				<ReviewView report={retentionAcrossSessions(now)} status={reviewStatus(now)} classes={courseLens()} />
 			)}
 		</PageFrame>
 	);

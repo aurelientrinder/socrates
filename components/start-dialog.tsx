@@ -8,7 +8,7 @@ import { BookOpenIcon, ClipboardCheckIcon, DumbbellIcon, Loader2Icon, PlayIcon, 
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { readWarmupPreference, startDraftSession, writeWarmupPreference } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
-import { DEFAULT_EXAM_LENGTH, EXAM_LENGTHS, problemCountFor, REVIEW_SESSION_SIZE, WARMUP_SIZE } from "@/src/core";
+import { colorsFor, courseNotesLine, DEFAULT_EXAM_LENGTH, EXAM_LENGTHS, problemCountFor, REVIEW_SESSION_SIZE, WARMUP_SIZE } from "@/src/core";
 import { DEFAULT_SESSION_LENGTH, QUICK_SESSION_MINUTES, SESSION_LENGTHS, setSessionBudget } from "@/components/session-timer";
 import { cn } from "@/lib/utils";
 
@@ -114,6 +114,8 @@ function StartDialog({
 	const [examMinutes, setExamMinutes] = useState<number>(DEFAULT_EXAM_LENGTH);
 	const [pickedNotes, setPickedNotes] = useState<string[]>(() => (preset?.notes ?? []).slice(0, EXAM_MAX_NOTES).map((n) => n.id));
 	const [warmup, setWarmup] = useState<boolean>(readWarmupPreference);
+	const [classes, setClasses] = useState<StartClass[]>([]);
+	const [classKey, setClassKey] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const backdropDismiss = useBackdropDismiss(() => {
@@ -138,6 +140,33 @@ function StartDialog({
 			})
 			.catch(() => setNotes(preset?.notes ?? []));
 	}, [preset]);
+
+	useEffect(() => {
+		void fetch("/api/courses")
+			.then((r) => (r.ok ? (r.json() as Promise<{ courses: { key: string; label: string; notes: NoteChip[] }[] }>) : null))
+			.then((body) => {
+				const list = body?.courses ?? [];
+				const colors = colorsFor(list.map((c) => c.key));
+				setClasses(list.map((c) => ({ key: c.key, label: c.label, color: colors.get(c.key) ?? 0, notes: c.notes.map(({ id, name }) => ({ id, name })) })));
+			})
+			.catch(() => undefined);
+	}, []);
+
+	/** Pick a class: its name becomes the topic and its notes the ones on offer. */
+	const pickClass = (key: string | null) => {
+		const prev = classes.find((c) => c.key === classKey);
+		const next = classes.find((c) => c.key === key);
+		setClassKey(next ? next.key : null);
+		if (!next) {
+			if (prev && topic === prev.label) setTopic("");
+			return;
+		}
+		if (!topic.trim() || topic === prev?.label) setTopic(next.label);
+		if (next.notes.length > 0) {
+			setNotes(next.notes);
+			setPickedNotes(next.notes.slice(0, EXAM_MAX_NOTES).map((n) => n.id));
+		}
+	};
 
 	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
@@ -174,7 +203,12 @@ function StartDialog({
 			} else {
 				const kind = mode === "practice" ? "practice" : "learn";
 				const quick = minutes === QUICK_SESSION_MINUTES;
-				const firstMessage = quick ? quickSessionPrompt(kind, text) : undefined;
+				const cls = classes.find((c) => c.key === classKey && c.label === text);
+				const firstMessage = quick
+					? quickSessionPrompt(kind, text)
+					: cls && kind === "learn"
+						? `Teach me ${cls.label}, starting from what I already know.${courseNotesLine(cls.notes.map((n) => n.name))}`
+						: undefined;
 				// A five-minute session is one idea and one question: no warm-up.
 				target = await startDraftSession(text, fetch, kind === "practice" ? "practice" : undefined, undefined, firstMessage, {
 					warmup: warmup && !quick,
@@ -208,6 +242,9 @@ function StartDialog({
 				onMode={setMode}
 				onMinutes={setMinutes}
 				onExamMinutes={setExamMinutes}
+				classes={classes}
+				classKey={classKey}
+				onClass={pickClass}
 				warmup={warmup}
 				onWarmup={(on) => {
 					setWarmup(on);
@@ -224,6 +261,14 @@ function StartDialog({
 		</div>,
 		document.body,
 	);
+}
+
+/** A class the dialog can start from. */
+export interface StartClass {
+	key: string;
+	label: string;
+	color: number;
+	notes: NoteChip[];
 }
 
 const MODES: { id: StartMode; label: string; desc: string; icon: React.ReactNode }[] = [
@@ -249,6 +294,9 @@ export function StartDialogBody({
 	onExamMinutes = () => {},
 	warmup = true,
 	onWarmup,
+	classes = [],
+	classKey = null,
+	onClass = () => {},
 	onTopic,
 	onStart,
 	onNote,
@@ -274,6 +322,10 @@ export function StartDialogBody({
 	/** Open Learn and Practice with a warm-up on due topics (warm-up recall). */
 	warmup?: boolean;
 	onWarmup?: (on: boolean) => void;
+	/** Classes to study; picking one fills the topic and offers its notes. */
+	classes?: StartClass[];
+	classKey?: string | null;
+	onClass?: (key: string | null) => void;
 	onTopic: (text: string) => void;
 	onStart: () => void;
 	onNote: (name: string) => void;
@@ -349,6 +401,28 @@ export function StartDialogBody({
 					<label htmlFor="start-topic" className="text-sm font-semibold">
 						{mode === "practice" ? "What do you want to practise?" : mode === "exam" ? "What does the exam cover?" : "What do you want to learn?"}
 					</label>
+					{classes.length > 0 && (
+						<div className="flex flex-wrap items-center gap-2" data-testid="start-classes">
+							<span className="text-sm text-muted-foreground">A class:</span>
+							{classes.map((c) => (
+								<button
+									key={c.key}
+									type="button"
+									aria-pressed={classKey === c.key}
+									disabled={busy}
+									onClick={() => onClass(classKey === c.key ? null : c.key)}
+									className={cn(
+										`cal-c${c.color}`,
+										"flex h-8 max-w-56 items-center gap-1.5 rounded-full px-3 text-sm transition-colors disabled:opacity-50",
+										classKey === c.key ? "bg-good-soft font-semibold text-good-ink ring-1 ring-good" : "bg-accent hover:bg-accent/70",
+									)}
+								>
+									<span className="size-2 shrink-0 rounded-[3px]" style={{ background: "var(--bar)" }} />
+									<span className="truncate">{c.label}</span>
+								</button>
+							))}
+						</div>
+					)}
 					<textarea
 						id="start-topic"
 						ref={topicRef}

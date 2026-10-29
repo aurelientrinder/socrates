@@ -57,3 +57,39 @@ export function classView(
 	grow(new Set([...shown].filter((id) => !own.has(id))));
 	return { own, shown };
 }
+
+export interface ClassMemory {
+	/** null: topics from sessions no class owns. */
+	cls: LensClass | null;
+	topics: number;
+	due: number;
+	/** Mean predicted recall of its topics, 0-1. */
+	retention: number;
+}
+
+/**
+ * How each class's memory stands: its topics, how many are due, and the mean
+ * recall. Topics from sessions no class owns come last, as one group. Classes
+ * with no topics yet are left out.
+ */
+export function memoryByClass(
+	topics: readonly { chatId: string; retention: number; due: boolean }[],
+	classes: readonly LensClass[],
+): ClassMemory[] {
+	const groups = new Map<string | null, typeof topics[number][]>();
+	for (const t of topics) {
+		const key = classOfSession(classes, t.chatId)?.key ?? null;
+		groups.set(key, [...(groups.get(key) ?? []), t]);
+	}
+	const out: ClassMemory[] = [];
+	for (const [key, list] of groups) {
+		out.push({
+			cls: key === null ? null : (classes.find((c) => c.key === key) ?? null),
+			topics: list.length,
+			due: list.filter((t) => t.due).length,
+			retention: list.reduce((n, t) => n + t.retention, 0) / list.length,
+		});
+	}
+	// Classes by name, the unfiled group last.
+	return out.sort((a, b) => (a.cls === null ? 1 : b.cls === null ? -1 : a.cls.label.localeCompare(b.cls.label)));
+}

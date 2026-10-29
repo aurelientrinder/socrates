@@ -1,7 +1,7 @@
 /** The class lens (src/core/course-lens.ts): a class owns sessions; looking at one keeps its cross-class links. */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { classOfSession, classView, colorsFor, CLASS_COLORS } from "../src/core/course-lens.ts";
+import { classOfSession, classView, colorsFor, memoryByClass, CLASS_COLORS } from "../src/core/course-lens.ts";
 
 const analyse = { key: "analyse", label: "Analyse", sessions: ["chat1", "src_aaaaaaaaaaaa"], color: 0 };
 const thermo = { key: "thermo", label: "Thermo", sessions: ["chat2"], color: 1 };
@@ -33,5 +33,14 @@ describe("class lens", () => {
 		const v = classView(nodes, edges, analyse);
 		assert.deepEqual([...v.own].sort(), ["a1", "a2"]);
 		assert.deepEqual([...v.shown].sort(), ["a1", "a2", "imp1", "t1"]);
+	});
+});
+
+describe("memory by class", () => {
+	it("sums up each class's topics, due ones and mean recall, with unfiled topics last", () => {
+		const t = (chatId: string, retention: number, due: boolean) => ({ chatId, retention, due });
+		const m = memoryByClass([t("chat2", 0.5, true), t("chat1", 0.9, false), t("chat1", 0.7, true), t("other", 0.8, false)], [analyse, thermo]);
+		assert.deepEqual(m.map((x) => [x.cls?.key ?? null, x.topics, x.due]), [["analyse", 2, 1], ["thermo", 1, 1], [null, 1, 0]]);
+		assert.ok(Math.abs(m[0]!.retention - 0.8) < 1e-9);
 	});
 });

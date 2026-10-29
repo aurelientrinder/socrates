@@ -40,6 +40,22 @@ function render(mode: StartMode, opts: { topic?: string; due?: number | null; no
 	);
 }
 
+describe("StartDialogBody classes", () => {
+	const body = (classKey: string | null, classes = [{ key: "analyse", label: "Analyse", color: 0, notes: [] }]) =>
+		renderToStaticMarkup(
+			<StartDialogBody mode="learn" topic="" due={0} notes={[]} minutes={25} busy={false} error={null} onMode={noop} onMinutes={noop} onTopic={noop} onStart={noop} onNote={noop} onClose={noop} classes={classes} classKey={classKey} onClass={noop} />,
+		);
+
+	it("offers the classes to study and presses the chosen one", () => {
+		assert.match(body(null), /data-testid="start-classes"[\s\S]*Analyse/);
+		assert.match(body("analyse"), /aria-pressed="true"[^>]*class="[^"]*cal-c0/);
+	});
+
+	it("shows no class row when there are none", () => {
+		assert.doesNotMatch(body(null, []), /start-classes/);
+	});
+});
+
 describe("StartDialogBody", () => {
 	it("presses the chosen kind and badges Review with what is due", () => {
 		const html = render("learn");

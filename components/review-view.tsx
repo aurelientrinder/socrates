@@ -6,6 +6,8 @@ import {
 	UPCOMING_DAYS,
 	relativeDays,
 	isExamId,
+	memoryByClass,
+	type LensClass,
 	sessionHref,
 	type RetentionReport,
 	type ReviewStatus,
@@ -23,8 +25,9 @@ import { cn } from "@/lib/utils";
  * server-side (src/core/retention.ts). Rendered as the Memory tab of the
  * Progress page, which owns the page title.
  */
-export function ReviewView({ report, status }: { report: RetentionReport; status?: ReviewStatus }) {
+export function ReviewView({ report, status, classes = [] }: { report: RetentionReport; status?: ReviewStatus; classes?: LensClass[] }) {
 	const target = Math.round(TARGET_RETENTION * 100);
+	const byClass = classes.length > 0 ? memoryByClass(report.topics, classes) : [];
 	return (
 		<div data-testid="review-view" className="flex flex-col gap-8">
 			<header className="flex flex-col gap-2">
@@ -45,6 +48,23 @@ export function ReviewView({ report, status }: { report: RetentionReport; status
 			) : (
 				<>
 					{status && <ReviewStart status={status} />}
+					{byClass.some((m) => m.cls) && (
+						<section className="flex flex-col gap-3" data-testid="review-by-class">
+							<SectionHeading>By class</SectionHeading>
+							<ul className="flex flex-col gap-1.5">
+								{byClass.map((m) => (
+									<li key={m.cls?.key ?? "unfiled"} className={cn(m.cls && `cal-c${m.cls.color}`, "flex items-center gap-3 rounded-xl border bg-card px-4 py-2.5")}>
+										<span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: m.cls ? "var(--bar)" : "var(--muted-foreground)" }} />
+										<span className="min-w-0 flex-1 truncate text-sm font-semibold">{m.cls?.label ?? "Not in a class"}</span>
+										<span className="text-xs tabular-nums text-muted-foreground">
+											{m.topics} {m.topics === 1 ? "topic" : "topics"} · {m.due > 0 ? `${m.due} due` : "none due"}
+										</span>
+										<span className="w-10 text-right text-sm font-semibold tabular-nums">{Math.round(m.retention * 100)}%</span>
+									</li>
+								))}
+							</ul>
+						</section>
+					)}
 					<section className="flex flex-col gap-3">
 						<SectionHeading>Due now</SectionHeading>
 						{report.due.length === 0 ? (

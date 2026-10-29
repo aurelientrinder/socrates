@@ -27,6 +27,7 @@ import { RemindersCard } from "@/components/reminders-card";
 import { PageFrame } from "@/components/page-header";
 import { useStartDialog } from "@/components/start-dialog";
 import { ACTION_LABEL, ACTION_TAG, StudyPlanCard } from "@/components/study-plan-card";
+import { useClassColors } from "@/components/use-class-colors";
 import { cn } from "@/lib/utils";
 
 /**
@@ -596,11 +597,13 @@ function UpcomingRow({
 }) {
 	const [editing, setEditing] = useState(false);
 	const [picked, setPicked] = useState<string[]>(entry.chatIds);
+	const color = useClassColors().get(entry.course.key);
 	const r = entry.readiness;
 	return (
 		<li data-testid="today-upcoming" className="flex flex-col gap-1.5 text-sm">
 			<div className="flex items-baseline justify-between gap-2">
-				<span className="min-w-0 truncate text-base">
+				<span className={cn("flex min-w-0 items-center gap-2 truncate text-base", color !== undefined && `cal-c${color}`)}>
+					{color !== undefined && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: "var(--bar)" }} />}
 					{entry.event.url ? (
 						<a href={entry.event.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">
 							{entry.event.title}
