@@ -56,9 +56,12 @@ export function pinFor(pins: CoursePins, event: Pick<StudyEvent, "id" | "title">
 	return null;
 }
 
+/** Why an event is not a class: you said so, you dismissed its course, or a plain rule. */
+export type IgnoredWhy = "pinned" | "dismissed" | "all-day" | "keyword";
+
 export type Placement =
 	| { state: "filed"; key: string; by: "you" | "auto" }
-	| { state: "ignored"; by: "you" | "auto" }
+	| { state: "ignored"; by: "you" | "auto"; why: IgnoredWhy }
 	| { state: "unplaced"; guess: string | null };
 
 export interface CalendarEvent {
@@ -101,15 +104,15 @@ export function placeEvent(
 	const base = { id: event.id, title: event.title, start: event.start, end: event.end, allDay: event.allDay, kind };
 	const pin = pinFor(pins, event);
 	if (pin) {
-		if (pin.value === IGNORED) return { ...base, placement: { state: "ignored", by: "you" }, pin: pin.scope };
+		if (pin.value === IGNORED) return { ...base, placement: { state: "ignored", by: "you", why: "pinned" }, pin: pin.scope };
 		if (links[pin.value]) return { ...base, placement: { state: "filed", key: pin.value, by: "you" }, pin: pin.scope };
 		// The group the pin named is gone: the event is undecided again.
 	}
 	const course = courseOf(event.title);
-	if (course.key && dismissed.includes(course.key)) return { ...base, placement: { state: "ignored", by: "you" } };
+	if (course.key && dismissed.includes(course.key)) return { ...base, placement: { state: "ignored", by: "you", why: "dismissed" } };
 	const found = courseGroupFor(links, course.key);
 	if (found) return { ...base, placement: { state: "filed", key: found.key, by: "auto" } };
-	if (kind === "other" && (event.allDay || NOT_A_CLASS_RE.test(event.title))) return { ...base, placement: { state: "ignored", by: "auto" } };
+	if (kind === "other" && (event.allDay || NOT_A_CLASS_RE.test(event.title))) return { ...base, placement: { state: "ignored", by: "auto", why: event.allDay ? "all-day" : "keyword" } };
 	return { ...base, placement: { state: "unplaced", guess: guessGroup(links, event) } };
 }
 

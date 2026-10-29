@@ -41,7 +41,7 @@ describe("placeEvent", () => {
 
 	it("leaves an unknown exam unplaced, and the gym ignored", () => {
 		assert.equal(placeEvent(ev("Examen intermédiaire"), links, NO_PINS, []).placement.state, "unplaced");
-		assert.deepEqual(placeEvent(ev("Gym"), links, NO_PINS, []).placement, { state: "ignored", by: "auto" });
+		assert.deepEqual(placeEvent(ev("Gym"), links, NO_PINS, []).placement, { state: "ignored", by: "auto", why: "keyword" });
 		assert.equal(placeEvent(ev("Fête de Léa", 5, { allDay: true }), links, NO_PINS, []).placement.state, "ignored");
 	});
 
@@ -74,7 +74,7 @@ describe("placeEvent", () => {
 	it("an event pin beats a title pin; 'not a class' is a pin too", () => {
 		const e = ev("Examen intermédiaire");
 		const pins = { events: { [e.id]: IGNORED }, titles: { [titleKey(e.title)]: "analyse" } };
-		assert.deepEqual(placeEvent(e, links, pins, []).placement, { state: "ignored", by: "you" });
+		assert.deepEqual(placeEvent(e, links, pins, []).placement, { state: "ignored", by: "you", why: "pinned" });
 	});
 
 	it("a pin whose group was deleted leaves the event unplaced, not lost", () => {
@@ -229,5 +229,19 @@ describe("merging groups", () => {
 		assert.ok(courses.readCourseLinks()[into]!.aliases?.includes(from));
 		courses.unmergeCourses(restore);
 		assert.deepEqual(courses.readCourseLinks(), before);
+	});
+});
+
+describe("why an event is set aside", () => {
+	it("says whether you marked it, dismissed its course, or a plain rule left it out", () => {
+		const why = (e: StudyEvent, pins = NO_PINS, dismissed: string[] = []) => {
+			const p = placeEvent(e, links, pins, dismissed).placement;
+			return p.state === "ignored" ? p.why : null;
+		};
+		const gym = ev("Gym");
+		assert.equal(why(gym), "keyword");
+		assert.equal(why(ev("Fête", 24, { allDay: true })), "all-day");
+		assert.equal(why(gym, { events: { [gym.id]: IGNORED }, titles: {} }), "pinned");
+		assert.equal(why(ev("CM Chimie"), NO_PINS, ["chimie"]), "dismissed");
 	});
 });

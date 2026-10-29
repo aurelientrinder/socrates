@@ -59,6 +59,8 @@ Click an event, or drag it onto a course in the left rail, to file it. "All N li
 
 Without Google Calendar connected, the tab shows the events of today's briefing; with it, the events are read at most every ten minutes (or with the refresh button) and kept in `briefing/calendar-window.json`.
 
+**Review.** The "N of M filed" counter opens a review of everything the classifier did: events that need a class (with the class they look like), events set aside as not a class (with the reason: you marked it, you dismissed its course, all-day, or it looks like gym or lunch) and events filed automatically (with the class they went to). Each row has a menu to correct it, and everything has Undo.
+
 **Merging courses.** If the classifier split one course in two, drag one class in the rail onto the other (or use "Merge into…" on its card in Library → Courses). Notes and sessions are combined, the target keeps its name, and the merged course's name stays as an alias of the target, so reading the calendar again never splits them. Events you filed by hand move too. Undo puts both back exactly as they were.
 
 ## Files

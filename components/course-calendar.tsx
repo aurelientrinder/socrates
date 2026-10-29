@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, RefreshCwIcon } from "lucide-react";
 import { IGNORED, dayOf, hourRange, minutesOfDay, packDay, titleKey, weekStarts, type EventKind } from "@/src/core";
 import { Button } from "@/components/ui/button";
+import { CourseReview } from "@/components/course-review";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,7 +21,7 @@ import { cn } from "@/lib/utils";
 // Transport-only mirrors of src/core/course-calendar.ts and src/server/course-calendar.ts.
 type Placement =
 	| { state: "filed"; key: string; by: "you" | "auto" }
-	| { state: "ignored"; by: "you" | "auto" }
+	| { state: "ignored"; by: "you" | "auto"; why: "pinned" | "dismissed" | "all-day" | "keyword" }
 	| { state: "unplaced"; guess: string | null };
 
 interface CalEvent {
@@ -104,6 +105,7 @@ export function CourseCalendar() {
 	const [pop, setPop] = useState<Popover | null>(null);
 	const [focus, setFocus] = useState<string | null>(null);
 	const [showIgnored, setShowIgnored] = useState(false);
+	const [reviewing, setReviewing] = useState(false);
 	const [toast, setToast] = useState<Toast | null>(null);
 	const [newName, setNewName] = useState("");
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -538,12 +540,19 @@ export function CourseCalendar() {
 							<span className="ml-2 text-sm font-normal tabular-nums text-muted-foreground">{heading.sub}</span>
 						</h2>
 						<div className="flex items-center gap-3">
-							<span className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="cal-coverage">
+							<button
+								type="button"
+								onClick={() => setReviewing((v) => !v)}
+								aria-pressed={reviewing}
+								data-testid="cal-coverage"
+								className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/5"
+							>
 								<Ring done={cov.filed} total={cov.filed + cov.unplaced} />
 								<span className="tabular-nums">
 									{cov.filed} of {cov.filed + cov.unplaced} filed
 								</span>
-							</span>
+								<span className="font-semibold text-good">{reviewing ? "Week" : "Review"}</span>
+							</button>
 							{data.connected && (
 								<Button size="icon-sm" variant="ghost" aria-label="Refresh from Google Calendar" onClick={() => void load(true)} disabled={refreshing}>
 									<RefreshCwIcon className={cn("size-3.5", refreshing && "animate-spin")} />
@@ -563,7 +572,8 @@ export function CourseCalendar() {
 						</div>
 					</div>
 
-					<div className="overflow-x-auto" data-testid="cal-grid-wrap">
+					{reviewing && <CourseReview events={events} groups={groups} titleKey={titleKey} onFile={file} onClose={() => setReviewing(false)} />}
+					<div className={cn("overflow-x-auto", reviewing && "hidden")} data-testid="cal-grid-wrap">
 						<div className="grid" style={{ gridTemplateColumns: `${GUTTER_PX}px repeat(${nDays}, minmax(7.5rem, 1fr))`, minWidth: GUTTER_PX + nDays * 120 }}>
 							<div className="border-b" />
 							{days.map((d) => {
