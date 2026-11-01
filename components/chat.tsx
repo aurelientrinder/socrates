@@ -2040,6 +2040,9 @@ function DockOverlay({
 	// revealed, the normal collapse machine rules apply untouched.
 	const [revealed, setRevealed] = useState(false);
 	const revealPending = requiresReveal && !revealed;
+	const toolsRow = (
+		<StatsBar turns={turns} contextTokens={contextTokens} pricing={pricing} dictationSlot={dictationSlot} chatId={chatId} flat />
+	);
 
 	const pendingId = pending?.toolCallId ?? null;
 	const initialPendingRef = useRef(pendingId);
@@ -2434,6 +2437,9 @@ function DockOverlay({
 					    card, Claude's composer shape. The inner shell keeps its own
 					    overflow clip for the height morph; the outer card does not
 					    clip, so the tools' popovers can open above it. */}
+					{/* The tools row is built once: an expanded question carries it
+					    inside its answer box (question card redesign, 2026-11-01);
+					    everything else keeps it under the shell. */}
 					<div className="pointer-events-auto rounded-2xl border bg-card shadow-lg" data-testid="dock-card">
 					<div ref={shellRef} className="overflow-hidden rounded-t-2xl">
 						<div
@@ -2455,6 +2461,7 @@ function DockOverlay({
 									dictationClaim={!revealPending}
 									compactionRunning={compactionRunning}
 									warmup={pending.tool === "review" ? warmup : undefined}
+									tools={expanded && !revealPending ? toolsRow : undefined}
 								/>
 							) : practice ? (
 								<PracticeDock
@@ -2477,14 +2484,7 @@ function DockOverlay({
 					{/* The stats row: beneath the composer/question shell, not
 					    flush to the screen bottom — static height, outside the
 					    morphing shell so it never joins a height animation. */}
-					<StatsBar
-						turns={turns}
-						contextTokens={contextTokens}
-						pricing={pricing}
-						dictationSlot={dictationSlot}
-						chatId={chatId}
-						flat
-					/>
+					{!(pending && expanded && !revealPending) && toolsRow}
 					</div>
 					{/* The scroll-down disc (moved here from the Conversation,
 					    owner refinement round 2026-09-24): anchored to the BLOCK's
