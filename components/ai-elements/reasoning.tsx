@@ -219,3 +219,56 @@ export const ReasoningContent = memo(
 Reasoning.displayName = "Reasoning";
 ReasoningTrigger.displayName = "ReasoningTrigger";
 ReasoningContent.displayName = "ReasoningContent";
+
+/**
+ * ONE THINKING BLOCK PER REPLY (owner, chat-feed redesign 2026-11-01):
+ * a tutor reply that spans several provider steps used to render one
+ * "Thinking" row per step, stacked between the step's text and tool
+ * cards. The owner asked for Claude's grammar instead — every thought
+ * of the reply folds into a single collapsible block at the top, and
+ * opening it reads the thoughts in order. Empty texts (the arrived-but-
+ * empty placeholder row) still render the row; they add no step.
+ */
+export const ThinkingGroup = memo(
+  ({ texts, isStreaming, className }: { texts: string[]; isStreaming: boolean; className?: string }) => {
+    const steps = texts.filter((t) => t.trim() !== "");
+    return (
+      <Reasoning
+        isStreaming={isStreaming}
+        data-testid="thinking-group"
+        className={cn("mb-2 w-full rounded-xl border border-border/80", className)}
+      >
+        <ReasoningTrigger
+          className="px-3 py-2"
+          getThinkingMessage={(streaming) => (
+            <span className="flex items-center gap-1.5">
+              {streaming ? <Shimmer duration={1}>Thinking...</Shimmer> : <span>Thinking</span>}
+              {steps.length > 1 && (
+                <span className="font-normal text-muted-foreground/80" data-testid="thinking-steps">
+                  · {steps.length} steps
+                </span>
+              )}
+            </span>
+          )}
+        />
+        <CollapsibleContent
+          className={cn(
+            "border-t border-border/80 px-3.5 py-3 text-sm text-muted-foreground outline-none",
+            "data-[state=closed]:fade-out-0 data-[state=closed]:animate-out data-[state=open]:animate-in",
+          )}
+        >
+          <div className="flex flex-col gap-3">
+            {steps.map((t, i) => (
+              <div key={i} className={cn(i > 0 && "border-t border-dashed border-border/70 pt-3")}>
+                <Streamdown components={mdComponents} plugins={streamdownPlugins}>
+                  {transformMathDelimiters(t)}
+                </Streamdown>
+              </div>
+            ))}
+          </div>
+        </CollapsibleContent>
+      </Reasoning>
+    );
+  }
+);
+ThinkingGroup.displayName = "ThinkingGroup";

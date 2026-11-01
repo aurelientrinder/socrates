@@ -14,15 +14,15 @@ import {
 	ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
-import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
+import { ThinkingGroup } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { BrailleSpinner } from "@/components/braille-spinner";
 import { LiveToolCard } from "@/components/artifacts/live-tool-card";
-import { Separator } from "@/components/ui/separator";
 import { AnsweredCard } from "@/components/answered-card";
 import { artifactRenderers } from "@/components/artifacts";
 import { SubagentSteerCard } from "@/components/artifacts/steer-card";
 import { Composer } from "@/components/composer";
+import { ReplyActions } from "@/components/reply-actions";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
@@ -97,7 +97,10 @@ import { useSettingsSaved } from "@/components/settings-signal";
 export const RECAP_PROMPT =
 	"Let's wrap up here. Give me a short recap of what we covered, then one question to check I've got the most important idea.";
 
-const COLUMN = "mx-auto w-full max-w-none px-6";
+// The reading column (owner, feed redesign 2026-11-01): the transcript
+// shares the dock's width, so lines stay near 70 characters and the reply
+// sits right above the box you answer in — the Claude feed.
+const COLUMN = "mx-auto w-full max-w-[46rem] px-4";
 const DOCK = "mx-auto w-full max-w-[46rem] px-4";
 // The DOCK container's fixed width (46rem) and the plan marginalia's
 // geometry (owner, plan-placement round): the bare diagram sits in the
@@ -188,6 +191,31 @@ function SystemLine({ children, testId }: { children: React.ReactNode; testId?: 
 			{children}
 		</div>
 	);
+}
+
+/** The reply's thinking, grouped (owner, feed redesign 2026-11-01): the
+ *  index of the first reasoning part — where the one block renders — and
+ *  every reasoning text in order. first = -1 when the reply never thought.
+ *  Exported pure for tests. */
+export function thinkingGroupOf(parts: readonly { type: string; text?: string }[]): { first: number; texts: string[] } {
+	let first = -1;
+	const texts: string[] = [];
+	parts.forEach((p, i) => {
+		if (p.type !== "reasoning") return;
+		if (first === -1) first = i;
+		texts.push(p.text ?? "");
+	});
+	return { first, texts };
+}
+
+const thinkingCache = new WeakMap<object, { first: number; texts: string[] }>();
+function cachedThinkingGroup(parts: readonly { type: string; text?: string }[]) {
+	let g = thinkingCache.get(parts);
+	if (!g) {
+		g = thinkingGroupOf(parts);
+		thinkingCache.set(parts, g);
+	}
+	return g;
 }
 
 function isSubagentSteer(m: LhViewMessage): boolean {
@@ -1259,7 +1287,7 @@ export function Chat({
 								spellCheck={false}
 								aria-label="Session title"
 								title="Rename this session"
-								className="lh-no-drag min-w-[8ch] max-w-[70%] shrink-0 bg-transparent font-title text-3xl tracking-tight caret-current outline-none [field-sizing:content]"
+								className="lh-no-drag min-w-[8ch] max-w-[70%] shrink-0 bg-transparent rounded-md px-1.5 py-1 font-ui text-[15px] font-medium caret-current outline-none [field-sizing:content]"
 							/>
 							{/* flex-1 spacer during rename too, so the chips stay at
 							    the right edge; clicks here commit via the header
@@ -1280,7 +1308,7 @@ export function Chat({
 								setTitleDraft(titleText);
 								setRenaming(true);
 							}}
-							className="lh-no-drag -mx-1.5 min-w-4 shrink cursor-text truncate rounded-md px-1.5 text-left font-title text-3xl tracking-tight transition-colors hover:bg-accent"
+							className="lh-no-drag min-w-4 shrink cursor-text truncate rounded-md px-1.5 py-1 text-left font-ui text-[15px] font-medium transition-colors hover:bg-accent"
 						>
 							{titleText}
 							</button>
@@ -1488,10 +1516,10 @@ export function Chat({
 										    transcript reads as a conversation: tutor on the left as
 										    open prose, learner on the right. User text renders plain —
 										    the model's LaTeX pipeline is not applied to learner text. */
-										className="my-4 ml-auto w-fit max-w-[85%] rounded-[22px] rounded-br-md bg-accent px-4 py-2.5"
+										className="my-3 ml-auto w-fit max-w-[80%] rounded-2xl bg-accent/80 px-4 py-2.5"
 									>
 												<span className="sr-only">You: </span>
-												<div className="lh-prose whitespace-pre-wrap text-foreground">
+												<div className="whitespace-pre-wrap font-ui text-[15px] leading-relaxed text-foreground">
 													{m.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")}
 												</div>
 											</div>
@@ -1500,6 +1528,7 @@ export function Chat({
 									<MessageContent className="w-full">
 											{m.parts.map((part, pi) => {
 												const isLastPart = mi === messages.length - 1 && pi === m.parts.length - 1;
+												const thinking = cachedThinkingGroup(m.parts);
 												// The step boundary where teaching begins (round 8): when
 												// the teach flip happens in a LATER step, its PhaseDivider
 												// replaces this boundary's plain hairline.
@@ -1538,16 +1567,23 @@ export function Chat({
 														);
 													}
 													case "reasoning":
+														// One block per reply (owner, feed redesign 2026-11-01):
+														// the FIRST reasoning part renders every thought of the
+														// reply; the later ones fold into it.
+														if (pi !== thinking.first) return null;
 														return (
-															<Reasoning key={pi} isStreaming={status === "streaming" && isLastPart} className="mb-2">
-																<ReasoningTrigger />
-																<ReasoningContent>{part.text ?? ""}</ReasoningContent>
-															</Reasoning>
+															<ThinkingGroup
+																key={pi}
+																texts={thinking.texts}
+																isStreaming={status === "streaming" && mi === messages.length - 1 && m.parts.at(-1)?.type === "reasoning"}
+															/>
 														);
 													case "step-start":
 														if (teachBoundary)
 															return <PhaseDivider key={`teach-step-${pi}`} phase="teach" />;
-														return pi > 0 ? <Separator key={pi} className="my-3" /> : null;
+														// No hairline between steps any more: with the thinking
+														// grouped, a reply reads as one continuous answer.
+														return null;
 													case "data-plan-block":
 														// The plan in the chat (wave 4): a frozen snapshot
 														// block — rendered as carried, never re-derived.
@@ -1600,6 +1636,7 @@ export function Chat({
 												}
 											})}
 										</MessageContent>
+										{!(busy && mi === messages.length - 1) && <ReplyActions parts={m.parts} />}
 									</Message>
 									)}
 								</Fragment>
@@ -1675,7 +1712,7 @@ export function Chat({
 					contextTokens={contextTokens}
 					pricing={pricing}
 					onReserve={setDockReserve}
-					dictationSlot={<DictationBar dictation={dictation} />}
+					dictationSlot={<DictationBar dictation={dictation} flat />}
 					dictationCancel={dictation.cancel}
 					queuedSteers={visibleQueuedSteers(steerQueue, nativeMessages)}
 					warmup={
@@ -2371,7 +2408,13 @@ function DockOverlay({
 							claim={revealPending}
 						/>
 					)}
-					<div ref={shellRef} className="pointer-events-auto overflow-hidden rounded-2xl border bg-card shadow-lg">
+					{/* ONE BOX (owner, feed redesign 2026-11-01): the composer/question
+					    shell and its tools row (dictate, usage, model) share a single
+					    card, Claude's composer shape. The inner shell keeps its own
+					    overflow clip for the height morph; the outer card does not
+					    clip, so the tools' popovers can open above it. */}
+					<div className="pointer-events-auto rounded-2xl border bg-card shadow-lg" data-testid="dock-card">
+					<div ref={shellRef} className="overflow-hidden rounded-t-2xl">
 						<div
 						ref={contentRef}
 						key={mode}
@@ -2419,7 +2462,9 @@ function DockOverlay({
 						pricing={pricing}
 						dictationSlot={dictationSlot}
 						chatId={chatId}
+						flat
 					/>
+					</div>
 					{/* The scroll-down disc (moved here from the Conversation,
 					    owner refinement round 2026-09-24): anchored to the BLOCK's
 					    top edge — above the composer shell AND the stats row, in
