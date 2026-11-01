@@ -1642,3 +1642,42 @@ describe("duplicate provider tool-call ids (the Lacan fix)", () => {
 		assert.equal(quizPart?.output?.kind, "quiz", "the quiz card got ITS answer (the pre-fix bug: it landed on the ask card)");
 	});
 });
+
+describe("retry the last reply (2026-11-01)", () => {
+	it("drops the tutor's reply after the last learner message and runs the turn again", async () => {
+		const { engine, calls } = scriptedTeacher((calls) => [
+			(context) => {
+				calls.push(context.messages.map((m) => JSON.stringify((m as { content: unknown }).content)));
+				return fauxAssistantMessage([fauxText("A muddled first answer.")]);
+			},
+			(context) => {
+				calls.push(context.messages.map((m) => JSON.stringify((m as { content: unknown }).content)));
+				return fauxAssistantMessage([fauxText("A clearer second answer.")]);
+			},
+		]);
+		const chat = createConfiguredChat("Test: retry");
+		createdChats.push(chat.id);
+		await drainTurn(post(chat.id, { type: "text", text: "what is entropy?" }), agentFactory(engine));
+		const before = chatStore.getChat(chat.id)!;
+		assert.equal(before.messages.length, 2);
+
+		await drainTurn(post(chat.id, { type: "retry" }), agentFactory(engine));
+		const after = chatStore.getChat(chat.id)!;
+		assert.equal(after.messages.length, 2, "the old reply is replaced, not stacked");
+		assert.equal(after.messages[0]!.id, before.messages[0]!.id, "the learner's message is kept as it was");
+		assert.match(JSON.stringify(after.messages[1]), /clearer second answer/);
+		assert.doesNotMatch(JSON.stringify(after.messages), /muddled/);
+		assert.equal(calls[1]!.length, calls[0]!.length, "the model saw the same context the second time");
+	});
+
+	it("refuses a reply that left a question behind (400, record untouched)", async () => {
+		const { engine } = scriptedTeacher(defaultLesson);
+		const chat = createConfiguredChat("Test: retry refused");
+		createdChats.push(chat.id);
+		await drainTurn(post(chat.id, { type: "text", text: "teach me the solar system" }), agentFactory(engine));
+		const before = chatStore.getChat(chat.id)!;
+		const res = await handleChatRequest(post(chat.id, { type: "retry" }), agentFactory(engine));
+		assert.equal(res.status, 400);
+		assert.deepEqual(chatStore.getChat(chat.id)!.messages, before.messages);
+	});
+});

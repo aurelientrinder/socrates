@@ -27,6 +27,9 @@ export {
 	readSettings as readSettingsRecord,
 	writeSettings as writeSettingsRecord,
 	settingsStore,
+	settingsRecovery,
+	dismissSettingsRecovery,
+	type SettingsRecovery,
 } from "../store/settings.ts";
 export { promptOverrides } from "../store/prompt-overrides.ts";
 export { isValidSegmentPath } from "../core/prompt-segments.ts";

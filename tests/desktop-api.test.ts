@@ -46,7 +46,18 @@ test("desktop capability injects only trusted app mainframe exact-origin API req
 });
 
 test("all methods fail closed for desktop missing/wrong secret; API-only matcher covers SSE/settings/spending", () => {
-	assert(desktopAPIAuthorized(new Headers(), {}), "browser-only API-key mode unchanged");
+	assert(desktopAPIAuthorized(new Headers({ host: "localhost:3000" }), {}), "browser-only mode serves loopback");
+	assert(desktopAPIAuthorized(new Headers({ host: "127.0.0.1:3000", origin: "http://127.0.0.1:3000" }), {}));
+	assert(desktopAPIAuthorized(new Headers({ host: "[::1]:3000", origin: "http://localhost:3000" }), {}));
+	for (const headers of <Record<string, string>[]>[
+		{},
+		{ host: "192.168.1.20:3000" },
+		{ host: "evil.example" }, // DNS rebinding: Host is the attacker's name
+		{ host: "localhost.evil.example:3000" },
+		{ host: "localhost:3000", origin: "https://evil.example" }, // cross-site POST
+		{ host: "localhost:3000", origin: "null" },
+	]) assert(!desktopAPIAuthorized(new Headers(headers), {}), JSON.stringify(headers));
+	assert(desktopAPIAuthorized(new Headers({ host: "192.168.1.20:3000" }), { LH_ALLOW_REMOTE_API: "1" }), "explicit opt-in to LAN serving");
 	assert(!desktopAPIAuthorized(new Headers({ [HEADER]: secret }), { LH_DESKTOP_SERVER: "1" }), "missing server secret must not disable authorization");
 	for (const value of [undefined, "", "wrong", secret + ", " + secret]) {
 		assert(!desktopAPIAuthorized(new Headers(value === undefined ? {} : { [HEADER]: value }), { LH_DESKTOP_SERVER: "1", LH_DESKTOP_API_SECRET: secret }));

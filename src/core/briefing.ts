@@ -37,7 +37,7 @@ import {
 	type StudyPlan,
 } from "./study-plan.ts";
 
-export { CHECK_STALE_DAYS, ITEM_MINUTES, MAX_ITEMS, whenLabel } from "./study-plan.ts";
+export { CHECK_STALE_DAYS, ITEM_MINUTES, MAX_ITEMS, reviewMinutes, whenLabel } from "./study-plan.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -487,7 +487,7 @@ function basePrompt(item: BriefingItem): string {
 		case "prep":
 			return `${PREP_OPENING[item.session ?? "lecture"](item.eventTitle ?? "today")}, about 10 minutes: ${PREP_TASK[item.session ?? "lecture"](item.topicTitles.join(", "))}`;
 		default:
-			return `Review session, about 15 minutes: quiz me on ${item.topicTitles.join(", ")} and reteach whatever I miss.${forEvent}`;
+			return `Review session, about ${item.minutes} minutes: quiz me on ${item.topicTitles.join(", ")} and reteach whatever I miss.${forEvent}`;
 	}
 }
 

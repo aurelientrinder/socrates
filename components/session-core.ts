@@ -17,6 +17,7 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import {
 	needsContinuation,
+	retryBase,
 	measuredContextTokens,
 	newAnswerResult,
 	newNextMessage,
@@ -591,6 +592,16 @@ export class SessionModel {
 		if (optimistic.length > 0) this.mutate(() => {
 			this.tail = [...this.tail, ...optimistic];
 		});
+		if (input.type === "retry") {
+			// Retry: the old reply leaves the view at once (the server cuts
+			// the same messages — retryBase is shared); the refetch-first
+			// attach below adopts the server's record either way.
+			const base = retryBase([...this.base, ...this.tail]);
+			if (base) this.mutate(() => {
+				this.base = base;
+				this.tail = [];
+			});
+		}
 		try {
 			// SUBMITS ARE NOT ABORTABLE BY VIEW TEARDOWN (owner, 2026-10-10 —
 			// the dead-session-start postmortem): the POST must NOT ride

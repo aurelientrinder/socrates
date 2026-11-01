@@ -1,5 +1,5 @@
 import { TodayView } from "@/components/today-view";
-import { CALIBRATED_WITHIN } from "@/src/core";
+import { CALIBRATED_WITHIN, CALIBRATION_MIN_ANSWERS } from "@/src/core";
 import {
 	backupIfDue,
 	calibrationAcrossSessions,
@@ -7,6 +7,8 @@ import {
 	listChats,
 	readBriefingPrefs,
 	savedBriefing,
+	settingsRecovery,
+	settingsStore,
 	studyRecord,
 	TASK_PROVIDERS,
 } from "@/src/server";
@@ -14,8 +16,6 @@ import {
 // Dynamic: the briefing is per day and the connections change under it.
 export const dynamic = "force-dynamic";
 
-/** Rated answers needed before Today calls out overconfidence. */
-const HONESTY_MIN_ANSWERS = 5;
 
 /**
  * HOME = TODAY (redesign wave, 2026-10-26): opening the app answers "what
@@ -23,11 +23,13 @@ const HONESTY_MIN_ANSWERS = 5;
  * lives at /map (Progress → Map); /today redirects here.
  */
 export default function TodayPage() {
+	settingsStore.readSettings(); // a damaged file is recovered (and noted) here
+	const recovery = settingsRecovery();
 	backupIfDue();
 	const calibration = calibrationAcrossSessions();
 	const gap = calibration.gap;
 	const honesty =
-		gap !== null && calibration.answered >= HONESTY_MIN_ANSWERS && gap > CALIBRATED_WITHIN ? { points: Math.round(gap) } : null;
+		gap !== null && calibration.answered >= CALIBRATION_MIN_ANSWERS && gap > CALIBRATED_WITHIN ? { points: Math.round(gap) } : null;
 	const now = new Date();
 	const study = studyRecord(now);
 	const week = { minutes: study.week, today: (now.getDay() + 6) % 7 };
@@ -43,6 +45,7 @@ export default function TodayPage() {
 			honesty={honesty}
 			week={week}
 			streak={study.streak}
+			settingsRecovery={recovery && { keptAs: recovery.keptAs, restoredFrom: recovery.restoredFrom }}
 		/>
 	);
 }

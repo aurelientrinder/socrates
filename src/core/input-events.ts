@@ -46,6 +46,10 @@ export type ChatInput =
 	| { type: "text"; text: string }
 	| { type: "answer"; toolCallId: string; answer: QuestionAnswerData }
 	| { type: "continue" }
+	/** Re-ask the tutor's last reply (2026-11-01): the reply after the
+	 *  learner's last message is dropped and the turn runs again from
+	 *  there (native-messages.ts retryBase decides what may be retried). */
+	| { type: "retry" }
 	/** The practice dock's two buttons (owner, 2026-10-04): the learner's
 	 *  thinking on the ACTIVE problem — one lane (owner 2026-10-05):
 	 *  whether it claims an answer is read from the text. One
@@ -172,6 +176,8 @@ export function parseChatInput(input: unknown): ChatInput {
 			return { type: "answer", toolCallId: i.toolCallId, answer: i.answer as QuestionAnswerData };
 		case "continue":
 			return { type: "continue" };
+		case "retry":
+			return { type: "retry" };
 		case "thinking":
 			if (typeof i.problemCallId !== "string" || i.problemCallId.length === 0) {
 				throw new ChatInputError("thinking input requires problemCallId");
@@ -213,6 +219,10 @@ export function inputAppends(
 		}
 		case "continue":
 			return dismissalConclusion(record);
+		case "retry":
+			// The truncation itself is the handler's (retryBase): nothing is
+			// appended — the learner's message is already the record's tail.
+			return [];
 		case "thinking": {
 			const active = activeProblemOf(record.messages);
 			if (!active || active.toolCallId !== input.problemCallId) {

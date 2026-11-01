@@ -40,7 +40,7 @@ import { beginTurn, endTurn } from "./turn-liveness.ts";
 import { applyParkedDismissal } from "./dismissal-park.ts";
 import { registerTurn, unregisterTurn } from "./turn-runs.ts";
 import { persistTurn, triggerExtraction } from "./turn-service.ts";
-import { hasProbeDone, danglingQuestionOf } from "../core/native-messages.ts";
+import { hasProbeDone, danglingQuestionOf, retryBase } from "../core/native-messages.ts";
 import { warmupActive } from "../core/review.ts";
 import { composeInstructions } from "../agent/teacher-agent.ts";
 import { ensureCompacted, kickCompaction, effectiveThresholdTokens } from "./compaction.ts";
@@ -240,6 +240,17 @@ export async function handleChatInput(
 	);
 	const compactedRecord = stores.chatStore.getChat(chatId);
 	if (compactedRecord) record = compactedRecord;
+
+	// RETRY (2026-11-01): the turn re-runs from the learner's last message.
+	// The tutor's reply after it is dropped here and the shorter record is
+	// what the write-ahead persists below (after beginTurn, so a live turn
+	// 409s first and nothing is cut). Usage already spent stays in the
+	// turns log. A reply that left a question, plan or job behind is final.
+	if (input.type === "retry") {
+		const base = retryBase(record.messages);
+		if (!base) return Response.json({ error: "This reply can't be retried. Send a new message instead." }, { status: 400 });
+		record = { ...record, messages: base };
+	}
 
 	// The input's native appends (pure; the honest 400 for an answer with no
 	// pending question call). Computed BEFORE beginTurn so a refused input

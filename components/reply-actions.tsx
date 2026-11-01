@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckIcon, CopyIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, RotateCcwIcon } from "lucide-react";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 
 /** The reply's plain text for the clipboard: the text parts in order,
@@ -19,13 +19,20 @@ export function replyCopyText(parts: readonly { type: string; text?: string }[])
  * 2026-11-01): Claude's feed grammar — the reply is open text, and its
  * actions sit below it, faint until the reply is hovered or focused.
  */
-export function ReplyActions({ parts }: { parts: readonly { type: string; text?: string }[] }) {
+export function ReplyActions({
+	parts,
+	onRetry,
+}: {
+	parts: readonly { type: string; text?: string }[];
+	/** Set on the last reply when it can be re-asked (chat.tsx canRetry). */
+	onRetry?: () => void;
+}) {
 	const [copied, setCopied] = useState(false);
 	const text = replyCopyText(parts);
-	if (!text) return null;
+	if (!text && !onRetry) return null;
 	return (
 		<div data-testid="reply-actions" className="-ml-1.5 mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-			<button
+			{text && <button
 				type="button"
 				aria-label={copied ? "Copied" : "Copy reply"}
 				onClick={(e) => {
@@ -42,7 +49,23 @@ export function ReplyActions({ parts }: { parts: readonly { type: string; text?:
 			>
 				{copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
 				{copied ? "Copied" : "Copy"}
-			</button>
+			</button>}
+			{onRetry && (
+				<button
+					type="button"
+					data-testid="reply-retry"
+					aria-label="Retry: ask for this reply again"
+					title="Ask for this reply again"
+					onClick={(e) => {
+						blurAfterPointerClick(e);
+						onRetry();
+					}}
+					className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+				>
+					<RotateCcwIcon className="size-3.5" />
+					Retry
+				</button>
+			)}
 		</div>
 	);
 }
