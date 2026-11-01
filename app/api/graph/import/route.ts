@@ -21,7 +21,7 @@
  * healthy. The dock's chips + graph refetch track progress live through
  * /api/graph/status, as with session runs.
  */
-import { addNotesToCourse, courseExists, extraction, NotesImportError, prepareNote, SCANNED_PDF_MESSAGE } from "@/src/server";
+import { addNotesToCourse, courseExists, extraction, NotesImportError, prepareNote, SCANNED_PDF_MESSAGE, trackImport } from "@/src/server";
 import {
 	ModelsNotConfiguredError,
 	PROVIDER_KEY_MISSING_CODE,
@@ -69,16 +69,22 @@ export async function POST(request: Request) {
 			const next = queue.shift();
 			if (!next) return;
 			const { file, requestIndex } = next;
+			const tracked = trackImport(file.name);
 			try {
-				const note = await prepareNote(file.name, new Uint8Array(await file.arrayBuffer()));
+				const note = await prepareNote(file.name, new Uint8Array(await file.arrayBuffer()), (step) => tracked.update({ status: "reading", step }));
 				if (course) addNotesToCourse(course, [note.meta.id]);
 				if (!note.text) {
-					results.push({ filePath: file.name, requestIndex, outcome: "failed", ok: false, error: SCANNED_PDF_MESSAGE });
+					const error = note.warning ?? SCANNED_PDF_MESSAGE;
+					tracked.fail(error);
+					results.push({ filePath: file.name, requestIndex, outcome: "failed", ok: false, error });
 					continue;
 				}
+				tracked.update({ status: "mapping", step: "Adding to your map" });
 				const stats = await extraction.importNotes({ filePath: file.name, text: note.text });
+				tracked.done();
 				results.push({ filePath: file.name, requestIndex, outcome: "completed", ok: true, stats, ...(note.warning ? { warning: note.warning } : {}) });
 			} catch (err) {
+				tracked.fail(err instanceof Error ? err.message : String(err));
 				if (err instanceof ModelsNotConfiguredError) {
 					results.push({
 						filePath: file.name,
