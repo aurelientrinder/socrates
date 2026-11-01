@@ -61,6 +61,7 @@ export * from "./briefing.ts";
 export * from "./study-plan.ts";
 // Course groups: calendar classes suggested as groups of notes + sessions. Pure.
 export * from "./courses.ts";
+export * from "./notes-folder.ts";
 export * from "./course-calendar.ts";
 export * from "./course-lens.ts";
 export * from "./calendar-layout.ts";
