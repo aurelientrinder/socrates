@@ -12,7 +12,7 @@ import type { GraphNode, GraphChain, NotesSource, SessionCheckpoint } from "../s
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-notes-import-"));
 process.env.LH_DATA_DIR = TMP_DATA;
 const { POST } = await import("../app/api/graph/import/route.ts");
-const { extraction, notesLibrary } = await import("../src/server/index.ts");
+const { extraction, notesLibrary, setScanReader, readingQueueState } = await import("../src/server/index.ts");
 const { ModelsNotConfiguredError, ProviderKeyMissingError } = await import("../src/core/settings.ts");
 const { createExtractionPipeline, NotesImportError } = await import("../src/agent/subagents/extraction.ts");
 const { stores } = await import("../src/server/stores.ts");
@@ -168,6 +168,50 @@ it("a fully scanned PDF is saved but refused for the map, with what to do instea
 	assert.match(result.error, /looks scanned/);
 	assert.equal(called, false);
 	assert.ok(notesLibrary.list().some((n) => n.name === "scan.pdf"));
+});
+
+it("a scanned PDF is read page by page by the AI, reaches the map, and shows in the reading queue", async () => {
+	let received = "";
+	extraction.importNotes = async ({ text }) => { received = text; return { nodes: 3, chains: 0 }; };
+	const steps: string[] = [];
+	setScanReader({
+		available: () => true,
+		render: async (_p, pages) => pages.map((page) => ({ page, png: new Uint8Array([1]) })),
+		read: async (images) => {
+			steps.push(readingQueueState().items.map((i) => `${i.name}:${i.status}:${i.step ?? ""}`).join("|"));
+			return new Map(images.map((i) => [i.page, `Handwritten page ${i.page}: the Krebs cycle makes NADH.`]));
+		},
+	});
+	try {
+		const response = await POST(request(["handwritten.pdf"], () => makePdf(["", "", "Typed page about the Krebs cycle and ATP."]) as BlobPart));
+		const [result] = (await response.json()).results;
+		assert.equal(result.ok, true, result.error);
+		assert.match(received, /--- Page 1 ---\nHandwritten page 1/);
+		assert.match(received, /--- Page 2 ---\nHandwritten page 2/);
+		assert.match(received, /--- Page 3 ---\nTyped page/);
+		assert.match(steps[0]!, /handwritten\.pdf:reading:Reading scanned page 2 of 2/);
+		const saved = notesLibrary.list().find((n) => n.name === "handwritten.pdf")!;
+		assert.ok(!saved.emptyPages?.length);
+		const finished = readingQueueState().items.find((i) => i.name === "handwritten.pdf");
+		assert.equal(finished?.status, "done");
+	} finally { setScanReader(null); }
+});
+
+it("a scan the AI cannot finish is saved and says why, without touching the map", async () => {
+	let called = false;
+	extraction.importNotes = async () => { called = true; return { nodes: 0, chains: 0 }; };
+	setScanReader({
+		available: () => true,
+		render: async (_p, pages) => pages.map((page) => ({ page, png: new Uint8Array([1]) })),
+		read: async () => { throw new Error("Gemini is unavailable"); },
+	});
+	try {
+		const response = await POST(request(["broken-scan.pdf"], () => makePdf(["", ""]) as BlobPart));
+		const [result] = (await response.json()).results;
+		assert.equal(result.ok, false);
+		assert.match(result.error, /stopped early: Gemini is unavailable/);
+		assert.equal(called, false);
+	} finally { setScanReader(null); }
 });
 
 it("a text file is saved too, and a broken PDF is refused with a readable message", async () => {

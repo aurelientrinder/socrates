@@ -2,6 +2,7 @@ import { CourseCalendar } from "@/components/course-calendar";
 import { CoursesView } from "@/components/courses-view";
 import { ExamLibrary } from "@/components/exam-library";
 import { NotesView } from "@/components/notes-view";
+import { ReadingQueue } from "@/components/reading-queue";
 import { LIBRARY_TABS, PageFrame, PageTabs } from "@/components/page-header";
 import { SessionLibrary } from "@/components/session-library";
 
@@ -25,6 +26,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
 				<CourseCalendar />
 			) : (
 				<>
+					<ReadingQueue />
 					<CoursesView />
 					<NotesView />
 					<ExamLibrary />
