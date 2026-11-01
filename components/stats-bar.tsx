@@ -34,6 +34,7 @@ export function StatsBar({
 	dictationSlot,
 	chatId,
 	leadingSlot,
+	flat = false,
 }: {
 	turns: TurnUsage[];
 	contextTokens?: number | null;
@@ -52,6 +53,10 @@ export function StatsBar({
 	 *  composer's teach | practice switch rides here — before the session
 	 *  data (which renders nothing pre-chat on that surface). */
 	leadingSlot?: ReactNode;
+	/** Inside the session's composer card (owner, feed redesign
+	 *  2026-11-01): the row is the card's bottom toolbar — dictate on the
+	 *  left, usage and the model pills (borderless) on the right. */
+	flat?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const [selectedModel, setSelectedModel] = useState<string | undefined>();
@@ -98,7 +103,7 @@ export function StatsBar({
 			// (so its transparent gradient area never blocks scrolling) — this row
 			// must re-enable events or every control on it is dead (the model-
 			// control wave caught this live: buttons rendered, clicks never landed).
-			className="pointer-events-auto relative flex items-center justify-between gap-3 px-3 pt-2 text-xs text-muted-foreground"
+			className={flat ? "pointer-events-auto relative flex items-center gap-2 px-2 pb-2 text-xs text-muted-foreground" : "pointer-events-auto relative flex items-center justify-between gap-3 px-3 pt-2 text-xs text-muted-foreground"}
 		>
 			{/* The summary button + its popover: the popover anchors to this
 			    wrapper, CENTERED over the button itself (owner, stats round 2)
@@ -111,6 +116,9 @@ export function StatsBar({
 			{leadingSlot}
 			{/* The left side: the session-data summary — only once a session
 			    exists (turns). Pre-chat renders nothing (see the header). */}
+			{flat && dictationSlot && (
+				<div className="flex min-w-0 flex-1 items-center justify-start">{dictationSlot}</div>
+			)}
 			{(chatId || turns.length > 0) && (
 			<div ref={barRef} className="relative">
 				{/* No tooltip — the numbers describe themselves and the popover
@@ -184,13 +192,13 @@ export function StatsBar({
 			{/* The middle slot: dictation (owner, 2026-09-17). flex-1 lets the
 			    meter expand into the row's free width; justify-center keeps the
 			    lone idle mic button visually centered. */}
-			{dictationSlot && (
+			{!flat && dictationSlot && (
 				<div className="flex min-w-0 flex-1 items-center justify-center">{dictationSlot}</div>
 			)}
 			{/* The model + thinking control — one controller for the conversation
 			    agents (prober/teacher); the record's `turns` above still folds
 			    the ACTUAL models billed, regardless of what the picker says. */}
-			<ModelControl chatId={chatId} onModelChange={setSelectedModel} />
+			<ModelControl chatId={chatId} onModelChange={setSelectedModel} flat={flat} />
 		</div>
 	);
 }
