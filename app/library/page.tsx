@@ -1,6 +1,7 @@
 import { CourseCalendar } from "@/components/course-calendar";
 import { CoursesView } from "@/components/courses-view";
 import { ExamLibrary } from "@/components/exam-library";
+import { NotesFolderView } from "@/components/notes-folder";
 import { NotesView } from "@/components/notes-view";
 import { LIBRARY_TABS, PageFrame, PageTabs } from "@/components/page-header";
 import { SessionLibrary } from "@/components/session-library";
@@ -11,6 +12,8 @@ import { SessionLibrary } from "@/components/session-library";
  * searchable, beyond the sidebar's short recent list, and the mock exams.
  * The Calendar tab (2026-10-29) is the learner's calendar as a week grid,
  * where each event is filed under a class by hand.
+ * The Notes folder (2026-11-01) is the watched folder (a reMarkable export
+ * folder…), one subfolder per class, read page by page, never twice.
  * /notes redirects here.
  */
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
@@ -23,6 +26,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
 				<CourseCalendar />
 			) : (
 				<>
+					<NotesFolderView />
 					<CoursesView />
 					<NotesView />
 					<ExamLibrary />

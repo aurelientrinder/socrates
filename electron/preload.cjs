@@ -23,6 +23,10 @@
  *   asks main to kill the server and quit-and-install. Browser builds:
  *   both absent, the banner never renders.
  *
+ *   window.lh.pickFolder() / window.lh.openWatchedFolder(sub?) — the
+ *   watched notes folder (2026-11-01): the system folder picker, and the
+ *   watched folder (or a class folder in it) shown in Explorer/Finder.
+ *
  *   window.lh.openNote(id) — open a saved note's original file (the notes
  *   library, data/notes/<id>/) in the system's default app. Main resolves
  *   the path itself from the id; the renderer never names a path.
@@ -57,4 +61,8 @@ contextBridge.exposeInMainWorld("lh", {
 	})(),
 	setTheme: (theme) => ipcRenderer.send("lh:theme", theme),
 	openNote: (id) => ipcRenderer.invoke("lh:notes:open", id),
+	// Watched notes folder: the system folder picker (null when cancelled),
+	// and show the watched folder (or one class folder of it) in Explorer/Finder.
+	pickFolder: () => ipcRenderer.invoke("lh:folder:pick"),
+	openWatchedFolder: (sub) => ipcRenderer.invoke("lh:folder:open", sub),
 });

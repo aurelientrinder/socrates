@@ -68,6 +68,8 @@ declare global {
 			installUpdate?: () => void;
 			/** Open a saved note's original file in the system's default app. */
 			openNote?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+			pickFolder?: () => Promise<string | null>;
+			openWatchedFolder?: (sub?: string) => Promise<{ ok: boolean; error?: string }>;
 		};
 	}
 }

@@ -14,6 +14,7 @@ export * from "./flashcards.ts";
 export * from "./exams.ts";
 export * from "./graph.ts";
 export * from "./notes.ts";
+export * from "./notes-folder.ts";
 export { notesLibrary } from "../store/notes.ts";
 export { NotesImportError } from "../agent/subagents/extraction.ts";
 export * from "./commit-positions.ts";

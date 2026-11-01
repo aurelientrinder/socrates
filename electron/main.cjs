@@ -689,6 +689,30 @@ async function main() {
 		}
 	});
 
+	// Watched notes folder (2026-11-01): the system folder picker for the
+	// folder Socrates watches, and "Show in Explorer/Finder" for it. The
+	// open handler takes no path from the renderer: it reads the folder from
+	// the app's own config file (data/notes-folder/config.json).
+	ipcMain.handle("lh:folder:pick", async (event) => {
+		const win = BrowserWindow.fromWebContents(event.sender);
+		if (!win || !trustedAppWindows.has(win) || !trustedSender(event, new URL(url).origin, BrowserWindow)) return null;
+		const result = await dialog.showOpenDialog(win, { title: "Choose your notes folder", properties: ["openDirectory"] });
+		return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+	});
+	ipcMain.handle("lh:folder:open", async (event, sub) => {
+		if (!trustedAppWindows.has(BrowserWindow.fromWebContents(event.sender)) || !trustedSender(event, new URL(url).origin, BrowserWindow)) return { ok: false, error: "Untrusted desktop request." };
+		try {
+			const config = JSON.parse(fs.readFileSync(path.join(DATA_DIR(), "notes-folder", "config.json"), "utf-8"));
+			if (typeof config.root !== "string") return { ok: false, error: "No folder is watched." };
+			// One level down at most, and only a name the config knows (a class folder).
+			const target = typeof sub === "string" && sub && config.folders && Object.hasOwn(config.folders, sub) && !/[\\/]|\.\./.test(sub) ? path.join(config.root, sub) : config.root;
+			const failure = await shell.openPath(target);
+			return failure ? { ok: false, error: failure } : { ok: true };
+		} catch {
+			return { ok: false, error: "No folder is watched." };
+		}
+	});
+
 	installMenu();
 
 	// Auto-update (Wave C): wire the updater before the window so the
