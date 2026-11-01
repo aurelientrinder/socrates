@@ -417,9 +417,14 @@ function CourseCard({
 					e.target.value = "";
 				}}
 			/>
-			<span aria-hidden className="absolute inset-y-4 left-0 w-[3px] rounded-r-full" style={{ background: "var(--bar)" }} />
-
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pt-4 pb-3">
+				<span
+					aria-hidden
+					className="flex size-10 shrink-0 items-center justify-center rounded-xl text-[17px] font-semibold"
+					style={{ background: "var(--tint)", color: "var(--ink)" }}
+				>
+					{course.label.trim().charAt(0).toUpperCase() || "?"}
+				</span>
 				<div className="min-w-0 flex-1">
 					{renaming ? (
 						<form
