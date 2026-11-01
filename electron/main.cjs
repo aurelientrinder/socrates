@@ -260,7 +260,7 @@ function startServer(port) {
 }
 
 /** No "ready" event exists — poll until the server answers (docs-confirmed). */
-function waitUntilUp(url, tries = 150) {
+function waitUntilUp(url, tries = 300) {
 	return new Promise((resolve, reject) => {
 		const attempt = (n) => {
 			const req = http.get(url, (res) => {
@@ -269,7 +269,7 @@ function waitUntilUp(url, tries = 150) {
 			});
 			req.on("error", () => {
 				if (n <= 0) reject(new Error(`server never answered on ${url}`));
-				else setTimeout(() => attempt(n - 1), 200);
+				else setTimeout(() => attempt(n - 1), 100);
 			});
 		};
 		attempt(tries);
@@ -297,7 +297,19 @@ function killServer() {
  *    default, we do not);
  *  - will-navigate pinned to the app origin; window.open always denied —
  *    external links go to the real browser via shell.openExternal. */
-function createWindow(url) {
+/** A tiny self-contained page shown while the backend starts (or if it can't). */
+function splashURL(message, failed = false) {
+	const { background, symbol } = loadTheme();
+	const html = `<!doctype html><meta charset="utf-8"><title>${PRODUCT_NAME}</title>
+<style>html,body{height:100%;margin:0;background:${background};color:${symbol};font:15px system-ui,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;-webkit-app-region:drag;text-align:center;padding:0 32px}
+.s{width:22px;height:22px;border:3px solid ${symbol}33;border-top-color:${symbol};border-radius:50%;animation:r .9s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}</style>
+${failed ? "" : '<div class="s"></div>'}<div style="opacity:.75">${message.replace(/[<&>]/g, "")}</div>`;
+	return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function createWindow(url, { splash = false } = {}) {
 	const win = new BrowserWindow({
 		width: 1440,
 		height: 900,
@@ -388,7 +400,7 @@ function createWindow(url) {
 		return { action: "deny" };
 	});
 
-	void win.loadURL(url);
+	void win.loadURL(splash ? splashURL(`Starting ${PRODUCT_NAME}…`) : url);
 	// Zoom truth reaches the renderer for EVERY load (reload, nav): the
 	// renderer's --lh-zoom must never go stale. The fallback catcher below
 	// covers ⌘= / layout variants the menu's ⌘Plus may not claim — menu-
@@ -522,6 +534,20 @@ function setupAutoUpdater() {
 		debug: (m) => {}, // too chatty for the persistent log
 		error: (m) => log(`updater error: ${m}`),
 	};
+	// Log download progress (every ~10%) so a slow update can be diagnosed
+	// from userData/logs/main.log: how much was fetched, and whether the
+	// differential path was used (a small total) or the whole installer.
+	let lastLoggedDecile = -1;
+	autoUpdater.on("update-available", (info) => {
+		lastLoggedDecile = -1;
+		log(`update available: ${info?.version}`);
+	});
+	autoUpdater.on("download-progress", (p) => {
+		const decile = Math.floor((p.percent ?? 0) / 10);
+		if (decile === lastLoggedDecile) return;
+		lastLoggedDecile = decile;
+		log(`update download: ${Math.round(p.percent)}% (${Math.round(p.transferred / 1e6)} of ${Math.round(p.total / 1e6)} MB)`);
+	});
 	autoUpdater.on("update-downloaded", (info) => {
 		log(`update downloaded: ${info?.version} — banner shown`);
 		broadcastUpdateStatus({ status: "downloaded", version: info?.version ?? null });
@@ -608,25 +634,37 @@ async function main() {
 	process.on("exit", killServer);
 	process.on("SIGHUP", killServer);
 
-	await app.whenReady();
+	const bootStart = Date.now();
+	const since = () => `${((Date.now() - bootStart) / 1000).toFixed(1)}s`;
 
 	// Dev mode: point at a running `next dev` server (LH_DEV_URL) — no
 	// spawn, no packaging, full HMR. The rest of this shell still applies
 	// (guards, menu, single instance).
 	const devUrl = process.env.LH_DEV_URL;
 	const url = devUrl ?? `http://127.0.0.1:${await freePort()}`;
+	// Launch speed (2026-11-01): the backend takes the longest to come up
+	// (cold file reads, antivirus scans of a fresh install), so it starts
+	// BEFORE Electron finishes initializing instead of after, and the window
+	// opens at once with a splash while the server warms up (see below).
+	let serverUp = null;
 	if (!devUrl) {
 		desktopAPISecret = randomBytes(32).toString("hex");
+		log(`starting server: ${serverEntry()}`);
+		log(`data dir: ${DATA_DIR()}${fs.existsSync(AUTH_FILE()) ? " · auth.json: present" : " · auth.json: ABSENT (no BYOK keys yet)"}`);
+		await startServer(new URL(url).port);
+		serverUp = waitUntilUp(url);
+		serverUp.catch(() => {}); // handled where it is awaited, never an unhandled rejection
+	}
+
+	await app.whenReady();
+	log(`launch: app ready after ${since()}`);
+
+	if (!devUrl) {
 		const ownedOrigin = new URL(url).origin;
 		// All URLs, not only /api: remove the header again on external redirects.
 		session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["<all_urls>"] }, (details, callback) => {
 			callback({ requestHeaders: desktopAPIHeaders(details, ownedOrigin, desktopAPISecret, [...trustedAppWindows]) });
 		});
-		log(`starting server: ${serverEntry()}`);
-		log(`data dir: ${DATA_DIR()}${fs.existsSync(AUTH_FILE()) ? " · auth.json: present" : " · auth.json: ABSENT (no BYOK keys yet)"}`);
-		await startServer(new URL(url).port);
-		await waitUntilUp(url);
-		log(`server up: ${url}`);
 	} else {
 		log(`dev mode: ${devUrl}`);
 	}
@@ -704,7 +742,20 @@ async function main() {
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow(url);
 	});
-	createWindow(url);
+	// The window opens on a splash and switches to the app once the backend
+	// answers, so launch never looks like nothing happened.
+	const win = createWindow(url, { splash: !devUrl });
+	log(`launch: window created after ${since()}`);
+	if (serverUp) {
+		try {
+			await serverUp;
+			log(`launch: server up after ${since()}: ${url}`);
+			if (!win.isDestroyed()) void win.loadURL(url);
+		} catch (err) {
+			log(`server never came up: ${err?.message ?? err}`);
+			if (!win.isDestroyed()) void win.loadURL(splashURL(`Socrates couldn't start its engine. Quit and reopen it; if it keeps happening, the log is in ${path.join(app.getPath("userData"), "logs")}.`, true));
+		}
+	}
 	log(`window open: ${url}`);
 	// First update check AFTER the window exists (the downloaded-banner
 	// push needs a listener); dev builds no-op (no autoUpdater).
