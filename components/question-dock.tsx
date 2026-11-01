@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
+import { ArrowDownIcon, CheckIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
@@ -421,6 +421,20 @@ function QuestionDockForm({
 			? text.trim().length > 0 || (freeRecall && sel.dontKnow)
 			: sel.dontKnow || (sel.otherSelected && other.trim().length > 0) || sel.selected.size > 0;
 
+	const anyPicked = qd.mode !== "multi-select" && (sel.selected.size > 0 || sel.otherSelected);
+	const compactOptions =
+		qd.mode !== "text" &&
+		kind !== "ask" &&
+		qd.options.every((o) => o.label.length <= 32 && (kind === "quiz" || !o.description));
+	const submitLabel =
+		qd.mode === "text"
+			? "Submit answer"
+			: sel.dontKnow
+				? "Show me the answer"
+				: canSubmit
+					? "Submit"
+					: "Pick an answer";
+
 	const submit = () => {
 		if (!canSubmit || compactionRunning) return;
 		/* FINISH DICTATION FIRST (owner, 2026-10-01): Enter may arrive while
@@ -602,7 +616,8 @@ function QuestionDockForm({
 			    Capped by the measured column (--dock-max-h; the old fixed 55dvh cut
 			    long questions short — owner round, 2026-10-05). */}
 			<div data-session-find-root="" className="max-h-[var(--dock-max-h,55dvh)] overflow-y-auto px-4 pt-3">
-				<div className="mb-1 flex items-baseline gap-2 text-xs font-medium text-muted-foreground">
+				<div className="mb-2 flex items-center gap-2 text-[0.8rem] font-medium text-muted-foreground">
+					<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground/50" />
 					<span className="min-w-0 flex-1">
 					{warmup
 						? `Warm-up · ${warmup.step} of ${warmup.total}`
@@ -630,13 +645,14 @@ function QuestionDockForm({
 							type="button"
 							data-testid="warmup-skip"
 							onClick={warmup.onSkip}
-							className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+							className="-mr-2 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 						>
 							Skip warm-up
+							<ChevronRightIcon className="size-3" aria-hidden />
 						</button>
 					)}
 				</div>
-				<div className="mb-3 font-medium">
+				<div className="mb-4 text-[1.2rem] leading-[1.55] font-normal">
 					<MessageResponse>{qd.question}</MessageResponse>
 				</div>
 				{qd.context && (
@@ -646,7 +662,7 @@ function QuestionDockForm({
 				)}
 
 				{qd.mode !== "text" && (
-					<div className="flex flex-col gap-2 pb-2" role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
+					<div className={cn("grid gap-2.5 pb-3", compactOptions && "sm:grid-cols-2")} role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
 						{qd.options.map((opt, i) => {
 							const isSel = sel.selected.has(i);
 							return (
@@ -658,25 +674,31 @@ function QuestionDockForm({
 									data-kbdrow={i}
 									onClick={() => toggle(i)}
 									className={cn(
-										"flex items-start gap-3 rounded-lg border px-3 py-2 text-left text-sm outline-none transition-colors",
-										isSel ? "border-primary bg-accent" : "hover:bg-accent/50",
+										"relative flex min-h-14 items-center gap-3.5 rounded-2xl border border-border/80 bg-card py-3 pr-11 pl-3.5 text-left text-[1.1rem] outline-none transition-[transform,box-shadow,opacity,background-color,border-color] hover:-translate-y-px hover:border-foreground/30 hover:shadow-sm",
+										isSel && "border-foreground bg-accent shadow-[0_0_0_1px_var(--foreground)] hover:border-foreground",
+										!isSel && anyPicked && "opacity-60 hover:opacity-100",
 										i === kbdIdx && !isSel && "ring-1 ring-border bg-accent/40",
 									)}
 								>
 									<span
+										aria-hidden
 										className={cn(
-											"mt-0.5 flex size-4 shrink-0 items-center justify-center border",
-											qd.mode === "multi-select" ? "rounded-sm" : "rounded-full",
-											isSel ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40",
+											"flex size-6.5 shrink-0 items-center justify-center rounded-lg font-sans text-xs font-medium transition-colors",
+											isSel ? "bg-foreground text-background" : "bg-muted text-muted-foreground",
 										)}
 									>
-										{isSel && (
-											<span className={cn(qd.mode === "multi-select" ? "text-base leading-none" : "size-1.5 rounded-full bg-current")}>
-												{qd.mode === "multi-select" ? "✓" : ""}
-											</span>
-										)}
+										{String.fromCharCode(65 + (i % 26))}
 									</span>
-									<span>
+									<span
+										aria-hidden
+										className={cn(
+											"absolute top-1/2 right-3 flex size-5.5 -translate-y-1/2 items-center justify-center rounded-full bg-foreground text-background transition-transform",
+											isSel ? "scale-100" : "scale-0",
+										)}
+									>
+										<CheckIcon className="size-3" strokeWidth={3} />
+									</span>
+									<span className="min-w-0">
 										<MessageResponse>{opt.label}</MessageResponse>
 										{kind !== "quiz" && opt.description && (
 											// Option subtext renders in Source Sans 3 (owner's mockup);
@@ -704,22 +726,21 @@ function QuestionDockForm({
 								data-kbdrow={optionCount}
 								aria-pressed={sel.dontKnow}
 								className={cn(
-									// Option-row layout + radio circle (owner); the dashed
-									// outline stays — this is the deliberate non-answer.
-									"flex items-start gap-3 rounded-lg border border-dashed px-3 py-2 text-left text-sm outline-none transition-colors",
-									sel.dontKnow ? "border-primary text-foreground" : "text-muted-foreground",
+									// A small pill under the tiles: the deliberate non-answer,
+									// quiet until chosen (redesign 2026-11-01).
+									"col-span-full inline-flex w-fit items-center gap-2 rounded-full border border-dashed py-1.5 pr-3.5 pl-2 text-[0.8rem] font-medium outline-none transition-colors hover:border-foreground/40 hover:text-foreground",
+									sel.dontKnow ? "border-solid border-foreground bg-muted text-foreground" : "text-muted-foreground",
 									kbdIdx === optionCount && !sel.dontKnow && "ring-1 ring-border bg-accent/40",
 								)}
 							>
 								<span
+									aria-hidden
 									className={cn(
-										"mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
-										sel.dontKnow
-											? "border-primary bg-primary text-primary-foreground"
-											: "border-muted-foreground/40",
+										"flex size-5 shrink-0 items-center justify-center rounded-full text-[0.7rem]",
+										sel.dontKnow ? "bg-foreground text-background" : "bg-muted text-muted-foreground",
 									)}
 								>
-									{sel.dontKnow && <span className="size-1.5 rounded-full bg-current" />}
+									?
 								</span>
 								<span>I don't know</span>
 							</button>
@@ -733,14 +754,14 @@ function QuestionDockForm({
 								data-kbdrow={optionCount}
 								onClick={selectOther}
 								className={cn(
-									"flex items-start gap-3 rounded-lg border px-3 py-2 text-left text-sm outline-none transition-colors",
-									sel.otherSelected ? "border-primary bg-accent" : "border-dashed hover:bg-accent/50",
+									"flex min-h-14 items-center gap-3.5 rounded-2xl border px-3.5 py-3 text-left text-[1.1rem] outline-none transition-colors sm:col-span-full",
+									sel.otherSelected ? "border-foreground bg-accent" : "border-dashed hover:bg-accent/50",
 									kbdIdx === optionCount && !sel.otherSelected && "ring-1 ring-border bg-accent/40",
 								)}
 							>
 								<span
 									className={cn(
-										"mt-0.5 flex size-4 shrink-0 items-center justify-center border",
+										"flex size-4 shrink-0 items-center justify-center border",
 										qd.mode === "multi-select" ? "rounded-sm" : "rounded-full",
 										sel.otherSelected
 											? "border-primary bg-primary text-primary-foreground"
@@ -818,17 +839,18 @@ function QuestionDockForm({
 						aria-pressed={sel.dontKnow}
 						onClick={() => setSel((prev) => ({ ...prev, dontKnow: !prev.dontKnow }))}
 						className={cn(
-							"flex w-full items-start gap-3 rounded-lg border border-dashed px-3 py-2 text-left text-sm outline-none transition-colors",
-							sel.dontKnow ? "border-primary text-foreground" : "text-muted-foreground",
+							"inline-flex w-fit items-center gap-2 rounded-full border border-dashed py-1.5 pr-3.5 pl-2 text-[0.8rem] font-medium outline-none transition-colors hover:border-foreground/40 hover:text-foreground",
+							sel.dontKnow ? "border-solid border-foreground bg-muted text-foreground" : "text-muted-foreground",
 						)}
 					>
 						<span
+							aria-hidden
 							className={cn(
-								"mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
-								sel.dontKnow ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40",
+								"flex size-5 shrink-0 items-center justify-center rounded-full text-[0.7rem]",
+								sel.dontKnow ? "bg-foreground text-background" : "bg-muted text-muted-foreground",
 							)}
 						>
-							{sel.dontKnow && <span className="size-1.5 rounded-full bg-current" />}
+							?
 						</span>
 						<span>I don't know</span>
 					</button>
@@ -836,18 +858,18 @@ function QuestionDockForm({
 			)}
 
 			{rated && (
-				<div className="border-t border-border/60 px-4 py-2.5">
-					<div className="flex items-center gap-3">
+				<div className="mx-3 rounded-2xl bg-muted/50 px-4 pt-3 pb-3.5">
+					<div className="flex items-center gap-4">
 						<span
 							className={cn(
-								"shrink-0 text-xs font-medium",
+								"shrink-0 text-[0.85rem] font-medium",
 								sel.dontKnow ? "text-muted-foreground/50" : "text-muted-foreground",
 							)}
 						>
-							Confidence
+							How sure are you?
 						</span>
 						<div
-							className={cn("relative h-4 min-w-0 flex-1", sel.dontKnow && "opacity-40")}
+							className={cn("relative mb-4 h-4 min-w-0 flex-1", sel.dontKnow && "opacity-40")}
 							data-testid="confidence-track"
 						>
 							{/* The RAIL is painted here, not on the input: this overlay spans
@@ -907,6 +929,11 @@ function QuestionDockForm({
 									"[&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-current",
 								)}
 							/>
+							<div aria-hidden className="pointer-events-none absolute top-full right-2 left-2 mt-1.5 grid grid-cols-3 text-[0.7rem] text-muted-foreground">
+								<span>Guess</span>
+								<span className="text-center">Coin flip</span>
+								<span className="text-right">Certain</span>
+							</div>
 						</div>
 						<span
 							data-testid="confidence-value"
@@ -927,7 +954,7 @@ function QuestionDockForm({
 			    is for dumping, soon dictated; the button submits); text mode
 			    keeps "Your answer" with Enter-to-submit. */}
 			<form
-				className="border-t border-border/60 p-1.5"
+				className="p-3"
 				onSubmit={(e) => {
 					e.preventDefault();
 					submit();
@@ -935,7 +962,7 @@ function QuestionDockForm({
 			>
 				<div
 					data-testid={qd.mode === "text" ? "answer-field" : "thinking-field"}
-					className="rounded-xl border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
+					className="rounded-2xl border border-border bg-card transition-[border-color,box-shadow] focus-within:border-foreground/40 focus-within:shadow-[0_0_0_4px_var(--muted)]"
 				>
 					<div className="px-2.5 pt-2 text-xs font-medium text-muted-foreground">
 						{qd.mode === "text" ? "Your answer" : "Your thinking"}
@@ -1013,9 +1040,9 @@ function QuestionDockForm({
 						<Button
 							type="submit"
 							disabled={!canSubmit || compactionRunning}
-							className="ml-auto h-9 rounded-md px-3.5 text-sm font-medium"
+							className="ml-auto h-9 rounded-xl px-4 text-sm font-medium"
 						>
-							Submit answer
+							{submitLabel}
 						</Button>
 					</div>
 				</div>
