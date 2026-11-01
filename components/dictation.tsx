@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2Icon, MicIcon } from "lucide-react";
+import { Loader2Icon } from "lucide-react";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { Hint } from "@/components/ui/hint";
 import { BATCH_DICTATION_MAX_SECONDS, type DictationSession } from "@/src/core";
@@ -562,9 +562,9 @@ export function DictationBar({ dictation, flat = false }: { dictation: Dictation
 					data-testid="dictation-toggle"
 				// Same blurring as the floating chrome (owner, fix wave round 3),
 			// but lower opacity — the mic stays quieter than the model pills.
-			className={flat ? "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" : "flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border/50 bg-card/50 text-xs text-muted-foreground/70 shadow-lg backdrop-blur transition-colors hover:border-border hover:text-muted-foreground"}
+			className={flat ? "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[0.78rem] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" : "flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border/50 bg-card/50 text-xs text-muted-foreground/70 shadow-lg backdrop-blur transition-colors hover:border-border hover:text-muted-foreground"}
 			>
-					<MicIcon className="size-3.5" />
+					<DictateIcon className="size-[15px] shrink-0" />
 					<span className="max-w-full truncate">{error ?? "Dictate"}</span>
 				</button>
 			</Hint>
@@ -590,7 +590,7 @@ export function DictationBar({ dictation, flat = false }: { dictation: Dictation
 				{phase === "stopping" ? (
 					<Loader2Icon className="size-3.5 animate-spin" />
 				) : (
-					<MicIcon className="size-3.5" />
+					<DictateIcon className="size-[15px]" />
 				)}
 					Stop
 				</button>
@@ -609,5 +609,17 @@ export function DictationBar({ dictation, flat = false }: { dictation: Dictation
 				))}
 			</div>
 		</div>
+	);
+}
+
+/** The dictate mark (question card redesign, 2026-11-01): a thin capsule
+ *  mic on a stand, drawn to match the approved mockup rather than the
+ *  heavier icon-set glyph. */
+function DictateIcon({ className }: { className?: string }) {
+	return (
+		<svg viewBox="0 0 16 16" fill="none" aria-hidden className={className}>
+			<rect x="5.5" y="1.75" width="5" height="8" rx="2.5" stroke="currentColor" strokeWidth="1.4" />
+			<path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+		</svg>
 	);
 }
