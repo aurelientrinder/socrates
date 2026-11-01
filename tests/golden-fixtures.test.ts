@@ -222,7 +222,10 @@ test("settings: the stamped record parses", () => {
 // ── read-only: readers never write ──────────────────────────────────────────
 
 test("read-only: after every read above, the data dir is byte-identical to the fixture source", () => {
-	const after = snapshotTree(TMP);
+	// cache/ is the one exception: derived, disposable files (the chat
+	// list's summary index, 2026-11-01) that a read may refresh. Nothing in
+	// it is the learner's data; deleting it only costs a re-parse.
+	const after = new Map([...snapshotTree(TMP)].filter(([name]) => !name.startsWith("cache/")));
 	assert.deepEqual([...after.keys()].sort(), [...BEFORE.keys()].sort(), "no files added or removed");
 	for (const [name, buf] of after) {
 		assert.ok(BEFORE.has(name), `${name} existed before`);

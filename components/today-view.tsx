@@ -1,5 +1,6 @@
 "use client";
 
+import { SettingsRecoveredNote, type SettingsRecoveredInfo } from "./settings-recovered-note";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -120,6 +121,7 @@ export function TodayShell({
 	honesty = null,
 	week = null,
 	streak = null,
+	settingsRecovery = null,
 }: {
 	briefing: BriefingData | null;
 	integrations: IntegrationsData;
@@ -137,6 +139,8 @@ export function TodayShell({
 	week?: StudyWeek | null;
 	/** The study streak; with the week, it shows in the This week card. */
 	streak?: StudyStreak | null;
+	/** Set when settings.json was unreadable and got recovered. */
+	settingsRecovery?: SettingsRecoveredInfo | null;
 }) {
 	const plan = briefing?.plan;
 	const todo = integrations.todo[0];
@@ -291,6 +295,8 @@ export function TodayShell({
 							</ul>
 						</SideCard>
 					)}
+
+					{settingsRecovery && <SettingsRecoveredNote recovery={settingsRecovery} />}
 
 					{week && <WeekCard week={week} streak={streak} onQuick={quick} />}
 
@@ -693,6 +699,7 @@ export function TodayView({
 	honesty = null,
 	week = null,
 	streak = null,
+	settingsRecovery = null,
 }: {
 	initialBriefing: BriefingData | null;
 	initialIntegrations: IntegrationsData;
@@ -701,6 +708,7 @@ export function TodayView({
 	honesty?: { points: number } | null;
 	week?: StudyWeek | null;
 	streak?: StudyStreak | null;
+	settingsRecovery?: SettingsRecoveredInfo | null;
 }) {
 	const router = useRouter();
 	const { open: openSettings } = useSettingsDialog();
@@ -920,6 +928,7 @@ export function TodayView({
 			honesty={honesty}
 			week={week}
 			streak={streak}
+			settingsRecovery={settingsRecovery}
 		/>
 	);
 }

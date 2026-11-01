@@ -172,7 +172,9 @@ describe("planBriefing", () => {
 	it("never exceeds MAX_ITEMS and respects the budget after the first item", () => {
 		const topics = Array.from({ length: 8 }, (_, i) => topic({ key: `plan:c${i}:t`, title: `T${i}`, chatId: `c${i}`, due: true, retention: 0.5 }));
 		assert.equal(planBriefing(input({ topics })).items.length, MAX_ITEMS);
-		const tight = planBriefing(input({ topics, budgetMinutes: 15 }));
+		// One-topic reviews take about 3 minutes (reviewMinutes): a 5-minute
+		// budget holds the first item only.
+		const tight = planBriefing(input({ topics, budgetMinutes: 5 }));
 		assert.equal(tight.items.length, 1);
 	});
 
@@ -197,7 +199,8 @@ describe("planBriefing", () => {
 
 	it("the fallback note and start prompts read plainly", () => {
 		const plan = planBriefing(input({ sessions, topics: [eigen], events: [event({ id: "e1", title: "Linear Algebra Exam", start: NOW + 3 * DAY })] }));
-		assert.match(fallbackNote(plan), /about 15 minutes/);
+		assert.match(fallbackNote(plan), /about 3 minutes/);
+		assert.match(startPrompt(plan.items[0]!), /^Review session, about 3 minutes:/);
 		assert.match(startPrompt(plan.items[0]!), /quiz me on Eigenvalues/);
 		assert.match(quickPrompt(plan.items[0]!), /^I only have 5 minutes: ask me two or three quick questions on Eigenvalues/);
 		assert.match(quickPrompt(plan.items[0]!), /stop there\. I have Linear Algebra Exam /);

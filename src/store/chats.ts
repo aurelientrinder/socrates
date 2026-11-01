@@ -83,6 +83,52 @@ function getChat(id: string): ChatRecord | null {
  *  each time is what made the list slow as sessions piled up. */
 const summaryCache = new Map<string, { mtimeMs: number; size: number; summary: ChatSummary }>();
 
+/** The same cache, kept on disk between launches (2026-11-01): the first
+ *  list after a launch used to parse every transcript (about half a second
+ *  with a few hundred long sessions, on the first screen the learner sees).
+ *  Entries are still checked against each file's size and mtime, so a
+ *  stale or hand-edited index only costs a re-parse. Bump SUMMARY_FORMAT
+ *  when summarize() starts deriving something new. Not backed up or
+ *  exported: it is rebuilt from the chats whenever it is missing. */
+const SUMMARY_FORMAT = 1;
+let summaryIndexLoaded = false;
+
+function summaryIndexFile(): string {
+	return path.join(PATHS.data, "cache", "chat-summaries.json");
+}
+
+function loadSummaryIndex(): void {
+	if (summaryIndexLoaded) return;
+	summaryIndexLoaded = true;
+	try {
+		const raw = JSON.parse(fs.readFileSync(summaryIndexFile(), "utf-8")) as {
+			format?: unknown;
+			chatVersion?: unknown;
+			entries?: Record<string, { mtimeMs: number; size: number; summary: ChatSummary }>;
+		};
+		if (raw.format !== SUMMARY_FORMAT || raw.chatVersion !== CURRENT_CHAT_VERSION || !raw.entries) return;
+		for (const [id, entry] of Object.entries(raw.entries)) {
+			if (entry && typeof entry.mtimeMs === "number" && typeof entry.size === "number" && entry.summary?.id === id) {
+				if (!summaryCache.has(id)) summaryCache.set(id, entry);
+			}
+		}
+	} catch {
+		// no index yet (first launch) or unreadable: rebuilt below
+	}
+}
+
+function saveSummaryIndex(): void {
+	try {
+		fs.mkdirSync(path.dirname(summaryIndexFile()), { recursive: true });
+		writeFileAtomic(
+			summaryIndexFile(),
+			JSON.stringify({ format: SUMMARY_FORMAT, chatVersion: CURRENT_CHAT_VERSION, entries: Object.fromEntries(summaryCache) }),
+		);
+	} catch (err) {
+		console.error("[chats] could not save the summary index:", err);
+	}
+}
+
 function summarize(id: string): ChatSummary | null {
 	const record = getChat(id);
 	if (!record) return null;
@@ -119,6 +165,8 @@ function summarize(id: string): ChatSummary | null {
 function listChats(): ChatSummary[] {
 	try {
 		fs.mkdirSync(PATHS.chats, { recursive: true });
+		loadSummaryIndex();
+		let changed = false;
 		const seen = new Set<string>();
 		const out: ChatSummary[] = [];
 		for (const f of fs.readdirSync(PATHS.chats)) {
@@ -137,12 +185,19 @@ function listChats(): ChatSummary[] {
 				continue;
 			}
 			const summary = summarize(id);
+			changed = true;
 			if (summary) {
 				summaryCache.set(id, { mtimeMs: st.mtimeMs, size: st.size, summary });
 				out.push({ ...summary });
 			} else summaryCache.delete(id);
 		}
-		for (const id of summaryCache.keys()) if (!seen.has(id)) summaryCache.delete(id);
+		for (const id of summaryCache.keys()) {
+			if (!seen.has(id)) {
+				summaryCache.delete(id);
+				changed = true;
+			}
+		}
+		if (changed) saveSummaryIndex();
 		return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 	} catch {
 		return [];

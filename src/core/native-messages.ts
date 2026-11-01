@@ -779,6 +779,43 @@ export function reconstructRequestCause(messages: readonly LhMessage[]): Reconst
 	return resolve();
 }
 
+/** Tools a tutor reply may have called and still be retried: they only
+ *  READ (files, notes, the map, the web). Anything else — a question, a
+ *  plan, a job (research/visual/demo/pdf), a practice problem — left
+ *  something behind that a retry would orphan, so that reply is final. */
+export const RETRY_SAFE_TOOLS: ReadonlySet<string> = new Set([
+	"read", "ls", "find", "grep", "notes",
+	"list_sessions", "list_propositions",
+	"web_search", "web_fetch", "web_fetch_pdf",
+	"pdf_info", "pdf_extract", "pdf_search",
+]);
+
+/** RETRY (2026-11-01): the record a re-asked last reply starts from — every
+ *  message up to and including the learner's last plain message, with the
+ *  tutor's reply after it dropped. Null when there is nothing to retry: no
+ *  learner message yet, or the reply after it did more than talk and read
+ *  (a question, plan or job; a marker such as a steer delivery or a
+ *  compaction). A failed turn (nothing after the message) retries as a
+ *  plain re-run. Pure; the server and the client's optimistic view share it. */
+export function retryBase(messages: readonly LhMessage[]): LhMessage[] | null {
+	let last = -1;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if ((messages[i] as { role?: string }).role === "user") {
+			last = i;
+			break;
+		}
+	}
+	if (last === -1) return null;
+	for (const m of messages.slice(last + 1)) {
+		const role = (m as { role?: string }).role;
+		if (role === "toolResult") continue;
+		if (role !== "assistant") return null;
+		const content = (m as AssistantMessage).content;
+		if (Array.isArray(content) && content.some((b) => b.type === "toolCall" && !RETRY_SAFE_TOOLS.has(b.name))) return null;
+	}
+	return messages.slice(0, last + 1);
+}
+
 export function needsContinuation(messages: readonly LhMessage[]): boolean {
 	const last = messages[messages.length - 1];
 	// A warm-up skipped through the silent dismissal route ends on its

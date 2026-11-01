@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BellIcon, BellOffIcon, PlayIcon } from "lucide-react";
-import { REVIEW_REMINDER_KEY, type ReviewStatus } from "@/src/core";
+import { REVIEW_REMINDER_KEY, reviewMinutes, type ReviewStatus } from "@/src/core";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -52,7 +52,7 @@ export function ReviewStart({ status }: { status: ReviewStatus }) {
 						Start review
 					</Button>
 					<p className="text-base text-foreground/80">
-						{n} {n === 1 ? "question" : "questions"}, about {n} {n === 1 ? "minute" : "minutes"}
+						{n} {n === 1 ? "question" : "questions"}, about {reviewMinutes(n)} minutes
 						{status.due > n ? `. ${status.due - n} more wait for the next round.` : "."}
 					</p>
 				</div>

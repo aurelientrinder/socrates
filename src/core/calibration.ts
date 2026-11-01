@@ -66,6 +66,10 @@ const CONFIDENT_MISS_LIMIT = 25;
 
 /** Within this many points the learner reads as well calibrated. */
 export const CALIBRATED_WITHIN = 5;
+/** Rated answers needed before any verdict (2026-11-01): Progress used to
+ *  call three answers "underconfident by 10 points" while Today, rightly,
+ *  waited for five. One threshold now serves both. */
+export const CALIBRATION_MIN_ANSWERS = 5;
 
 function isQuizAnswer(details: unknown): details is QuestionAnswerData {
 	if (!details || typeof details !== "object") return false;
@@ -154,6 +158,10 @@ export function calibrationReport(answers: readonly CalibrationAnswer[]): Calibr
 /** The one-line verdict the view leads with. */
 export function calibrationVerdict(report: CalibrationReport): string {
 	if (report.gap === null) return "No rated quiz answers yet.";
+	if (report.answered < CALIBRATION_MIN_ANSWERS) {
+		const left = CALIBRATION_MIN_ANSWERS - report.answered;
+		return `Too early to tell: ${left} more rated ${left === 1 ? "answer" : "answers"} before this means anything.`;
+	}
 	const points = Math.round(Math.abs(report.gap));
 	if (points <= CALIBRATED_WITHIN) return "Well calibrated: your confidence matches how often you are right.";
 	return report.gap > 0

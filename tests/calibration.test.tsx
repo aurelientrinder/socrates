@@ -129,10 +129,16 @@ describe("calibrationReport", () => {
 	});
 
 	it("reads well calibrated within five points, and empty as no data", () => {
-		assert.match(calibrationVerdict(calibrationReport([answer(50, true), answer(50, false)])), /^Well calibrated/);
-		assert.match(calibrationVerdict(calibrationReport([answer(30, true), answer(30, true)])), /^Underconfident by 70/);
+		const times = (n: number, make: () => ReturnType<typeof answer>) => Array.from({ length: n }, make);
+		assert.match(calibrationVerdict(calibrationReport([...times(3, () => answer(50, true)), ...times(3, () => answer(50, false))])), /^Well calibrated/);
+		assert.match(calibrationVerdict(calibrationReport(times(5, () => answer(30, true)))), /^Underconfident by 70/);
 		const empty = calibrationReport([]);
 		assert.equal(empty.gap, null);
+		// Three answers are too few for a verdict (Today waits for five too).
+		assert.equal(
+			calibrationVerdict(calibrationReport([answer(30, true), answer(30, true), answer(30, false)])),
+			"Too early to tell: 2 more rated answers before this means anything.",
+		);
 		assert.equal(calibrationVerdict(empty), "No rated quiz answers yet.");
 	});
 });
@@ -141,6 +147,10 @@ describe("CalibrationView", () => {
 	it("leads with the verdict and lists the confident misses with session links", () => {
 		const report = calibrationReport([
 			answer(90, false, { chatId: "chat_1", chatTitle: "Derivatives", questionText: "d/dx sin x?" }),
+			answer(90, true),
+			answer(90, false),
+			answer(90, true),
+			answer(90, false),
 			answer(90, true),
 		]);
 		const html = renderToStaticMarkup(<CalibrationView report={report} />);

@@ -14,10 +14,16 @@
  * (core/settings-resolution.ts resolveSettings — browser-safe).
  */
 
-import { settingsStore } from "@/src/server";
+import { dismissSettingsRecovery, settingsStore } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
 	return Response.json({ settings: settingsStore.readSettings() });
+}
+
+/** DELETE /api/settings?notice — dismiss the "settings were recovered" note. */
+export async function DELETE() {
+	dismissSettingsRecovery();
+	return Response.json({ ok: true });
 }

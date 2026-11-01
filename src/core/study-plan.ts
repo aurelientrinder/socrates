@@ -46,12 +46,20 @@ export const MAX_ITEMS = 3;
 /** Before an exam, a topic untested this long gets a quick check. */
 export const CHECK_STALE_DAYS = 14;
 export const ITEM_MINUTES = {
+	/** The most a review item can take (5+ topics); see reviewMinutes. */
 	review: 15,
 	check: 10,
 	learn: 25,
 	rehearse: 30,
 	prep: 10,
 } as const;
+/** A review session asks one question per topic and reteaches a miss:
+ *  about two minutes a topic (2026-11-01 — Today used to say 15 minutes
+ *  for a one-question review that Progress called "about 1 minute").
+ *  Today's plan and Progress' Start review share this estimate. */
+export function reviewMinutes(topics: number): number {
+	return Math.min(ITEM_MINUTES.review, Math.max(3, 2 * topics));
+}
 /** "Learn" sessions planned at most per exam with nothing studied yet. */
 export const MAX_LEARN_SESSIONS = 6;
 /** A course is tough when its mean recall now is under this… */
@@ -545,7 +553,7 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 					reason: target
 						? `${when}. Recall on the day would be about ${pct(worst)} without a review.${miss}`
 						: `Recall has dropped to ${pct(Math.min(...topics.map((t) => retentionAt(t, at))))}.${miss}`,
-					minutes: ITEM_MINUTES.review,
+					minutes: reviewMinutes(topics.length),
 				});
 				break;
 			}

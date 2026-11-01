@@ -39,6 +39,7 @@ import {
 	textPartMessageId,
 	kbdEventForAction as kbdEventForChat,
 	needsContinuation,
+	retryBase,
 	type ChatInput,
 	type ChatSettings,
 	type LhMessage,
@@ -501,6 +502,14 @@ export function Chat({
 
 	const localStream = status === "submitted" || status === "streaming";
 	const busy = localStream || turnInFlight;
+	// RETRY (2026-11-01): re-ask the last reply. Offered when nothing runs,
+	// no question waits, and the reply after the learner's last message only
+	// talked and read (retryBase — the server applies the same rule).
+	const canRetry = !busy && pending === null && (status === "ready" || status === "error") && retryBase(nativeMessages) !== null;
+	const retryLast = useCallback(() => {
+		clearError();
+		void send({ type: "retry" });
+	}, [clearError, send]);
 	const busyRef = useRef(busy);
 	busyRef.current = busy;
 
@@ -1636,7 +1645,9 @@ export function Chat({
 												}
 											})}
 										</MessageContent>
-										{!(busy && mi === messages.length - 1) && <ReplyActions parts={m.parts} />}
+										{!(busy && mi === messages.length - 1) && (
+											<ReplyActions parts={m.parts} onRetry={canRetry && mi === messages.length - 1 ? retryLast : undefined} />
+										)}
 									</Message>
 									)}
 								</Fragment>
@@ -1677,8 +1688,18 @@ export function Chat({
 								</span>
 							)}
 							{error && (
-								<div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">
-									Something went wrong: {error.message}
+								<div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">
+									<span className="min-w-0 flex-1">Something went wrong: {error.message}</span>
+									{canRetry && (
+										<button
+											type="button"
+											data-testid="chat-error-retry"
+											onClick={retryLast}
+											className="shrink-0 rounded-md px-2 py-1 font-medium underline-offset-2 hover:underline"
+										>
+											Try again
+										</button>
+									)}
 								</div>
 							)}
 						</div>
