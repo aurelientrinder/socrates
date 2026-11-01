@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDownIcon, CheckIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
@@ -96,6 +96,11 @@ export interface QuestionDockProps {
 	 *  the header names the step and offers a Skip that ends the whole
 	 *  warm-up. */
 	warmup?: WarmupStep;
+	/** The session's tools row (dictate, usage, model, effort): rendered
+	 *  inside the answer box, beside Submit, like the chat composer
+	 *  (question card redesign, 2026-11-01). The dock card hides its own
+	 *  row while an expanded question shows this one. */
+	tools?: ReactNode;
 }
 
 export interface WarmupStep {
@@ -118,6 +123,7 @@ export function QuestionDock({
 	dictationClaim = true,
 	compactionRunning = false,
 	warmup,
+	tools,
 }: QuestionDockProps) {
 	// The probe-phase names (owner, 2026-10-09) canonicalize onto their
 	// teach twins for every dock concern — parse dispatch, labels, kinds:
@@ -196,6 +202,7 @@ export function QuestionDock({
 					dictationClaim={dictationClaim}
 					compactionRunning={compactionRunning}
 					warmup={warmup}
+					tools={tools}
 				/>
 			</div>
 		</>
@@ -305,6 +312,7 @@ function QuestionDockForm({
 	dictationClaim = true,
 	compactionRunning = false,
 	warmup,
+	tools,
 }: Omit<QuestionDockProps, "expanded" | "onExpand" | "reveal">) {
 	const kind = toolQuestionKind(toolName);
 	// Free-recall review (recall-review.ts): a text answer that ALSO
@@ -964,9 +972,7 @@ function QuestionDockForm({
 					data-testid={qd.mode === "text" ? "answer-field" : "thinking-field"}
 					className="rounded-2xl border border-border bg-card transition-[border-color,box-shadow] focus-within:border-foreground/40 focus-within:shadow-[0_0_0_4px_var(--muted)]"
 				>
-					<div className="px-2.5 pt-2 text-xs font-medium text-muted-foreground">
-						{qd.mode === "text" ? "Your answer" : "Your thinking"}
-					</div>
+					<div className="sr-only">{qd.mode === "text" ? "Your answer" : "Your thinking"}</div>
 					{qd.mode === "text" ? (
 						<textarea
 							value={text}
@@ -995,7 +1001,8 @@ function QuestionDockForm({
 							}}
 							placeholder={freeRecall ? "Explain it in your own words, from memory…" : "Type your answer…"}
 							rows={1}
-							className="field-sizing-content lh-input max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
+							aria-label="Your answer"
+							className="field-sizing-content lh-input max-h-48 min-h-12 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 outline-none placeholder:text-muted-foreground/70"
 						/>
 					) : (
 						<textarea
@@ -1026,23 +1033,25 @@ function QuestionDockForm({
 							placeholder="Why this answer? Whatever comes to mind."
 							rows={1}
 							className={cn(
-								"field-sizing-content lh-input max-h-48 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground/70",
+								"field-sizing-content lh-input max-h-48 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 outline-none placeholder:text-muted-foreground/70",
 								// Phase-scaled prominence: teaching invites depth,
 								// probing stays quick.
-								phase === "teach" ? "min-h-[4.5rem]" : "min-h-10",
+								phase === "teach" ? "min-h-[4.5rem]" : "min-h-12",
 							)}
 						/>
 					)}
-					<div className="flex items-center justify-between gap-2 p-1">
-						<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
-								{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
-						</span>
+					{/* One bottom row, the chat composer's: dictate, usage, model and
+					    effort (the session's tools row, when the dock card hands it
+					    in), then Submit. The chord lives on Submit's tooltip. */}
+					<div className="flex items-center gap-1 pr-2 pb-2">
+						<div className="min-w-0 flex-1 [&_[data-testid=stats-bar]]:pb-0">{tools}</div>
 						<Button
 							type="submit"
 							disabled={!canSubmit || compactionRunning}
-							className="ml-auto h-9 rounded-xl px-4 text-sm font-medium"
+							title="↵ submits · ⇧↵ newline"
+							className="h-9 shrink-0 rounded-xl px-4 text-sm font-medium"
 						>
-							{submitLabel}
+							{compactionRunning ? "Compacting…" : submitLabel}
 						</Button>
 					</div>
 				</div>
