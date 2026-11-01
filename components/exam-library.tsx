@@ -55,20 +55,19 @@ export function ExamLibraryBody({ exams, onNew }: { exams: ExamSummary[] | null;
 			{exams === null ? (
 				<p className="text-sm text-muted-foreground">Loading…</p>
 			) : exams.length === 0 ? (
-				<p className="text-sm text-muted-foreground">
-					No mock exams yet. A mock exam is a timed paper of real exam problems on a topic or your notes, marked at the end, so you find your gaps
-					before the real one.
+				<p className="rounded-2xl border border-dashed px-5 py-6 text-center text-sm text-muted-foreground">
+					No mock exams yet. A timed paper on your notes, marked at the end, shows your gaps before the real one.
 				</p>
 			) : (
-				<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
+				<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-surface">
 					{exams.map((e) => (
 						<li key={e.id}>
 							<Link
 								href={`/exam/${e.id}`}
 								data-testid="library-exam"
-								className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 transition-colors hover:bg-accent"
+								className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 transition-colors hover:bg-accent/30"
 							>
-								<span className="min-w-0 flex-1 basis-60 truncate font-prose text-lg">{e.title}</span>
+								<span className="min-w-0 flex-1 basis-60 truncate text-[15px]">{e.title}</span>
 								{e.status === "graded" && e.earned !== undefined ? (
 									<span
 										className={cn(

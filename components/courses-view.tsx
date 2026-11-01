@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckIcon, FolderPlusIcon, PlusIcon } from "lucide-react";
-import { courseNotesLine, folderNoteName, isNotesFile, type CourseSuggestion } from "@/src/core";
+import { CalendarIcon, CheckIcon, FileTextIcon, PlusIcon, XIcon } from "lucide-react";
+import { colorsFor, courseNotesLine, folderNoteName, isNotesFile, type CourseSuggestion } from "@/src/core";
+import { FolderBar, FolderInbox, UnlinkedFolderCard, useNotesFolder, type FolderAct, type FolderView } from "@/components/notes-folder";
+import { MoreMenu } from "@/components/more-menu";
 import { MAX_NOTE_BYTES, NOTES_ACCEPT, NotesImportErrors, postNotesImport } from "@/components/notes-import.tsx";
 import { startDraftSession } from "@/components/new-session";
 import { SectionHeading } from "@/components/page-header";
@@ -70,32 +72,43 @@ async function api(url: string, method: string, body?: unknown): Promise<Courses
 const when = (ms: number) =>
 	new Date(ms).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
+/** "Analyse › Chapitre 1.pdf" inside the Analyse card reads "Chapitre 1.pdf". */
+export function shortNoteName(name: string, label: string): string {
+	const parts = name.split(" › ");
+	return parts.length > 1 && parts[0]!.toLowerCase() === label.toLowerCase() ? parts.slice(1).join(" › ") : name;
+}
+
+/** Notes shown on a card before "+N more". */
+const NOTES_SHOWN = 6;
+
 /**
- * COURSES (Library, 2026-10-28): one group per class, each holding its
- * notes. Drop a folder on a course and every PDF, .txt and .md in it is
- * imported through the normal notes import; pick notes you already have;
- * or let the calendar suggest the courses (plain rules over the event
- * titles — you confirm, rename or dismiss each; nothing is created or
- * written to the calendar on its own). A calendar event of a course then
- * pulls the course's notes into the study plan, the daily briefing and
- * mock exams.
+ * CLASSES (Library, redesign 2026-11-01): one card per class, the hub for
+ * everything of that class: its next class in the calendar, the files its
+ * watched folder is bringing in (components/notes-folder.tsx), its notes,
+ * and what to do with them (study, mock exam). Notes also come in by
+ * dropping a folder on a card, picking files, or from notes already saved.
+ * The calendar suggests the classes not made yet (plain rules over the
+ * event titles; you confirm, rename or dismiss each).
  */
 export function CoursesView() {
 	const [data, setData] = useState<CoursesPayload | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const [name, setName] = useState("");
+	const nf = useNotesFolder();
 
 	const load = useCallback(async () => {
 		try {
 			setData(await api("/api/courses", "GET"));
 			setError(null);
 		} catch (err) {
-			setError(`Couldn't load your courses (${err instanceof Error ? err.message : String(err)}).`);
+			setError(`Couldn't load your classes (${err instanceof Error ? err.message : String(err)}).`);
 		}
 	}, []);
 	useEffect(() => {
 		void load();
+		window.addEventListener(NOTES_CHANGED_EVENT, load);
+		return () => window.removeEventListener(NOTES_CHANGED_EVENT, load);
 	}, [load]);
 
 	const run = async (job: () => Promise<CoursesPayload>) => {
@@ -117,51 +130,56 @@ export function CoursesView() {
 
 	const courses = data?.courses ?? [];
 	const suggestions = data?.suggestions ?? [];
+	const colors = useMemo(() => colorsFor(courses.map((c) => c.key)), [courses]);
+	const unlinked = nf.unlinked(new Set(courses.map((c) => c.key)));
 
 	return (
 		<section data-testid="courses-view" aria-labelledby="courses-heading" className="flex flex-col gap-4">
-			<header className="flex flex-col gap-2">
-				<div className="flex items-center justify-between gap-4">
+			<header className="flex items-end justify-between gap-4">
+				<div className="min-w-0">
 					<SectionHeading className="flex items-baseline gap-2">
-						<span id="courses-heading">Your courses</span>
-						<span className="text-sm font-normal text-muted-foreground">
-							{data === null ? "loading…" : courses.length === 0 ? "none yet" : `${courses.length} ${courses.length === 1 ? "course" : "courses"}`}
-						</span>
+						<span id="courses-heading">Classes</span>
+						<span className="text-sm font-normal text-muted-foreground">{data === null ? "" : courses.length || "none yet"}</span>
 					</SectionHeading>
-					<Button size="sm" variant="outline" data-testid="course-new" onClick={() => setCreating((v) => !v)}>
-						<PlusIcon className="size-3.5" />
-						New course
-					</Button>
+					<p className="mt-1 text-sm text-muted-foreground">Each class gathers its notes, its folder and its sessions. The study plan uses them before each class.</p>
 				</div>
-				<p className="max-w-2xl text-sm text-muted-foreground">
-					One group per class, with its notes. When your calendar has a class or exam of a course, the study plan and the daily
-					briefing use that course&apos;s notes.
-				</p>
-				{creating && (
-					<form
-						className="flex max-w-md items-center gap-2"
-						onSubmit={(e) => {
-							e.preventDefault();
-							if (name.trim()) void create(name);
-						}}
-					>
-						<Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Course name, e.g. Linear algebra" data-testid="course-name" />
-						<Button type="submit" size="sm" disabled={!name.trim()}>
-							Create
-						</Button>
-					</form>
-				)}
-				{error && (
-					<p role="alert" className="text-sm text-destructive">
-						{error}
-					</p>
-				)}
+				<Button size="sm" variant="outline" data-testid="course-new" onClick={() => setCreating((v) => !v)}>
+					<PlusIcon className="size-3.5" />
+					New class
+				</Button>
 			</header>
+			{creating && (
+				<form
+					className="flex max-w-md items-center gap-2"
+					onSubmit={(e) => {
+						e.preventDefault();
+						if (name.trim()) void create(name);
+					}}
+				>
+					<Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Class name, e.g. Linear algebra" data-testid="course-name" />
+					<Button type="submit" size="sm" disabled={!name.trim()}>
+						Create
+					</Button>
+					<Button type="button" size="sm" variant="ghost" onClick={() => setCreating(false)}>
+						Cancel
+					</Button>
+				</form>
+			)}
+			{error && (
+				<p role="alert" className="text-sm text-destructive">
+					{error}
+				</p>
+			)}
+
+			<FolderBar nf={nf} />
 
 			{suggestions.length > 0 && (
-				<div data-testid="course-suggestions" className="flex flex-col gap-2 rounded-2xl bg-accent/50 px-4 py-3">
-					<h3 className="text-base font-semibold">From your calendar</h3>
-					<p className="text-sm text-muted-foreground">These look like classes. Add the ones you want a group for.</p>
+				<div data-testid="course-suggestions" className="flex flex-col rounded-2xl border border-border/70 bg-surface px-5 py-3">
+					<div className="flex items-center gap-2 pb-1">
+						<CalendarIcon className="size-4 text-muted-foreground" />
+						<h3 className="text-sm font-semibold">From your calendar</h3>
+						<span className="text-xs text-muted-foreground">These look like classes. Add the ones you want.</span>
+					</div>
 					<ul className="flex flex-col divide-y divide-border/60">
 						{suggestions.slice(0, 12).map((s) => (
 							<SuggestionRow key={s.key} s={s} onAdd={(label) => void create(label, s.key)} onDismiss={() => void run(() => api("/api/courses/dismiss", "POST", { key: s.key }))} />
@@ -170,10 +188,28 @@ export function CoursesView() {
 				</div>
 			)}
 
-			{courses.length > 0 && (
+			{data !== null && courses.length === 0 && unlinked.length === 0 && suggestions.length === 0 && (
+				<p className="rounded-2xl border border-dashed px-5 py-6 text-center text-sm text-muted-foreground">
+					No classes yet. Make one, or watch your notes folder and each subfolder becomes a class.
+				</p>
+			)}
+
+			{(courses.length > 0 || unlinked.length > 0) && (
 				<ul className="flex flex-col gap-3">
 					{courses.map((c) => (
-						<CourseCard key={c.key} course={c} others={courses.filter((o) => o.key !== c.key)} onChanged={load} run={run} />
+						<CourseCard
+							key={c.key}
+							course={c}
+							color={colors.get(c.key) ?? 0}
+							folder={nf.folderFor(c.key)}
+							act={nf.act}
+							others={courses.filter((o) => o.key !== c.key)}
+							onChanged={load}
+							run={run}
+						/>
+					))}
+					{unlinked.map((f) => (
+						<UnlinkedFolderCard key={f.name} folder={f} act={nf.act} />
 					))}
 				</ul>
 			)}
@@ -186,12 +222,7 @@ function SuggestionRow({ s, onAdd, onDismiss }: { s: CourseSuggestion; onAdd: (l
 	return (
 		<li data-testid="course-suggestion" className="flex flex-wrap items-center gap-3 py-2">
 			<div className="min-w-0 flex-1">
-				<Input
-					value={label}
-					onChange={(e) => setLabel(e.target.value)}
-					aria-label={`Name for ${s.label}`}
-					className="h-8 max-w-xs bg-surface text-base"
-				/>
+				<Input value={label} onChange={(e) => setLabel(e.target.value)} aria-label={`Name for ${s.label}`} className="h-8 max-w-xs text-sm" />
 				<p className="mt-1 truncate text-xs text-muted-foreground">
 					{s.reason}
 					{s.nextStart ? ` · next ${when(s.nextStart)}` : ""} · e.g. {s.examples.join(", ")}
@@ -210,11 +241,17 @@ function SuggestionRow({ s, onAdd, onDismiss }: { s: CourseSuggestion; onAdd: (l
 
 function CourseCard({
 	course,
+	color,
+	folder,
+	act,
 	others,
 	onChanged,
 	run,
 }: {
 	course: CourseData;
+	color: number;
+	folder: FolderView | null;
+	act: FolderAct;
 	others: CourseData[];
 	onChanged: () => Promise<void>;
 	run: (job: () => Promise<CoursesPayload>) => Promise<void>;
@@ -231,8 +268,10 @@ function CourseCard({
 	const [existing, setExisting] = useState<SavedNote[]>([]);
 	const [chosen, setChosen] = useState<string[]>([]);
 	const [renaming, setRenaming] = useState(false);
+	const [merging, setMerging] = useState(false);
 	const [label, setLabel] = useState(course.label);
 	const [dragging, setDragging] = useState(false);
+	const [allNotes, setAllNotes] = useState(false);
 	const importing = progress !== null;
 
 	const importFiles = async (picked: File[], fromFolder: boolean) => {
@@ -278,7 +317,7 @@ function CourseCard({
 	};
 
 	const openPicker = async () => {
-		setPicking((v) => !v);
+		setPicking(true);
 		setChosen([]);
 		try {
 			const res = await fetch("/api/notes");
@@ -302,6 +341,7 @@ function CourseCard({
 	const mergeInto = async (key: string) => {
 		const target = others.find((o) => o.key === key);
 		if (!target) return;
+		setMerging(false);
 		if (!window.confirm(`Merge "${course.label}" into "${target.label}"? Their notes and sessions are combined, and the calendar files both under "${target.label}".`)) return;
 		try {
 			await api("/api/courses/merge", "POST", { from: course.key, into: key });
@@ -312,9 +352,26 @@ function CourseCard({
 	};
 
 	const remove = () => {
-		if (!window.confirm(`Delete the course "${course.label}"? Its notes stay in your Library and your sessions are kept.`)) return;
+		if (!window.confirm(`Delete the class "${course.label}"? Its notes stay in your Library and your sessions are kept.`)) return;
 		void run(() => api(`/api/courses/${encodeURIComponent(course.key)}`, "DELETE"));
 	};
+
+	const openNote = async (id: string) => {
+		if (window.lh?.openNote) {
+			const result = await window.lh.openNote(id);
+			if (!result.ok) setErrors([result.error ?? "Couldn't open the file."]);
+			return;
+		}
+		window.open(`/api/notes/${id}/file`, "_blank", "noopener");
+	};
+
+	const sessions = course.chatIds?.length ?? 0;
+	const meta = [
+		course.next ? `Next: ${course.next.title}, ${when(course.next.start)}` : "Not in your calendar",
+		course.notes.length > 0 ? `${course.notes.length} ${course.notes.length === 1 ? "note" : "notes"}` : null,
+		sessions > 0 ? `${sessions} ${sessions === 1 ? "session" : "sessions"}` : null,
+	].filter(Boolean);
+	const shownNotes = allNotes ? course.notes : course.notes.slice(0, NOTES_SHOWN);
 
 	return (
 		<li
@@ -332,7 +389,8 @@ function CourseCard({
 				void dropped(e.dataTransfer).then((files) => importFiles(files.files, files.fromFolder));
 			}}
 			className={cn(
-				"flex flex-col gap-3 rounded-2xl border bg-surface px-5 py-4 transition-colors",
+				`cal-c${color}`,
+				"relative flex flex-col rounded-2xl border bg-surface transition-colors",
 				dragging ? "border-primary bg-accent/40" : "border-border/70",
 			)}
 		>
@@ -359,7 +417,9 @@ function CourseCard({
 					e.target.value = "";
 				}}
 			/>
-			<div className="flex flex-wrap items-center gap-3">
+			<span aria-hidden className="absolute inset-y-4 left-0 w-[3px] rounded-r-full" style={{ background: "var(--bar)" }} />
+
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pt-4 pb-3">
 				<div className="min-w-0 flex-1">
 					{renaming ? (
 						<form
@@ -372,130 +432,152 @@ function CourseCard({
 								}
 							}}
 						>
-							<Input autoFocus value={label} onChange={(e) => setLabel(e.target.value)} className="h-8 max-w-xs" aria-label="Course name" />
+							<Input autoFocus value={label} onChange={(e) => setLabel(e.target.value)} className="h-8 max-w-xs" aria-label="Class name" />
 							<Button size="sm" type="submit">
 								Save
 							</Button>
+							<Button size="sm" type="button" variant="ghost" onClick={() => setRenaming(false)}>
+								Cancel
+							</Button>
 						</form>
 					) : (
-						<h3 className="truncate text-lg font-semibold">{course.label}</h3>
+						<h3 className="truncate text-[17px] font-semibold">{course.label}</h3>
 					)}
-					<p className="truncate text-xs text-muted-foreground">
-						{course.notes.length === 0 ? "No notes yet" : `${course.notes.length} ${course.notes.length === 1 ? "file" : "files"}`}
-						{course.next ? ` · next: ${course.next.title}, ${when(course.next.start)}` : " · no class found in your calendar"}
+					<p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+						{course.next && <CalendarIcon className="size-3 shrink-0" />}
+						{meta.join(" · ")}
 					</p>
 				</div>
-				<div className="flex shrink-0 flex-wrap items-center gap-1">
-					<Button size="sm" disabled={importing} onClick={() => folderInput.current?.click()} data-testid="course-add-folder">
-						<FolderPlusIcon className="size-3.5" />
-						Add folder
+				<div className="flex shrink-0 items-center gap-1">
+					<Button size="sm" variant="outline" onClick={() => void startSession()} data-testid="course-learn">
+						Study
 					</Button>
-					<Button size="sm" variant="ghost" disabled={importing} onClick={() => fileInput.current?.click()}>
-						Add files
+					<Button
+						size="sm"
+						variant="ghost"
+						disabled={course.notes.length === 0}
+						onClick={() => openStart("exam", undefined, { topic: course.label, notes: course.notes.map((n) => ({ id: n.id, name: n.name })) })}
+						data-testid="course-exam"
+					>
+						Mock exam
 					</Button>
-					<Button size="sm" variant="ghost" disabled={importing} onClick={() => void openPicker()}>
-						From my notes
-					</Button>
+					<MoreMenu
+						label={`More for ${course.label}`}
+						testId="course-more"
+						items={[
+							{ label: "Add files…", onSelect: () => fileInput.current?.click(), disabled: importing },
+							{ label: "Add a folder…", onSelect: () => folderInput.current?.click(), disabled: importing, testId: "course-add-folder" },
+							{ label: "Add from my notes…", onSelect: () => void openPicker() },
+							{ label: "Rename", onSelect: () => { setLabel(course.label); setRenaming(true); }, divider: true },
+							...(others.length > 0 ? [{ label: "Merge into…", onSelect: () => setMerging(true) }] : []),
+							{ label: "Delete class", onSelect: remove, danger: true, divider: true },
+						]}
+					/>
 				</div>
 			</div>
 
-			{progress && (
-				<p role="status" className="text-sm text-muted-foreground">
-					{progress} The notes are saved first, then added to your map.
-				</p>
-			)}
-			<NotesImportErrors errors={errors} warnings={warnings} />
-
-			{course.notes.length > 0 && (
-				<ul className="flex flex-wrap gap-1.5">
-					{course.notes.map((n) => (
-						<li key={n.id} className="flex max-w-72 items-center gap-1 rounded-full bg-accent py-0.5 pl-3 pr-1 text-sm">
-							<span className="truncate">{n.name}</span>
-							<button
-								type="button"
-								aria-label={`Take ${n.name} out of ${course.label}`}
-								title="Take out of this course (the file stays in your Library)"
-								className="flex size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground"
-								onClick={() => void patch({ removeNoteIds: [n.id] })}
-							>
-								×
-							</button>
-						</li>
-					))}
-				</ul>
-			)}
-			{course.notes.length === 0 && !importing && (
-				<p className="text-sm text-muted-foreground">Drop a folder of notes here, or use Add folder.</p>
-			)}
-
-			{picking && (
-				<div className="flex flex-col gap-2 rounded-lg bg-muted/40 p-3">
-					{existing.length === 0 ? (
-						<p className="text-sm text-muted-foreground">Every saved note is already in this course.</p>
-					) : (
-						<div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
-							{existing.map((n) => (
-								<label key={n.id} className="flex items-center gap-2 text-sm">
-									<input type="checkbox" checked={chosen.includes(n.id)} onChange={(e) => setChosen((c) => (e.target.checked ? [...c, n.id] : c.filter((x) => x !== n.id)))} />
-									<span className="truncate">{n.name}</span>
-								</label>
-							))}
-						</div>
-					)}
-					<div className="flex justify-end gap-2">
-						<Button size="sm" variant="ghost" onClick={() => setPicking(false)}>
-							Cancel
-						</Button>
-						<Button
-							size="sm"
-							disabled={chosen.length === 0}
-							onClick={() => {
-								void patch({ addNoteIds: chosen });
-								setPicking(false);
-							}}
-						>
-							Add {chosen.length || ""}
-						</Button>
-					</div>
-				</div>
-			)}
-
-			<div className="flex flex-wrap items-center gap-1 border-t border-border/60 pt-3">
-				<Button size="sm" variant="outline" onClick={() => void startSession()} data-testid="course-learn">
-					Study this course
-				</Button>
-				<Button
-					size="sm"
-					variant="outline"
-					disabled={course.notes.length === 0}
-					onClick={() => openStart("exam", undefined, { topic: course.label, notes: course.notes.map((n) => ({ id: n.id, name: n.name })) })}
-					data-testid="course-exam"
-				>
-					Mock exam
-				</Button>
-				<span className="flex-1" />
-				<Button size="sm" variant="ghost" onClick={() => { setLabel(course.label); setRenaming((v) => !v); }}>
-					Rename
-				</Button>
-				{others.length > 0 && (
+			{merging && (
+				<div className="mx-5 mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 px-3 py-2 text-sm">
+					<span className="text-muted-foreground">Merge {course.label} into</span>
 					<select
-						aria-label={`Merge ${course.label} into another course`}
+						aria-label={`Merge ${course.label} into another class`}
 						data-testid="course-merge"
 						value=""
 						onChange={(e) => void mergeInto(e.target.value)}
-						className="h-8 rounded-md bg-transparent px-2 text-sm font-medium text-muted-foreground hover:bg-accent"
+						className="h-8 rounded-md border border-border bg-surface px-2 text-sm"
 					>
-						<option value="">Merge into…</option>
+						<option value="">Choose a class…</option>
 						{others.map((o) => (
 							<option key={o.key} value={o.key}>
 								{o.label}
 							</option>
 						))}
 					</select>
+					<Button size="xs" variant="ghost" onClick={() => setMerging(false)}>
+						Cancel
+					</Button>
+				</div>
+			)}
+
+			{folder && (
+				<div className="border-t border-border/60 pb-1">
+					<FolderInbox folder={folder} act={act} label={course.label} />
+				</div>
+			)}
+
+			<div className="flex flex-col gap-2 border-t border-border/60 px-5 py-3">
+				{progress && (
+					<p role="status" className="text-sm text-muted-foreground">
+						{progress} The notes are saved first, then added to your map.
+					</p>
 				)}
-				<Button size="sm" variant="ghost" onClick={remove}>
-					Delete
-				</Button>
+				<NotesImportErrors errors={errors} warnings={warnings} />
+				<div className="flex flex-wrap items-center gap-1.5">
+					{shownNotes.map((n) => (
+						<span key={n.id} className="group flex max-w-64 items-center rounded-lg border border-border/70 bg-background/60 text-sm transition-colors hover:border-border">
+							<button type="button" title={`Open ${n.name}`} onClick={() => void openNote(n.id)} className="flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1">
+								<FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+								<span className="truncate">{shortNoteName(n.name, course.label)}</span>
+								{n.pages ? <span className="shrink-0 text-xs text-muted-foreground">{n.pages}p</span> : null}
+							</button>
+							<button
+								type="button"
+								aria-label={`Take ${n.name} out of ${course.label}`}
+								title="Take out of this class (the file stays in your Library)"
+								className="mr-1 flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+								onClick={() => void patch({ removeNoteIds: [n.id] })}
+							>
+								<XIcon className="size-3" />
+							</button>
+						</span>
+					))}
+					{course.notes.length > NOTES_SHOWN && (
+						<button type="button" onClick={() => setAllNotes((v) => !v)} className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
+							{allNotes ? "Show less" : `+${course.notes.length - NOTES_SHOWN} more`}
+						</button>
+					)}
+					<button
+						type="button"
+						disabled={importing}
+						onClick={() => fileInput.current?.click()}
+						className="flex items-center gap-1 rounded-lg border border-dashed border-border px-2.5 py-1 text-sm text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground disabled:opacity-50"
+					>
+						<PlusIcon className="size-3.5" />
+						{course.notes.length === 0 ? "Add notes, or drop a folder here" : "Add"}
+					</button>
+				</div>
+
+				{picking && (
+					<div className="flex flex-col gap-2 rounded-xl bg-muted/40 p-3">
+						{existing.length === 0 ? (
+							<p className="text-sm text-muted-foreground">Every saved note is already in this class.</p>
+						) : (
+							<div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+								{existing.map((n) => (
+									<label key={n.id} className="flex items-center gap-2 text-sm">
+										<input type="checkbox" className="accent-foreground" checked={chosen.includes(n.id)} onChange={(e) => setChosen((c) => (e.target.checked ? [...c, n.id] : c.filter((x) => x !== n.id)))} />
+										<span className="truncate">{n.name}</span>
+									</label>
+								))}
+							</div>
+						)}
+						<div className="flex justify-end gap-2">
+							<Button size="sm" variant="ghost" onClick={() => setPicking(false)}>
+								Cancel
+							</Button>
+							<Button
+								size="sm"
+								disabled={chosen.length === 0}
+								onClick={() => {
+									void patch({ addNoteIds: chosen });
+									setPicking(false);
+								}}
+							>
+								Add {chosen.length || ""}
+							</Button>
+						</div>
+					</div>
+				)}
 			</div>
 		</li>
 	);

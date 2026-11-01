@@ -28,11 +28,16 @@ const KIND_LABEL: Record<ChatKind, string> = { teach: "Learn", practice: "Practi
  * searchable by title, newest first. Same /api/chats list the sidebar
  * reads; rows open the session.
  */
+/** Recent sessions shown before "Show all"; searching shows every match. */
+const SESSIONS_SHOWN = 8;
+
 export function SessionLibrary() {
 	const [chats, setChats] = useState<ChatListItem[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<KindFilter>("all");
+	const [expanded, setExpanded] = useState(false);
+	const showAll = expanded || query.trim() !== "";
 	const classes = useClasses();
 	const [classKey, setClassKey] = useState<string | null>(null);
 	const activeClass = classes.find((c) => c.key === classKey) ?? null;
@@ -142,20 +147,20 @@ export function SessionLibrary() {
 					{query.trim() || filter !== "all" ? "No sessions match." : "No sessions yet. Start studying and they appear here."}
 				</p>
 			) : (
-				<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
-					{shown.map((c) => (
+				<ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-surface">
+					{(showAll ? shown : shown.slice(0, SESSIONS_SHOWN)).map((c) => (
 						<li key={c.id}>
 							<Link
 								href={`/chat/${c.id}`}
 								data-testid="library-session"
-								className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 transition-colors hover:bg-accent"
+								className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 transition-colors hover:bg-accent/30"
 							>
 								<span className="flex min-w-0 flex-1 basis-60 items-center gap-2.5">
 									{(() => {
 										const cls = classes.find((k) => k.sessions.includes(c.id));
 										return cls ? <span className={cn(`cal-c${cls.color}`, "size-2.5 shrink-0 rounded-[3px]")} style={{ background: "var(--bar)" }} title={cls.label} /> : null;
 									})()}
-									<span className="truncate font-prose text-lg">{c.title}</span>
+									<span className="truncate text-[15px]">{c.title}</span>
 								</span>
 								<span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-foreground/80">
 									{KIND_LABEL[c.kind ?? "teach"]}
@@ -164,6 +169,13 @@ export function SessionLibrary() {
 							</Link>
 						</li>
 					))}
+					{!showAll && shown.length > SESSIONS_SHOWN && (
+						<li>
+							<button type="button" onClick={() => setExpanded(true)} data-testid="library-sessions-more" className="w-full px-4 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground">
+								Show all {shown.length}
+							</button>
+						</li>
+					)}
 				</ul>
 			)}
 		</section>

@@ -14,18 +14,17 @@ import {
 	RotateCwIcon,
 } from "lucide-react";
 import { LOOSE, PROCESSED_DIR, type FolderMode, type NotesFolderConfig, type WatchedFolderSettings } from "@/src/core";
-import { SectionHeading } from "@/components/page-header";
+import { MoreMenu } from "@/components/more-menu";
 import { Toggle } from "@/components/settings/controls";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
-import { useClassColors } from "@/components/use-class-colors";
 import { NOTES_CHANGED_EVENT } from "@/components/notes-view";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 // Transport types (mirrors src/server/notes-folder.ts; never import the server here).
-interface FileView {
+export interface FileView {
 	key: string;
 	file: string;
 	at: string;
@@ -39,13 +38,13 @@ interface FileView {
 	processedAt?: string;
 	moveError?: string;
 }
-interface FolderView {
+export interface FolderView {
 	name: string;
 	settings: WatchedFolderSettings;
 	courseLabel: string | null;
 	files: FileView[];
 }
-interface FolderState {
+export interface FolderState {
 	config: NotesFolderConfig | null;
 	folders: FolderView[];
 	pending: string[];
@@ -94,19 +93,32 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 const folderTitle = (name: string) => (name === LOOSE ? "Files directly in the folder" : name);
 const shortDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "");
 
+export type FolderAct = (url: string, body?: unknown) => Promise<void>;
+
+export interface NotesFolderApi {
+	state: FolderState | null;
+	error: string | null;
+	act: FolderAct;
+	chooseFolder: () => Promise<void>;
+	openSetup: (only?: string[]) => void;
+	stop: () => Promise<void>;
+	/** The class folder linked to a class key, if any. */
+	folderFor: (course: string) => FolderView | null;
+	/** Folders with no class (or a class that is gone): shown on their own. */
+	unlinked: (courseKeys: ReadonlySet<string>) => FolderView[];
+	dialog: React.ReactNode;
+}
+
 /**
- * NOTES FOLDER (Library, 2026-11-01): the folder Socrates watches (a
- * reMarkable export folder, a Drive folder…), one subfolder per class.
- * Each class folder lists its files: waiting, being read, failed, processed.
- * Per class, files are processed one by one, all at once, or automatically.
- * A page is read once, ever: copies, renamed files and re-exports only cost
- * their new pages. Processed files move into a Processed subfolder.
+ * The watched notes folder's state for the Library (2026-11-01): the
+ * folder Socrates watches (a reMarkable export folder, a Drive folder…),
+ * one subfolder per class. Polls while something is being processed. A
+ * newly processed file is a new note, so the notes list refreshes then.
  */
-export function NotesFolderView() {
+export function useNotesFolder(): NotesFolderApi {
 	const [state, setState] = useState<FolderState | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [setup, setSetup] = useState<{ root: string | null; only?: string[] } | null>(null);
-	const { open: openSettings } = useSettingsDialog();
 	const desktop = useDesktop();
 	const processedCount = useRef<number | null>(null);
 
@@ -115,7 +127,6 @@ export function NotesFolderView() {
 			const next = await call<FolderState>("/api/notes-folder", "GET");
 			setState(next);
 			setError(null);
-			// A newly processed file is a new note: the notes list and the courses refresh.
 			const done = next.folders.reduce((n, f) => n + f.files.filter((x) => x.status === "processed").length, 0);
 			if (processedCount.current !== null && done !== processedCount.current) window.dispatchEvent(new Event(NOTES_CHANGED_EVENT));
 			processedCount.current = done;
@@ -131,7 +142,7 @@ export function NotesFolderView() {
 		return () => window.clearTimeout(id);
 	}, [state, load]);
 
-	const act = async (url: string, body: unknown = {}) => {
+	const act: FolderAct = async (url, body = {}) => {
 		try {
 			setState(await call<FolderState>(url, "POST", body));
 			setError(null);
@@ -140,140 +151,141 @@ export function NotesFolderView() {
 		}
 	};
 
-	const chooseFolder = async () => {
-		const pick = desktop.pickFolder;
-		if (!pick) return setSetup({ root: null });
-		const root = await pick();
-		if (root) setSetup({ root });
-	};
-
-	const stop = async () => {
-		if (!window.confirm("Stop watching this folder? Nothing is deleted, and pages already read stay on your map. If you watch it again later, they are not read again.")) return;
-		setState(await call<FolderState>("/api/notes-folder", "DELETE"));
-	};
-
 	const config = state?.config ?? null;
-	const waitingHandwriting = state?.folders.some((f) => f.files.some((x) => x.status === "waiting" || x.status === "failed")) ?? false;
+	return {
+		state,
+		error,
+		act,
+		chooseFolder: async () => {
+			if (!desktop.pickFolder) return setSetup({ root: null });
+			const root = await desktop.pickFolder();
+			if (root) setSetup({ root });
+		},
+		openSetup: (only) => setSetup({ root: config?.root ?? null, ...(only ? { only } : {}) }),
+		stop: async () => {
+			if (!window.confirm("Stop watching this folder? Nothing is deleted, and pages already read stay on your map. If you watch it again later, they are not read again.")) return;
+			setState(await call<FolderState>("/api/notes-folder", "DELETE"));
+		},
+		folderFor: (course) => state?.folders.find((f) => f.settings.course === course) ?? null,
+		unlinked: (keys) => state?.folders.filter((f) => !f.settings.course || !keys.has(f.settings.course)) ?? [],
+		dialog: setup ? (
+			<SetupDialog
+				initialRoot={setup.root}
+				only={setup.only}
+				current={config}
+				onClose={() => setSetup(null)}
+				onSaved={(next) => {
+					setState(next);
+					setSetup(null);
+					// A class made in the set-up window shows up as a class card.
+					window.dispatchEvent(new Event(NOTES_CHANGED_EVENT));
+				}}
+			/>
+		) : null,
+	};
+}
 
-	return (
-		<section data-testid="notes-folder" aria-labelledby="notes-folder-heading" className="flex flex-col gap-4">
-			<header className="flex flex-col gap-2">
-				<div className="flex items-center justify-between gap-4">
-					<SectionHeading className="flex items-baseline gap-2">
-						<span id="notes-folder-heading">Notes folder</span>
-						{config && (
-							<span className="text-sm font-normal text-muted-foreground">
-								{state!.busy ? "working…" : `${plural(state!.folders.length, "class folder")}`}
-							</span>
-						)}
-					</SectionHeading>
-					{config && (
-						<div className="flex items-center gap-1">
-							{desktop.openWatchedFolder && (
-								<Button size="sm" variant="ghost" onClick={() => void desktop.openWatchedFolder!()}>
-									<FolderOpenIcon className="size-3.5" />
-									Open
-								</Button>
-							)}
-							<Button size="sm" variant="outline" data-testid="notes-folder-setup" onClick={() => setSetup({ root: config.root })}>
-								Folder settings
-							</Button>
-						</div>
-					)}
+/**
+ * The watched folder as one quiet bar above the classes: where it is, what
+ * it is doing, and the banners that need the learner (a daily-limit pause,
+ * a missing key, new subfolders). Empty: an invitation to choose one.
+ */
+export function FolderBar({ nf }: { nf: NotesFolderApi }) {
+	const { open: openSettings } = useSettingsDialog();
+	const desktop = useDesktop();
+	const { state } = nf;
+	if (!state) return null;
+	const config = state.config;
+	if (!config) {
+		return (
+			<div data-testid="notes-folder-empty" className="flex flex-wrap items-center gap-4 rounded-2xl border border-dashed border-border px-5 py-4">
+				<div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent">
+					<PenLineIcon className="size-[18px]" />
 				</div>
-				{config ? (
-					<div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-						<FolderIcon className="size-3.5 shrink-0" />
-						<span className="truncate font-mono text-[12.5px]" title={config.root} data-testid="notes-folder-root">
-							{config.root}
-						</span>
-						<span className="shrink-0">·</span>
-						<button type="button" className="shrink-0 underline-offset-2 hover:text-foreground hover:underline" onClick={() => void stop()}>
-							Stop watching
-						</button>
-					</div>
-				) : null}
-				{error && (
-					<p role="alert" className="text-sm text-destructive">
-						{error}
+				<div className="min-w-60 flex-1">
+					<p className="text-[15px] font-semibold">Watch your notes folder</p>
+					<p className="mt-0.5 text-sm text-muted-foreground">
+						Your reMarkable export folder, or a Drive or Dropbox one, with a subfolder per class. Handwriting included, each page read once.
 					</p>
-				)}
-			</header>
-
-			{state && !config && (
-				<div data-testid="notes-folder-empty" className="flex flex-wrap items-center gap-5 rounded-2xl border border-dashed border-border px-6 py-5">
-					<div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent">
-						<PenLineIcon className="size-5" />
-					</div>
-					<div className="min-w-60 flex-1">
-						<h3 className="text-base font-semibold">Watch the folder your notes are exported to</h3>
-						<p className="mt-1 max-w-xl text-sm text-muted-foreground">
-							Your reMarkable&apos;s export folder, a Google Drive or Dropbox folder: one subfolder per class. New notes show up here, handwriting
-							included, and each page is read once, never twice.
-						</p>
-					</div>
-					<Button data-testid="notes-folder-choose" onClick={() => void chooseFolder()}>
-						<FolderOpenIcon className="size-4" />
-						Choose folder…
+				</div>
+				<Button size="sm" data-testid="notes-folder-choose" onClick={() => void nf.chooseFolder()}>
+					<FolderOpenIcon className="size-4" />
+					Choose folder…
+				</Button>
+			</div>
+		);
+	}
+	const files = state.folders.flatMap((f) => f.files);
+	const working = files.filter((f) => f.status === "processing" || f.status === "queued").length;
+	const waiting = files.filter((f) => f.status === "waiting").length;
+	const failed = files.filter((f) => f.status === "failed").length;
+	const status = [working > 0 && `${working} in progress`, waiting > 0 && `${waiting} waiting`, failed > 0 && `${failed} failed`].filter(Boolean).join(" · ");
+	const needsKey = !state.handwritingReady && files.some((x) => x.status === "waiting" || x.status === "failed");
+	return (
+		<div data-testid="notes-folder" className="flex flex-col gap-2">
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-accent/45 py-2 pl-4 pr-2">
+				<span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface", working > 0 && "text-foreground")}>
+					{working > 0 ? <LoaderCircleIcon className="size-4 animate-spin" /> : <FolderIcon className="size-4 text-muted-foreground" />}
+				</span>
+				<div className="flex min-w-0 flex-1 items-baseline gap-2">
+					<span className="shrink-0 text-sm font-semibold">Notes folder</span>
+					<span className="min-w-0 truncate font-mono text-[12px] text-muted-foreground" title={config.root} data-testid="notes-folder-root">
+						{config.root}
+					</span>
+				</div>
+				<span className="text-xs text-muted-foreground">
+					{plural(state.folders.length, "folder")} watched{status ? ` · ${status}` : ""}
+				</span>
+				<div className="flex items-center">
+					{desktop.openWatchedFolder && (
+						<Button size="sm" variant="ghost" onClick={() => void desktop.openWatchedFolder!()}>
+							Open
+						</Button>
+					)}
+					<Button size="sm" variant="ghost" data-testid="notes-folder-setup" onClick={() => nf.openSetup()}>
+						Folders
 					</Button>
+					<MoreMenu
+						label="Notes folder options"
+						items={[
+							{ label: "Look for new files now", onSelect: () => void nf.act("/api/notes-folder/rescan") },
+							{ label: "Choose another folder…", onSelect: () => void nf.chooseFolder() },
+							{ label: "Stop watching", onSelect: () => void nf.stop(), danger: true, divider: true },
+						]}
+					/>
 				</div>
+			</div>
+			{nf.error && (
+				<p role="alert" className="px-1 text-sm text-destructive">
+					{nf.error}
+				</p>
 			)}
-
-			{config && (
-				<div className="flex flex-col gap-2">
-					{state!.missing && (
-						<Banner tone="warn" icon={<AlertTriangleIcon className="size-4" />}>
-							The folder can&apos;t be found. If it is on a drive or in a cloud folder, connect it; otherwise use Folder settings to pick it again.
-						</Banner>
-					)}
-					{state!.paused && (
-						<Banner tone="warn" icon={<PauseIcon className="size-4" />} action={<Button size="sm" variant="outline" onClick={() => void act("/api/notes-folder/resume")}>Try now</Button>}>
-							{state!.paused.reason}
-						</Banner>
-					)}
-					{!state!.handwritingReady && waitingHandwriting && (
-						<Banner tone="info" icon={<PenLineIcon className="size-4" />} action={<Button size="sm" variant="outline" onClick={() => openSettings("keys", "GEMINI_API_KEY")}>Add a key</Button>}>
-							Reading handwriting needs a Gemini API key (the free tier is enough). Typed pages work without one.
-						</Banner>
-					)}
-					{state!.pending.length > 0 && (
-						<Banner
-							tone="info"
-							icon={<FolderIcon className="size-4" />}
-							testId="notes-folder-pending"
-							action={<Button size="sm" onClick={() => setSetup({ root: config.root, only: state!.pending })}>Set up</Button>}
-						>
-							{state!.pending.length === 1 ? (
-								<>New folder found: <strong className="font-medium text-foreground">{state!.pending[0]}</strong>. Nothing in it is read until you set it up.</>
-							) : (
-								<>{state!.pending.length} new folders found ({state!.pending.join(", ")}). Nothing in them is read until you set them up.</>
-							)}
-						</Banner>
-					)}
-				</div>
+			{state.missing && (
+				<Banner tone="warn" icon={<AlertTriangleIcon className="size-4" />}>
+					The folder can&apos;t be found. If it is on a drive or in a cloud folder, connect it; otherwise choose it again.
+				</Banner>
 			)}
-
-			{config && state!.folders.length > 0 && (
-				<ul className="flex flex-col gap-3">
-					{state!.folders.map((f) => (
-						<ClassFolder key={f.name} folder={f} act={act} />
-					))}
-				</ul>
+			{state.paused && (
+				<Banner tone="warn" icon={<PauseIcon className="size-4" />} action={<Button size="sm" variant="outline" onClick={() => void nf.act("/api/notes-folder/resume")}>Try now</Button>}>
+					{state.paused.reason}
+				</Banner>
 			)}
-
-			{setup && (
-				<SetupDialog
-					initialRoot={setup.root}
-					only={setup.only}
-					current={config}
-					onClose={() => setSetup(null)}
-					onSaved={(next) => {
-						setState(next);
-						setSetup(null);
-					}}
-				/>
+			{needsKey && (
+				<Banner tone="info" icon={<PenLineIcon className="size-4" />} action={<Button size="sm" variant="outline" onClick={() => openSettings("keys", "GEMINI_API_KEY")}>Add a key</Button>}>
+					Reading handwriting needs a Gemini API key (the free tier is enough). Typed pages work without one.
+				</Banner>
 			)}
-		</section>
+			{state.pending.length > 0 && (
+				<Banner tone="info" icon={<FolderIcon className="size-4" />} testId="notes-folder-pending" action={<Button size="sm" onClick={() => nf.openSetup(state.pending)}>Set up</Button>}>
+					{state.pending.length === 1 ? (
+						<>New folder found: <strong className="font-medium text-foreground">{state.pending[0]}</strong>. Nothing in it is read until you set it up.</>
+					) : (
+						<>{state.pending.length} new folders found ({state.pending.join(", ")}). Nothing in them is read until you set them up.</>
+					)}
+				</Banner>
+			)}
+			{nf.dialog}
+		</div>
 	);
 }
 
@@ -282,8 +294,8 @@ function Banner({ tone, icon, children, action, testId }: { tone: "warn" | "info
 		<div
 			data-testid={testId}
 			className={cn(
-				"flex flex-wrap items-center gap-3 rounded-xl px-4 py-2.5 text-sm",
-				tone === "warn" ? "bg-amber-500/10 text-amber-900 dark:text-amber-200" : "bg-accent/60 text-muted-foreground",
+				"flex flex-wrap items-center gap-3 rounded-xl border px-4 py-2 text-sm",
+				tone === "warn" ? "border-warn-ink/20 bg-warn-soft text-warn-ink" : "border-border/70 bg-surface text-muted-foreground",
 			)}
 		>
 			<span className="shrink-0">{icon}</span>
@@ -295,87 +307,95 @@ function Banner({ tone, icon, children, action, testId }: { tone: "warn" | "info
 
 // ─── One class folder ───────────────────────────────────────────────────────
 
-function ClassFolder({ folder, act }: { folder: FolderView; act: (url: string, body?: unknown) => Promise<void> }) {
-	const colors = useClassColors();
+/** The mode switch of a class folder: one by one, all at once, automatic. */
+export function ModeSwitch({ folder, act, label }: { folder: FolderView; act: FolderAct; label: string }) {
+	return (
+		<div role="group" aria-label={`How ${label} is processed`} className="flex rounded-[9px] bg-muted p-[2px] text-xs font-medium">
+			{MODES.map((m) => (
+				<button
+					key={m.id}
+					type="button"
+					title={m.hint}
+					aria-pressed={folder.settings.mode === m.id}
+					data-testid={`notes-folder-mode-${m.id}`}
+					onClick={() => void act("/api/notes-folder/folder", { name: folder.name, mode: m.id })}
+					className={cn(
+						"rounded-[7px] px-2.5 py-1 text-muted-foreground transition-colors hover:text-foreground",
+						folder.settings.mode === m.id && "bg-card text-foreground shadow-[0_1px_2px_rgba(31,30,29,0.1),0_0_0_1px_rgba(31,30,29,0.04)] dark:bg-accent",
+					)}
+				>
+					{m.label}
+				</button>
+			))}
+		</div>
+	);
+}
+
+function groupsOf(files: FileView[]) {
+	const by = (s: FileView["status"][]) => files.filter((f) => s.includes(f.status));
+	return {
+		working: by(["processing", "queued"]),
+		waiting: by(["waiting"]),
+		failed: by(["failed"]),
+		edited: files.filter((f) => f.status === "processed" && f.editedPages > 0),
+		done: files.filter((f) => f.status === "processed" && f.editedPages === 0),
+		skipped: by(["skipped"]),
+	};
+}
+
+/** One line on what a class folder holds ("2 waiting · 1 in progress"). */
+export function folderSummary(folder: FolderView): string {
+	const g = groupsOf(folder.files);
+	return [
+		g.working.length > 0 && `${g.working.length} in progress`,
+		g.waiting.length > 0 && `${g.waiting.length} waiting`,
+		g.failed.length > 0 && `${g.failed.length} failed`,
+		g.edited.length > 0 && `${g.edited.length} edited`,
+		`${g.done.length + g.edited.length} processed`,
+	]
+		.filter(Boolean)
+		.join(" · ");
+}
+
+/**
+ * A class folder's files inside its class card: what is being read, what
+ * waits (with the mode's actions), what failed, notebooks with edited pages,
+ * and, folded away, what is processed or not included.
+ */
+export function FolderInbox({ folder, act, label }: { folder: FolderView; act: FolderAct; label: string }) {
+	const desktop = useDesktop();
 	const [chosen, setChosen] = useState<string[]>([]);
 	const [showDone, setShowDone] = useState(false);
 	const [showSkipped, setShowSkipped] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const { settings } = folder;
-
-	const groups = useMemo(() => {
-		const by = (s: FileView["status"][]) => folder.files.filter((f) => s.includes(f.status));
-		return {
-			working: by(["processing", "queued"]),
-			waiting: by(["waiting"]),
-			failed: by(["failed"]),
-			edited: folder.files.filter((f) => f.status === "processed" && f.editedPages > 0),
-			done: folder.files.filter((f) => f.status === "processed" && f.editedPages === 0),
-			skipped: by(["skipped"]),
-		};
-	}, [folder.files]);
+	const groups = useMemo(() => groupsOf(folder.files), [folder.files]);
 	const waitingPages = groups.waiting.reduce((n, f) => n + f.newPages, 0);
-	const color = settings.course ? colors.get(settings.course) : undefined;
 	const live = new Set(groups.waiting.map((f) => f.key));
 	const picked = chosen.filter((k) => live.has(k));
+	const active = groups.working.length + groups.waiting.length + groups.failed.length + groups.edited.length;
 
 	const process = (body: unknown) => {
 		setChosen([]);
 		return act("/api/notes-folder/process", body);
 	};
-	const setMode = (mode: FolderMode) => act("/api/notes-folder/folder", { name: folder.name, mode });
-
-	const summary = [
-		groups.working.length > 0 && `${groups.working.length} in progress`,
-		groups.waiting.length > 0 && `${groups.waiting.length} waiting`,
-		groups.failed.length > 0 && `${groups.failed.length} failed`,
-		`${groups.done.length + groups.edited.length} processed`,
-	].filter(Boolean);
 
 	return (
-		<li data-testid="notes-folder-class" className="flex flex-col rounded-2xl border border-border/70 bg-surface">
-			<div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 pt-4 pb-3">
-				<div className="flex min-w-0 flex-1 items-center gap-3">
-					<span
-						aria-hidden
-						className={cn("size-2.5 shrink-0 rounded-full", color !== undefined ? `cal-c${color}` : "bg-muted-foreground/40")}
-						style={color !== undefined ? { background: "var(--bar)" } : undefined}
-					/>
-					<div className="min-w-0">
-						<h3 className="truncate text-lg font-semibold">{folder.courseLabel ?? "No class"}</h3>
-						<p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-							<FolderIcon className="size-3 shrink-0" />
-							<span className="truncate">{folderTitle(folder.name)}</span>
-							<span>·</span>
-							<span>{summary.join(" · ")}</span>
-						</p>
-					</div>
-				</div>
-				<div role="group" aria-label={`How ${folder.courseLabel ?? folderTitle(folder.name)} is processed`} className="flex rounded-[10px] bg-muted p-[3px] text-[13px] font-medium">
-					{MODES.map((m) => (
-						<button
-							key={m.id}
-							type="button"
-							title={m.hint}
-							aria-pressed={settings.mode === m.id}
-							data-testid={`notes-folder-mode-${m.id}`}
-							onClick={() => void setMode(m.id)}
-							className={cn(
-								"rounded-[7px] px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground",
-								settings.mode === m.id && "bg-card text-foreground shadow-[0_1px_2px_rgba(31,30,29,0.1),0_0_0_1px_rgba(31,30,29,0.04)] dark:bg-accent",
-							)}
-						>
-							{m.label}
-						</button>
-					))}
-				</div>
+		<div data-testid="notes-folder-class" className="flex flex-col">
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-3 pb-1.5">
+				<p className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+					<FolderIcon className="size-3.5 shrink-0" />
+					<span className="truncate font-medium text-foreground/80">{folderTitle(folder.name)}</span>
+					<span>·</span>
+					<span className="truncate">{folderSummary(folder)}</span>
+				</p>
+				<ModeSwitch folder={folder} act={act} label={label} />
 			</div>
 
-			<div className="flex flex-col gap-0.5 px-3 pb-2">
+			<div className="flex flex-col px-3">
 				{groups.working.map((f) => (
 					<FileRow key={f.key} f={f} lead={<LoaderCircleIcon className="size-4 animate-spin text-muted-foreground" />} meta={f.status === "queued" ? "In line" : (f.step ?? "Starting")} />
 				))}
-
 				{groups.failed.map((f) => (
 					<FileRow
 						key={f.key}
@@ -390,7 +410,6 @@ function ClassFolder({ folder, act }: { folder: FolderView; act: (url: string, b
 						}
 					/>
 				))}
-
 				{groups.waiting.map((f) => (
 					<FileRow
 						key={f.key}
@@ -410,8 +429,8 @@ function ClassFolder({ folder, act }: { folder: FolderView; act: (url: string, b
 						}
 						meta={
 							<>
-								{f.update ? <span className="font-medium text-foreground">Updated · {plural(f.newPages, "new page")}</span> : plural(f.pages, "page")}
-								{f.error && <span className="text-amber-700 dark:text-amber-300"> · paused: {f.error}</span>}
+								{f.update ? <span className="font-medium text-foreground">Updated · {plural(f.newPages, "new page")}</span> : `New · ${plural(f.pages, "page")}`}
+								{f.error && <span className="text-warn-ink"> · paused: {f.error}</span>}
 							</>
 						}
 						action={
@@ -423,13 +442,12 @@ function ClassFolder({ folder, act }: { folder: FolderView; act: (url: string, b
 						}
 					/>
 				))}
-
 				{groups.edited.map((f) => (
 					<FileRow
 						key={f.key}
 						f={f}
-						lead={<PenLineIcon className="size-4 text-amber-600 dark:text-amber-300" />}
-						meta={<>Re-exported · {plural(f.editedPages, "page")} you changed after {f.editedPages === 1 ? "it was" : "they were"} read. Not read again unless you say so.</>}
+						lead={<PenLineIcon className="size-4 text-warn-ink" />}
+						meta={<>Re-exported · {plural(f.editedPages, "page")} changed after {f.editedPages === 1 ? "it was" : "they were"} read</>}
 						action={
 							<div className="flex gap-1">
 								<Button size="xs" variant="outline" onClick={() => void process({ keys: [f.key], edited: true })}>
@@ -442,54 +460,55 @@ function ClassFolder({ folder, act }: { folder: FolderView; act: (url: string, b
 						}
 					/>
 				))}
-
-				{groups.waiting.length === 0 && groups.working.length === 0 && groups.failed.length === 0 && groups.edited.length === 0 && (
-					<p className="px-2 py-2 text-sm text-muted-foreground">
-						{settings.watch ? "Nothing waiting. New files in this folder show up here." : "Nothing waiting. This folder isn't watched for new files."}
+				{active === 0 && (
+					<p className="px-2 py-1.5 text-sm text-muted-foreground">
+						{settings.watch ? "All caught up. New files in this folder appear here." : "All caught up. This folder isn't watched for new files."}
 					</p>
 				)}
 			</div>
 
 			{groups.waiting.length > 0 && settings.mode !== "auto" && (
-				<div className="flex flex-wrap items-center justify-end gap-3 border-t border-border/60 px-5 py-3">
+				<div className="mx-5 mt-1 flex flex-wrap items-center justify-end gap-2 rounded-xl bg-muted/50 py-1.5 pl-3 pr-1.5">
 					<span className="mr-auto text-xs text-muted-foreground">
 						{settings.mode === "pick"
 							? picked.length > 0
 								? `${plural(picked.length, "file")} chosen`
-								: "Choose files, or process them one at a time."
-							: `${plural(groups.waiting.length, "file")}, ${plural(waitingPages, "page")} to read. Pages already on your map are skipped.`}
+								: "Pick files, or process them one at a time."
+							: `${plural(waitingPages, "page")} to read. Pages already on your map are skipped.`}
 					</span>
 					{settings.mode === "pick" ? (
 						<>
-							<Button size="sm" variant="ghost" onClick={() => setChosen(picked.length === groups.waiting.length ? [] : groups.waiting.map((f) => f.key))}>
+							<Button size="xs" variant="ghost" onClick={() => setChosen(picked.length === groups.waiting.length ? [] : groups.waiting.map((f) => f.key))}>
 								{picked.length === groups.waiting.length ? "Clear" : "Choose all"}
 							</Button>
-							<Button size="sm" disabled={picked.length === 0} onClick={() => void process({ keys: picked })} data-testid="notes-folder-process-selected">
+							<Button size="xs" disabled={picked.length === 0} onClick={() => void process({ keys: picked })} data-testid="notes-folder-process-selected">
 								Process {picked.length > 0 ? picked.length : ""}
 							</Button>
 						</>
 					) : (
-						<Button size="sm" onClick={() => void process({ folder: folder.name, all: true })} data-testid="notes-folder-process-all">
+						<Button size="xs" onClick={() => void process({ folder: folder.name, all: true })} data-testid="notes-folder-process-all">
 							Process all {groups.waiting.length}
 						</Button>
 					)}
 				</div>
 			)}
-			{settings.mode === "auto" && groups.waiting.length > 0 && (
-				<p className="border-t border-border/60 px-5 py-3 text-xs text-muted-foreground">These start on their own, one file at a time.</p>
-			)}
+			{settings.mode === "auto" && groups.waiting.length > 0 && <p className="px-5 pt-1 text-xs text-muted-foreground">These start on their own, one file at a time.</p>}
 
-			<div className="flex flex-wrap items-center gap-1 border-t border-border/60 px-3 py-2">
+			<div className="flex flex-wrap items-center gap-1 px-3 pt-1.5 pb-1">
 				<Disclosure open={showDone} onToggle={() => setShowDone((v) => !v)} label={`Processed (${groups.done.length})`} disabled={groups.done.length === 0} />
 				{groups.skipped.length > 0 && <Disclosure open={showSkipped} onToggle={() => setShowSkipped((v) => !v)} label={`Not included (${groups.skipped.length})`} />}
 				<span className="flex-1" />
+				{desktop.openWatchedFolder && (
+					<Button size="xs" variant="ghost" onClick={() => void desktop.openWatchedFolder!(folder.name)}>
+						Open folder
+					</Button>
+				)}
 				<Button size="xs" variant="ghost" onClick={() => setSettingsOpen((v) => !v)} aria-expanded={settingsOpen}>
-					Settings
+					Folder settings
 				</Button>
 			</div>
-
 			{showDone && groups.done.length > 0 && (
-				<ul className="flex flex-col gap-0.5 px-3 pb-3" data-testid="notes-folder-done">
+				<div className="flex flex-col px-3 pb-2" data-testid="notes-folder-done">
 					{groups.done.map((f) => (
 						<FileRow
 							key={f.key}
@@ -498,15 +517,15 @@ function ClassFolder({ folder, act }: { folder: FolderView; act: (url: string, b
 							lead={<CheckIcon className="size-4 text-muted-foreground" />}
 							meta={
 								<>
-									{plural(f.pages, "page")} · {shortDate(f.processedAt)} · {f.moveError ? <span className="text-amber-700 dark:text-amber-300">{f.moveError}</span> : `in ${PROCESSED_DIR}`}
+									{plural(f.pages, "page")} · {shortDate(f.processedAt)} · {f.moveError ? <span className="text-warn-ink">{f.moveError}</span> : `in ${PROCESSED_DIR}`}
 								</>
 							}
 						/>
 					))}
-				</ul>
+				</div>
 			)}
 			{showSkipped && groups.skipped.length > 0 && (
-				<ul className="flex flex-col gap-0.5 px-3 pb-3">
+				<div className="flex flex-col px-3 pb-2">
 					{groups.skipped.map((f) => (
 						<FileRow
 							key={f.key}
@@ -521,9 +540,25 @@ function ClassFolder({ folder, act }: { folder: FolderView; act: (url: string, b
 							}
 						/>
 					))}
-				</ul>
+				</div>
 			)}
 			{settingsOpen && <FolderSettings folder={folder} act={act} />}
+		</div>
+	);
+}
+
+/** A watched folder with no class (the loose files, or a folder left without one). */
+export function UnlinkedFolderCard({ folder, act }: { folder: FolderView; act: FolderAct }) {
+	return (
+		<li className="flex flex-col overflow-visible rounded-2xl border border-dashed border-border bg-surface/60 pb-1">
+			<div className="flex items-center gap-3 px-5 pt-4">
+				<span aria-hidden className="size-2.5 shrink-0 rounded-full bg-muted-foreground/35" />
+				<div className="min-w-0">
+					<h3 className="truncate text-[17px] font-semibold">{folderTitle(folder.name)}</h3>
+					<p className="text-xs text-muted-foreground">Not linked to a class. Its notes go to All notes; pick a class in Folder settings.</p>
+				</div>
+			</div>
+			<FolderInbox folder={folder} act={act} label={folderTitle(folder.name)} />
 		</li>
 	);
 }
