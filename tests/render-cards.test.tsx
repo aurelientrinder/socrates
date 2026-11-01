@@ -149,7 +149,7 @@ describe("render smoke tests", () => {
 		assert.match(html, /Your thinking/, "labeled as the learner's voice (sentence case since the redesign follow-up)");
 		assert.match(html, /Why this answer\? Whatever comes to mind/, "placeholder invites, not apologizes (owner, placeholder round 2026-10-07)");
 		assert.ok(!html.includes("optional"), "the field is never called optional");
-		assert.match(html, /Submit answer/, "send becomes Submit answer");
+		assert.match(html, /Pick an answer/, "send says what is missing until an answer is picked");
 		assert.match(html, /↵ submits · ⇧↵ newline/, "the standard chord is discoverable (owner round 5)");
 		// The v1 desync bug: options are buttons with ARIA roles, not native inputs.
 		assert.ok(!html.includes('type="radio"'), "no native radio inputs");
@@ -440,7 +440,7 @@ describe("teach-check reveal (W5 phase separation)", () => {
 		// path renders the identical form; this is also the regression pin for it.
 		const html = renderDock({ toolName: "quiz", toolCallId: "t1", input: quizInput as never });
 		assert.ok(html.includes('data-testid="question-dock"'), "the form is the dock's content once expanded");
-		assert.match(html, /Submit answer/);
+		assert.match(html, /Pick an answer/);
 	});
 });
 
