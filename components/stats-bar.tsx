@@ -35,6 +35,7 @@ export function StatsBar({
 	chatId,
 	leadingSlot,
 	flat = false,
+	summaryBelow = false,
 }: {
 	turns: TurnUsage[];
 	contextTokens?: number | null;
@@ -57,6 +58,10 @@ export function StatsBar({
 	 *  2026-11-01): the row is the card's bottom toolbar — dictate on the
 	 *  left, usage and the model pills (borderless) on the right. */
 	flat?: boolean;
+	/** Hang the usage summary as a quiet line under the card instead of in
+	 *  the row (sidebar refine, 2026-11-03): the row keeps only the mic and
+	 *  the model. The caller leaves room below the card for it. */
+	summaryBelow?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const [selectedModel, setSelectedModel] = useState<string | undefined>();
@@ -120,7 +125,11 @@ export function StatsBar({
 				<div className="flex min-w-0 flex-1 items-center justify-start">{dictationSlot}</div>
 			)}
 			{(chatId || turns.length > 0) && (
-			<div ref={barRef} className="relative">
+			<div
+				ref={barRef}
+				data-testid={summaryBelow ? "stats-below" : undefined}
+				className={summaryBelow ? "absolute top-full left-1/2 mt-1.75 -translate-x-1/2 whitespace-nowrap text-[11.5px] opacity-80 hover:opacity-100" : "relative"}
+			>
 				{/* No tooltip — the numbers describe themselves and the popover
 			    speaks on click (owner, subtlety round 2026-09-25). */}
 			<button
@@ -131,10 +140,10 @@ export function StatsBar({
 				className="flex items-center gap-1.5 tabular-nums transition-colors hover:text-foreground"
 			>
 				<span data-testid="stats-context">
-					{contextLabel}
+					{summaryBelow ? `${contextLabel.replace(" / ", " of ")} tokens` : contextLabel}
 				</span>
 				<span aria-hidden>·</span>
-				<span data-testid="stats-cost">{costLabel}</span>
+				<span data-testid="stats-cost">{summaryBelow ? `${costLabel} this session` : costLabel}</span>
 			</button>
 				{open && (
 					<div

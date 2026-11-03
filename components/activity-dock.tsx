@@ -288,7 +288,7 @@ const KIND_ICON: Record<JobKind, typeof SearchIcon> = {
 /** Abort states per blob id: pending (fired) / failed (backend absent). */
 type AbortState = "pending" | "failed";
 
-export function ActivitySection({ feed: feedProp }: { feed?: ActivityFeed }) {
+export function ActivitySection({ feed: feedProp, leading }: { feed?: ActivityFeed; leading?: React.ReactNode }) {
 	const ctx = useContext(ActivityContext);
 	const feed = feedProp ?? ctx.feed;
 	const refresh = ctx.refresh;
@@ -344,18 +344,9 @@ export function ActivitySection({ feed: feedProp }: { feed?: ActivityFeed }) {
 	// rows match the session rows' hover. Empty means empty: the header sits
 	// alone (the cost span is population, not decoration).
 	return (
-		<section data-testid="activity-section" className="border-t border-border px-3 pb-3 pt-2">
-			<div className="mb-1 flex items-center gap-1.5 pl-2.5 text-sm font-medium text-muted-foreground">
-				<ActivityIcon className="size-3.5" />
-				Background agents
-				{blobs.length > 0 && (
-					<span className="ml-auto tabular-nums" data-testid="activity-total-cost" title="Total running cost (inferred)">
-						{totalCost === null ? "—" : formatUsd(totalCost)}
-				</span>
-				)}
-			</div>
+		<section data-testid="activity-section" className="border-t border-border p-2">
 			{blobs.length > 0 && (
-				<div className="flex max-h-[40dvh] flex-col gap-1 overflow-y-auto">
+				<div className="mb-1 flex max-h-[40dvh] flex-col gap-1 overflow-y-auto pt-0.5">
 					{blobs.map((blob) => (
 						<ActivityBlobRow
 							key={blob.id}
@@ -367,8 +358,28 @@ export function ActivitySection({ feed: feedProp }: { feed?: ActivityFeed }) {
 							onAbort={() => void abort(blob)}
 						/>
 					))}
-			</div>
+				</div>
 			)}
+			{/* The footer row (sidebar refine, 2026-11-03): Settings on the
+			    left, the background-agents status on the right — always
+			    present, quiet when nothing runs. */}
+			<div className="flex items-center gap-1">
+				{leading}
+				<span
+					className={cn(
+						"flex h-8.5 shrink-0 items-center gap-2 rounded-lg px-2.5 text-[13.5px] font-medium",
+						blobs.length > 0 ? "text-foreground" : "text-muted-foreground",
+					)}
+				>
+					<ActivityIcon className="size-3.75" />
+					Background agents
+					{blobs.length > 0 && (
+						<span className="tabular-nums text-muted-foreground" data-testid="activity-total-cost" title="Total running cost (inferred)">
+							{totalCost === null ? "—" : formatUsd(totalCost)}
+						</span>
+					)}
+				</span>
+			</div>
 		</section>
 	);
 }

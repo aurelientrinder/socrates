@@ -6,10 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode } from "@/src/core";
-import { BookOpenIcon, ChartLineIcon, DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
+import { BookOpenIcon, ChartLineIcon, DumbbellIcon, FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlayIcon, RefreshCwIcon, SearchIcon, SettingsIcon, SunIcon, TargetIcon, XIcon } from "lucide-react";
+import { dateGroup, sessionDisplay, shortAgo, type SessionVariant } from "@/components/session-display";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
-import { LhMark } from "@/components/lh-mark";
+import { SocratesMark } from "@/components/lh-mark";
 import { BrailleSpinner } from "@/components/braille-spinner";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { SettingsDialogProvider, useSettingsDialog } from "@/components/settings/settings-dialog.tsx";
@@ -21,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { fuzzyScore } from "@/src/core";
 import { useServerEvent, useServerResync } from "@/components/server-events";
 import type { ChatListItem } from "@/src/core";
-import { kbdEventForAction } from "@/src/core";
+import { bindingForAction, formatBinding, kbdEventForAction } from "@/src/core";
 
 /**
  * Toggleable sidebar — NOT a modal drawer: no backdrop, no focus theft. It
@@ -248,25 +249,58 @@ export function timeAgo(iso: string, now = new Date()): string {
 	return `${date.getFullYear()}-${mm}-${dd}`;
 }
 
-/** The row's second line: the state when a state exists (waiting/working),
- *  otherwise just how long ago. The message count is DROPPED (owner,
- *  typography round 5): it informed no decision — clutter. messageCount
- *  still rides the API payload, so this is a one-line flip back if it's
- *  ever wanted. */
-function sessionMeta(chat: ChatListItem): string {
-	if (chat.compacting) return `Compacting context · ${timeAgo(chat.updatedAt)}`;
-	if (chat.pendingQuestion) return `Waiting for input · ${timeAgo(chat.updatedAt)}`;
-	if ((chat.kind ?? "teach") === "practice" && chat.pendingProblem) {
-		return `Problem waiting · ${timeAgo(chat.updatedAt)}`;
-	}
+/** The row's state, when it has one worth reading (waiting/working). */
+function sessionState(chat: ChatListItem): string | null {
+	if (chat.compacting) return "Compacting context";
+	if (chat.pendingQuestion) return "Waiting for input";
+	if ((chat.kind ?? "teach") === "practice" && chat.pendingProblem) return "Problem waiting";
 	if (chat.busy) return "Working…";
-	return timeAgo(chat.updatedAt);
+	return null;
+}
+
+/** The row's second line: the session's kind, then its state when it has
+ *  one, otherwise how long ago (sidebar refine, 2026-11-03). */
+function sessionMeta(chat: ChatListItem): string {
+	return `${sessionDisplay(chat).kindLabel} · ${sessionState(chat) ?? shortAgo(chat.updatedAt)}`;
+}
+
+const VARIANT_ICON: Record<SessionVariant, typeof BookOpenIcon> = {
+	learn: BookOpenIcon,
+	notes: FileTextIcon,
+	practice: DumbbellIcon,
+	drill: TargetIcon,
+	review: RefreshCwIcon,
+};
+
+const VARIANT_TILE: Record<SessionVariant, string> = {
+	learn: "bg-ink-soft text-foreground",
+	notes: "bg-ink-soft text-muted-foreground",
+	practice: "bg-ink-soft text-foreground",
+	drill: "bg-warn-soft text-warn-ink",
+	review: "bg-review-soft text-review-ink",
+};
+
+/** The kind tile: what sort of session this is, at a glance. Exported so
+ *  the session header shows the same mark. */
+export function SessionKindTile({ variant, className }: { variant: SessionVariant; className?: string }) {
+	const Icon = VARIANT_ICON[variant];
+	return (
+		<span
+			aria-hidden="true"
+			data-testid={`session-kind-${variant}`}
+			className={cn("flex size-6.5 shrink-0 items-center justify-center rounded-[7px]", VARIANT_TILE[variant], className)}
+		>
+			<Icon className="size-3.5" strokeWidth={2.1} />
+		</span>
+	);
 }
 
 /**
- * One session row: the status spinner (only while working), then title +
- * state-aware meta. Exported for render tests — pure function of the
- * list item.
+ * One session row (sidebar refine, 2026-11-03): the kind tile, the subject
+ * with its kind and state underneath, and on the right a count chip for
+ * drills and reviews ("1 weak spot"), the spinner while a turn runs, or a
+ * dot when the session is waiting on you. Exported for render tests: a
+ * pure function of the list item.
  */
 export function SessionRow({
 	chat,
@@ -284,42 +318,51 @@ export function SessionRow({
 	/** Right-click opens the context menu (wave 6: Rename / Delete). */
 	onContextMenu?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
+	const display = sessionDisplay(chat);
+	const working = chat.busy || chat.compacting;
+	const waiting = chat.pendingQuestion || ((chat.kind ?? "teach") === "practice" && chat.pendingProblem);
 	return (
 		<button
 			type="button"
 			onClick={onOpen}
 			onContextMenu={onContextMenu}
+			title={chat.title}
 			data-testid={kbdSelected ? "session-row-kbd" : "session-row"}
 			className={cn(
-				"relative mb-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent",
-				active && "bg-accent",
-				kbdSelected && !active && "bg-accent/60 ring-1 ring-border",
+				"relative mb-px flex w-full items-center gap-2.5 rounded-[9px] px-2 py-1.5 text-left transition-colors hover:bg-ink-soft",
+				active && "bg-ink-soft",
+				kbdSelected && !active && "bg-ink-soft ring-1 ring-border",
 			)}
 		>
-			<SessionStatus busy={chat.busy || chat.compacting} />
+			<SessionKindTile variant={display.variant} />
 			<span className="min-w-0 flex-1">
-				{/* Titles are the learner's/teacher's WORDS — Source Sans 3, the
-				    same voice the words were typed in (every input is lh-prose);
-				    the meta line below stays JetBrains Mono (machine data). One
-				    rule, finally applied to the picker too (owner, typography
-				    round): mono = chrome, Source Sans = human words. */}
-				<span className="block truncate font-prose text-(length:--lh-prose-size)">{chat.title}</span>
-				<span className="block text-xs text-muted-foreground">{sessionMeta(chat)}</span>
+				<span className="block truncate text-[14.5px] leading-[1.25] font-semibold text-foreground">{display.name}</span>
+				<span className="block truncate text-[12px] leading-[1.3] text-muted-foreground">{sessionMeta(chat)}</span>
 			</span>
-			{/* The dumbbell rides the FAR RIGHT (owner round 6, 2026-10-05) —
-			    was left of the name; right-aligned keeps the titles flush with
-			    the teaching rows and reads cleaner. */}
-			{(chat.kind ?? "teach") === "practice" && (
-				<DumbbellIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-label="Practice session" />
-			)}
+			{working ? (
+				<SessionStatus busy />
+			) : display.chip ? (
+				<span
+					data-testid="session-chip"
+					className={cn(
+						"shrink-0 rounded-full px-1.75 py-0.5 text-[11.5px] leading-tight font-semibold whitespace-nowrap",
+						display.variant === "drill" ? "bg-warn-soft text-warn-ink" : "bg-review-soft text-review-ink",
+					)}
+				>
+					{display.chip}
+				</span>
+			) : waiting ? (
+				<span data-testid="session-waiting" aria-hidden="true" className="mr-1 size-[7px] shrink-0 rounded-full bg-foreground" />
+			) : null}
 		</button>
 	);
 }
 
 /** The inline-rename row (wave 6): same geometry as SessionRow, but the
- *  title line becomes a text input — select-all on entry (the click means
- *  "replace", the header rename's rule), Enter/blur commits, Esc discards.
- *  The meta line stays so the row never changes height mid-edit. */
+ *  name line becomes a text input holding the FULL stored title —
+ *  select-all on entry (the click means "replace", the header rename's
+ *  rule), Enter/blur commits, Esc discards. The meta line stays so the row
+ *  never changes height mid-edit. */
 export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; onCommit: (next: string) => void; onCancel: () => void }) {
 	const [draft, setDraft] = useState(chat.title);
 	const inputRef = useRef<HTMLInputElement | null>(null);
@@ -333,15 +376,9 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 	return (
 		<div
 			data-testid="session-rename-row"
-			className="relative mb-0.5 flex w-full items-center rounded-lg bg-accent px-3 py-2"
+			className="relative mb-px flex w-full items-center gap-2.5 rounded-[9px] bg-ink-soft px-2 py-1.5"
 		>
-			{/* NOTHING MOVES (owner, polish round): an idle row renders no
-			    status spacer (SessionStatus is null when not busy), so the
-			    title starts at the row's own px-3 — 12px in. The old rename
-			    row always carried a 14px spacer + gap + the input's border
-			    and padding, landing the text ~41px in (and the meta with
-			    it). The input here is borderless and padding-free at the
-			    exact title x; the underline is the only editing cue. */}
+			<SessionKindTile variant={sessionDisplay(chat).variant} />
 			<span className="flex min-w-0 w-full flex-col">
 				<input
 					ref={inputRef}
@@ -358,9 +395,9 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 					}}
 					aria-label="Rename session"
 					data-testid="session-rename-input"
-					className="lh-input w-full min-w-0 truncate border-0 border-b border-border bg-transparent px-0 text-foreground outline-none"
+					className="w-full min-w-0 truncate border-0 border-b border-border bg-transparent px-0 text-[14.5px] leading-tight font-semibold text-foreground outline-none"
 				/>
-				<span className="block truncate text-xs text-muted-foreground">{sessionMeta(chat)}</span>
+				<span className="block truncate text-[12px] leading-[1.3] text-muted-foreground">{sessionMeta(chat)}</span>
 			</span>
 		</div>
 	);
@@ -402,8 +439,8 @@ function NavRow({
 			data-testid={testId}
 			aria-current={active ? "page" : undefined}
 			className={cn(
-				"flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-base transition-colors hover:bg-accent",
-				active ? "bg-accent font-semibold text-foreground" : "font-medium text-foreground/85",
+				"flex h-8.5 w-full items-center gap-2.5 rounded-lg px-2.5 text-[14.5px] transition-colors hover:bg-ink-soft [&_svg]:text-muted-foreground",
+				active ? "bg-ink-soft font-semibold text-foreground [&_svg]:text-foreground" : "font-medium text-foreground/82",
 			)}
 		>
 			{icon}
@@ -443,7 +480,8 @@ function TodayLink() {
 			hint="see today's plan: what to study first and what you are forgetting"
 			badge={
 				due !== null && due > 0 ? (
-					<span data-testid="review-due-count" className="rounded-full bg-warn-soft px-2 py-px text-xs font-semibold tabular-nums text-warn-ink">
+					<span data-testid="review-due-count" className="flex items-center gap-1.25 text-[12.5px] font-semibold tabular-nums text-warn-ink">
+						<span aria-hidden="true" className="size-1.5 rounded-full bg-warn" />
 						{due} due
 					</span>
 				) : undefined
@@ -595,6 +633,7 @@ function SessionsSidebar() {
 	   selection. */
 	const [kbdIndex, setKbdIndex] = useState<number | null>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
+	const [searchOpen, setSearchOpen] = useState(false);
 	const listRef = useRef<HTMLDivElement>(null);
 
 	/* ── Wave 6 chunk A: context menu + inline rename + deletion ──
@@ -682,8 +721,10 @@ function SessionsSidebar() {
 	useEffect(() => {
 		const onFocusSearch = () => {
 			if (!open) toggle();
-			// A clipped (overflow-hidden) input still focuses — the sidebar's
-			// slide-in doesn't gate the keystroke.
+			// The field mounts behind the icon: open it, then focus once it
+			// exists. A clipped (overflow-hidden) input still focuses — the
+			// sidebar's slide-in doesn't gate the keystroke.
+			setSearchOpen(true);
 			requestAnimationFrame(() => searchRef.current?.focus());
 		};
 		window.addEventListener("lh:kbd-sessions-search", onFocusSearch);
@@ -731,11 +772,11 @@ function SessionsSidebar() {
 						<Link
 							href="/"
 							aria-label="Home"
-							className="lh-no-drag flex h-9 shrink-0 items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
+							className="lh-no-drag flex h-9 shrink-0 items-center gap-2.25 rounded-md px-1 transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
 						>
-							<LhMark className="size-6" />
+							<SocratesMark className="size-5.5" />
 							{/* The wordmark (redesign wave): the app's name in the title face. */}
-							<span className="lh-page-title text-xl">Socrates</span>
+							<span className="text-lg font-bold tracking-[-0.01em]">Socrates</span>
 						</Link>
 					</Hint>
 					<Hint label="Close sidebar" action="toggle-sidebar">
@@ -744,7 +785,7 @@ function SessionsSidebar() {
 							size="icon"
 							aria-label="Close sidebar"
 							onClick={toggle}
-							className="lh-no-drag"
+							className="lh-no-drag size-7 rounded-[7px] text-muted-foreground"
 						>
 							<PanelLeftCloseIcon className="size-4" />
 						</Button>
@@ -757,18 +798,21 @@ function SessionsSidebar() {
 				    Practice doors.
 				    Today / Progress / Library replace the six all-caps links
 				    (Calibration and Review live in Progress, Notes in Library). */}
-				<div className="mx-3 mb-4 flex flex-col gap-3">
+				<div className="flex flex-col gap-3.5">
 					<button
 						type="button"
 						data-testid="new-session"
 						onClick={() => openStart()}
-						className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-base font-medium text-primary-foreground transition-opacity hover:opacity-90"
+						className="mx-3 mt-0.5 flex h-9.5 items-center gap-2.25 rounded-[9px] bg-primary px-3 text-[14.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
 					>
 						<PlayIcon className="size-3.5 fill-current" />
 						Start studying
 						<span className="sr-only">: learn, practise or review</span>
+						<kbd suppressHydrationWarning className="ml-auto font-sans text-xs font-medium opacity-60">
+							{formatBinding(bindingForAction("new-session"))}
+						</kbd>
 					</button>
-					<nav aria-label="Main" className="flex flex-col gap-0.5">
+					<nav aria-label="Main" className="mx-2 flex flex-col gap-px">
 						<TodayLink />
 						<NavRow
 							href="/progress"
@@ -788,33 +832,32 @@ function SessionsSidebar() {
 					</nav>
 				</div>
 
-				<div className="mx-3 mb-2 flex items-center gap-2">
-					<span className="pl-2.5 text-sm font-medium text-muted-foreground">Sessions</span>
-					<Hint label="Search sessions" action="sessions-search" side="bottom">
-					<span className="relative flex-1">
-						<Input
-							ref={searchRef}
-							data-testid="session-search"
-							value={query}
-							onChange={(e) => {
-								setQuery(e.target.value);
-								// The list reorders under the query every keystroke —
-								// a stale walk index would point at the wrong row.
-								setKbdIndex(null);
-							}}
-							// THE SEARCH OWNS THE WALK (owner, 2026-10-10 — the
-							// retired Alt+↑/↓/↵ cycle's successor): ↑/↓ cycle the
-							// filtered rows (wrap), Enter opens the walked row —
-							// or the FIRST match when nothing is walked (the
-							// quick-open pattern) — then blurs (focus returns to
-							// the app per the Enter law; the query stays for
-							// re-searching). Esc leaves the search (owner,
-							// keyboard wave): blur back to normal, and claim the
-							// key so the window Esc chain (dictation / abort)
-							// doesn't also fire.
+				{/* The Sessions heading (sidebar refine, 2026-11-03): a quiet label
+				    with the search behind an icon; the field opens in its place
+				    (click, or the sessions-search shortcut) and folds back when
+				    it is left empty. */}
+				<div className="mt-4.5 mr-3.5 mb-1.5 ml-4.5 flex h-7 items-center gap-1">
+					{searchOpen || query ? (
+						<span className="relative flex-1">
+							<Input
+								ref={searchRef}
+								data-testid="session-search"
+								value={query}
+								autoFocus
+								onChange={(e) => {
+									setQuery(e.target.value);
+									// The list reorders under the query every keystroke —
+									// a stale walk index would point at the wrong row.
+									setKbdIndex(null);
+								}}
+								onBlur={(e) => {
+									if (!e.currentTarget.value.trim()) setSearchOpen(false);
+								}}
 							onKeyDown={(e) => {
 								if (e.key === "Escape") {
 									e.stopPropagation();
+									setQuery("");
+									setKbdIndex(null);
 									e.currentTarget.blur();
 									return;
 								}
@@ -840,34 +883,56 @@ function SessionsSidebar() {
 									e.currentTarget.blur();
 								}
 							}}
-							placeholder="Search…"
-							aria-label="Search sessions"
-							className="h-7 rounded-md border-border bg-surface pl-6 text-sm placeholder:text-muted-foreground/70"
-						/>
-						<SearchIcon className="pointer-events-none absolute left-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/70" />
-					</span>
-					</Hint>
+								placeholder="Search sessions…"
+								aria-label="Search sessions"
+								className="h-7 rounded-md border-border bg-surface pr-7 pl-7 text-[13.5px] placeholder:text-muted-foreground/70"
+							/>
+							<SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
+							<button
+								type="button"
+								aria-label="Clear search"
+								onMouseDown={(e) => e.preventDefault()}
+								onClick={() => {
+									setQuery("");
+									setKbdIndex(null);
+									setSearchOpen(false);
+								}}
+								className="absolute top-1/2 right-1 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+							>
+								<XIcon className="size-3.5" />
+							</button>
+						</span>
+					) : (
+						<>
+							<span className="flex-1 text-[12.5px] font-semibold tracking-[0.01em] text-muted-foreground">Sessions</span>
+							<Hint label="Search sessions" action="sessions-search" side="bottom">
+								<button
+									type="button"
+									data-testid="session-search-open"
+									aria-label="Search sessions"
+									onClick={() => setSearchOpen(true)}
+									className="flex size-7 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-ink-soft hover:text-foreground"
+								>
+									<SearchIcon className="size-3.5" />
+								</button>
+							</Hint>
+						</>
+					)}
 				</div>
 
-				{/* The three-way filter, HEADING THE LIST (owner round 8b,
-				    2026-10-05 — moved below the search): it scopes what the
-				    list shows, so it sits directly above it as a caption row;
-				    search stays the top muscle-memory target. Order: Teaching /
-				    Practice / All — the real modes first, "All" as the escape
-				    hatch on the right, mirroring the create-buttons above.
-				    Persisted client-side. */}
-				<div className="mx-3 flex items-center gap-0.5 rounded-lg bg-accent/70 p-0.5" data-testid="session-kind-filter">
-					{(["teach", "practice", "all"] as const).map((f) => (
+				{/* The kind filter as small pills (sidebar refine): All first. */}
+				<div className="mx-3 mb-1 flex items-center gap-1" data-testid="session-kind-filter">
+					{(["all", "teach", "practice"] as const).map((f) => (
 						<button
 							key={f}
 							type="button"
 							data-testid={`kind-filter-${f}`}
 							onClick={() => setFilter(f)}
 							className={cn(
-								"flex-1 rounded-md px-2 py-1 text-sm transition-colors",
+								"rounded-full border px-2.5 py-[3px] text-[13px] leading-tight transition-colors",
 								kindFilter === f
-									? "bg-surface font-semibold text-foreground shadow-xs"
-									: "text-muted-foreground hover:text-foreground",
+									? "border-border bg-card font-semibold text-foreground"
+									: "border-transparent! text-muted-foreground hover:text-foreground",
 							)}
 						>
 							{f === "teach" ? "Learn" : f === "all" ? "All" : "Practice"}
@@ -875,7 +940,7 @@ function SessionsSidebar() {
 					))}
 				</div>
 
-				<div ref={listRef} className="flex-1 overflow-y-auto p-2">
+				<div ref={listRef} className="flex-1 overflow-y-auto px-2 pt-0.5 pb-2">
 					{shown === null ? (
 						<div className="px-2 py-4 text-xs text-muted-foreground">Loading…</div>
 					) : shown.length === 0 ? (
@@ -883,28 +948,39 @@ function SessionsSidebar() {
 							{query.trim() ? "No sessions match." : "No sessions yet."}
 						</div>
 					) : (
-						shown.map((c, i) =>
-							renamingId === c.id ? (
-								<RenameRow
-									key={c.id}
-									chat={c}
-									onCommit={(next) => void commitRename(c.id, next)}
-									onCancel={() => setRenamingId(null)}
-								/>
-							) : (
-								<SessionRow
-									key={c.id}
-									chat={c}
-									active={pathname === `/chat/${c.id}`}
-									kbdSelected={i === kbdIndex}
-									onOpen={() => {
-										setKbdIndex(null);
-										router.push(`/chat/${c.id}`);
-									}}
-									onContextMenu={(e) => openContext(e, c)}
-								/>
-							),
-						)
+						shown.map((c, i) => {
+							// Date headings (sidebar refine) only for the plain
+							// list: a search ranks by match, not by time.
+							const group = query.trim() ? null : dateGroup(c.updatedAt);
+							const heading =
+								group !== null && (i === 0 || dateGroup(shown[i - 1]!.updatedAt) !== group) ? (
+									<div key={`g-${c.id}`} data-testid="session-group" className="px-2.5 pt-2.5 pb-1 text-[12px] text-muted-foreground">
+										{group}
+									</div>
+								) : null;
+							const row =
+								renamingId === c.id ? (
+									<RenameRow
+										key={c.id}
+										chat={c}
+										onCommit={(next) => void commitRename(c.id, next)}
+										onCancel={() => setRenamingId(null)}
+									/>
+								) : (
+									<SessionRow
+										key={c.id}
+										chat={c}
+										active={pathname === `/chat/${c.id}`}
+										kbdSelected={i === kbdIndex}
+										onOpen={() => {
+											setKbdIndex(null);
+											router.push(`/chat/${c.id}`);
+										}}
+										onContextMenu={(e) => openContext(e, c)}
+									/>
+								);
+							return heading ? [heading, row] : row;
+						})
 					)}
 				</div>
 
@@ -913,24 +989,21 @@ function SessionsSidebar() {
 					    populates and grows when processes run. The session list is
 					    flex-1, so this pins to the bottom. Sidebar closed = the
 					    learner opted out (no ambient signal, user decision). */}
-					<ActivitySection />
-
-					{/* Settings entry (settings-app wave): same row language as
-					    New session — quiet, bottom-pinned, opens the centered
-					    dialog (also mod+, in the keyboard registry). */}
-					<div className="px-3 pb-3 pt-1">
-						<Hint label="Settings" action="open-settings" side="right">
-							<button
-								type="button"
-								onClick={() => openSettings()}
-								data-testid="settings-entry"
-								className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-base text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
-							>
-								<SettingsIcon className="size-4" />
-								Settings
-							</button>
-						</Hint>
-					</div>
+					<ActivitySection
+						leading={
+							<Hint label="Settings" action="open-settings" side="right">
+								<button
+									type="button"
+									onClick={() => openSettings()}
+									data-testid="settings-entry"
+									className="flex h-8.5 flex-1 items-center gap-2 rounded-lg px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-ink-soft hover:text-foreground"
+								>
+									<SettingsIcon className="size-3.75" />
+									Settings
+								</button>
+							</Hint>
+						}
+					/>
 				</div>
 
 				{/* The context menu (wave 6 + the extraction-UX redesign): the

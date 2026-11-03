@@ -1,12 +1,10 @@
 /**
- * Session-row render tests — the picker's status language (owner,
- * minimal-color round): ONE indicator, the braille spinner, present ONLY
- * while a teach turn is in flight; every other state (idle, question
- * pending) renders nothing — phases only advance, so phase-as-signal was
- * decoration, and question-pending is the dominant RESTING state (the
- * meta line's text carries it). Pure function of the list item, so SSR of
- * <SessionRow> pins every visible state. Same tsx classic-JSX shim as
- * render-cards.test.tsx.
+ * Session-row render tests (sidebar refine, 2026-11-03): the subject
+ * leads, a kind tile says what sort of session it is, drills and reviews
+ * carry a count chip, the braille spinner shows only while a turn runs,
+ * and a small dot marks a session waiting on you. Pure function of the
+ * list item, so SSR of <SessionRow> pins every visible state. Same tsx
+ * classic-JSX shim as render-cards.test.tsx.
  */
 import React from "react";
 (globalThis as Record<string, unknown>).React = React;
@@ -15,6 +13,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SessionRow, timeAgo } from "../components/sidebar.tsx";
+import { dateGroup, sessionDisplay, shortAgo } from "../components/session-display.ts";
 import type { ChatListItem } from "../src/core/index.ts";
 
 function item(overrides: Partial<ChatListItem>): ChatListItem {
@@ -41,83 +40,103 @@ function render(chat: ChatListItem, active = false) {
 describe("SessionRow", () => {
 	it("no phase strips, no phase colors — the retired decoration", () => {
 		const html = render(item({ phase: "teach" }));
-		assert.ok(!html.includes("phase-strip"), "strip removed by design (too busy)");
-		assert.ok(!html.includes("bg-phase-"), "phase fills are retired app-wide");
-		assert.ok(!html.includes("border-phase-"), "phase rings are retired app-wide");
+		assert.ok(!html.includes("phase-strip"));
+		assert.ok(!html.includes("bg-phase-"));
+		assert.ok(!html.includes("border-phase-"));
 	});
 
-	it("idle session: NO indicator — absence is the state", () => {
-		for (const phase of ["probe", "plan", "teach"] as const) {
-			const html = render(item({ phase }));
-			assert.ok(!html.includes("session-dot"), "no dots — the status language is spinner-only");
-			assert.ok(!html.includes("braille-spinner"), "idle never shows the spinner");
-		}
+	it("the subject leads: 'Teach me' is dropped from the row, the full title stays as the tooltip", () => {
+		const html = render(item({ title: "Teach me Aéronautique" }));
+		assert.match(html, />Aéronautique</);
+		assert.match(html, /title="Teach me Aéronautique"/);
+		assert.match(html, /data-testid="session-kind-learn"/);
+		assert.match(html, /Learn · /);
 	});
 
-	it("a pending question renders NO indicator — resting state, carried by the meta text", () => {
-		const html = render(item({ phase: "teach", pendingQuestion: true }));
-		assert.ok(!html.includes("session-dot"), "no dots");
+	it("a weak-spot drill gets the amber tile and its count chip", () => {
+		const html = render(item({ kind: "review", title: "Drill · 1 weak spot" }));
+		assert.match(html, /data-testid="session-kind-drill"/);
+		assert.match(html, />Weak spot drill</);
+		assert.match(html, /data-testid="session-chip"[^>]*>1 weak spot</);
+		assert.match(html, /bg-warn-soft/);
+	});
+
+	it("a review gets its own tile and a topic chip", () => {
+		const html = render(item({ kind: "review", title: "Review · 3 topics" }));
+		assert.match(html, /data-testid="session-kind-review"/);
+		assert.match(html, /data-testid="session-chip"[^>]*>3 topics</);
+		assert.match(html, /Spaced review · /);
+	});
+
+	it("idle session: no spinner, no waiting dot", () => {
+		const html = render(item({}));
+		assert.ok(!html.includes("braille-spinner"));
+		assert.ok(!html.includes("session-waiting"));
+	});
+
+	it("a pending question shows the waiting dot and says so in the meta line", () => {
+		const html = render(item({ pendingQuestion: true }));
+		assert.ok(html.includes("session-waiting"));
 		assert.ok(!html.includes("braille-spinner"), "motion is reserved for working");
-		assert.ok(html.includes("Waiting for input"), "the meta line's text");
-		assert.ok(!html.includes("Waiting for your answer"), "old wording is gone");
+		assert.ok(html.includes("Learn · Waiting for input"));
 	});
 
-	it("a working session (turn in flight) renders the braille spinner — the ONLY indicator", () => {
+	it("a working session renders the braille spinner and the Working meta", () => {
 		const html = render(item({ phase: "plan", busy: true }));
-		assert.ok(html.includes('data-testid="braille-spinner"'), "the spinner");
-		assert.ok(html.includes("braille-frame"), "CSS-animated frames");
+		assert.ok(html.includes('data-testid="braille-spinner"'));
 		assert.ok((html.match(/class="braille-frame"/g) ?? []).length === 10, "all ten frames");
-		assert.ok(html.includes('data-frame="0"'), "frame 0 leads (static fallback)");
-		assert.ok(html.includes("Working"), "accessible label");
-		assert.ok(!html.includes("bg-attention"), "no colored state fill — monochrome by design");
-	});
-
-	it("busy does not double-signal background agents (that is the sidebar section's channel)", () => {
-		// The narrowing lives in the API route (busy = isTurnRunning only);
-		// the row itself just renders busy faithfully. Pinned here so the
-		// contract can't silently re-widen: an extraction-only "working"
-		// row would be a double signal.
-		const html = render(item({ busy: true, pendingQuestion: false }));
-		assert.ok(html.includes("Working"), "the spinner's label names the turn, not agents");
-	});
-
-	it("the meta line: state replaces the count when the state is the useful fact", () => {
-		const awaiting = render(item({ pendingQuestion: true, updatedAt: "2026-01-02T01:00:00.000Z" }));
-		assert.ok(awaiting.includes("Waiting for input · 2026-01-02"), "awaiting meta keeps the existing date");
-		assert.ok(!awaiting.includes("messages"), "count yields to the state");
-		assert.ok(!awaiting.includes("braille-spinner"), "…and the spinner stays off");
-
-		const working = render(item({ busy: true }));
-		assert.ok(working.includes("Working…"), "working meta");
-
-		// Owner, typography round 5: the message count is dropped — it
-		// informed no decision. Idle meta is just how long ago.
-		const idle = render(item({ title: "Partial derivatives", messageCount: 7 }));
-		assert.ok(idle.includes("Partial derivatives"));
-		assert.ok(!idle.includes("messages"), "the count is gone (flip-flop: one line in sessionMeta)");
-		assert.match(idle, /\d{4}-\d{2}-\d{2}/, "idle shows the ISO date");
-	});
-
-	it("pending questions use the same wording for teach and practice with recent and old dates", () => {
-		for (const kind of ["teach", "practice"] as const) {
-			for (const updatedAt of [new Date().toISOString(), "2025-06-02T12:00:00.000Z"]) {
-				const html = render(item({ kind, pendingQuestion: true, updatedAt }));
-				assert.ok(html.includes(`Waiting for input · ${timeAgo(updatedAt)}`));
-				assert.ok(!html.includes("Waiting for your answer"));
-			}
-		}
+		assert.ok(html.includes("Working…"));
+		assert.ok(!html.includes("session-waiting"), "the spinner replaces the dot");
 	});
 
 	it("compacting retains priority over pending input", () => {
 		const html = render(item({ compacting: true, pendingQuestion: true }));
-		assert.match(html, /Compacting context ·/);
+		assert.match(html, /Compacting context/);
 		assert.doesNotMatch(html, /Waiting for input/);
 	});
 
-	it("active row is visually marked by the background alone (owner, round 5: no weight change)", () => {
+	it("idle meta is the kind and the compact age", () => {
+		const html = render(item({ updatedAt: "2025-06-02T12:00:00.000Z" }));
+		assert.match(html, /Learn · 2 Jun 2025/);
+		assert.ok(!html.includes("messages"));
+	});
+
+	it("active row is marked by the background alone", () => {
 		const html = render(item({}), true);
-		assert.ok(html.includes("bg-accent"), "active background");
-		assert.ok(!html.includes("font-medium"), "weight is not a second channel doing the same job");
+		assert.ok(html.includes("bg-ink-soft"));
+	});
+});
+
+describe("sessionDisplay", () => {
+	it("reads every title shape the app creates", () => {
+		assert.deepEqual(sessionDisplay({ kind: "teach", title: "Teach me Thermo, starting from what I already know. Notes: a.pdf" }), {
+			variant: "learn",
+			name: "Thermo",
+			kindLabel: "Learn",
+			chip: null,
+		});
+		assert.equal(sessionDisplay({ kind: "teach", title: 'Teach me what is in my notes "Méca".' }).variant, "notes");
+		assert.equal(sessionDisplay({ kind: "teach", title: 'Teach me what is in my notes "Méca".' }).name, "Méca");
+		assert.equal(sessionDisplay({ kind: "practice", title: 'Give me practice problems on my notes "Méca".' }).name, "Méca");
+		assert.equal(sessionDisplay({ kind: "review", title: "Chapitre 3 · révision" }).name, "Chapitre 3 · révision");
+		assert.equal(sessionDisplay({ kind: "teach", title: "Partial derivatives" }).name, "Partial derivatives", "renamed sessions read as typed");
+	});
+});
+
+describe("shortAgo / dateGroup", () => {
+	const now = new Date("2026-11-03T12:00:00");
+	it("compact ages", () => {
+		assert.equal(shortAgo("2026-11-03T11:59:30", now), "now");
+		assert.equal(shortAgo("2026-11-03T11:55:00", now), "5m");
+		assert.equal(shortAgo("2026-11-03T09:00:00", now), "3h");
+		assert.equal(shortAgo("2026-11-01T12:00:00", now), "2d");
+		assert.equal(shortAgo("2026-10-27T12:00:00", now), "27 Oct");
+		assert.equal(shortAgo("2025-10-27T12:00:00", now), "27 Oct 2025");
+	});
+	it("groups by last activity", () => {
+		assert.equal(dateGroup("2026-11-03T00:30:00", now), "Today");
+		assert.equal(dateGroup("2026-10-29T08:00:00", now), "This week");
+		assert.equal(dateGroup("2026-10-20T08:00:00", now), "Earlier");
 	});
 });
 
@@ -137,27 +156,15 @@ describe("timeAgo", () => {
 	});
 });
 
-describe("SessionRow practice badge (practice sessions, 2026-10-04)", () => {
-	it("a practice row carries the dumbbell badge and the unified Working meta while busy (owner, 2026-10-10)", () => {
+describe("SessionRow practice sessions (2026-10-04)", () => {
+	it("a practice row carries the dumbbell tile and the unified Working meta while busy", () => {
 		const html = render(item({ kind: "practice", busy: true }));
 		assert.match(html, /Working…/);
-		assert.doesNotMatch(html, /Practicing…/);
-		assert.match(html, /aria-label="Practice session"/);
-	});
-
-	it("a teaching row carries neither", () => {
-		const html = render(item({}));
-		assert.doesNotMatch(html, /Practice session/);
-		assert.doesNotMatch(html, /Practicing…/);
-	});
-
-	it("busy teaching rows say the same unified Working", () => {
-		const html = render(item({ busy: true }));
-		assert.match(html, /Working…/);
+		assert.match(html, /data-testid="session-kind-practice"/);
 	});
 
 	it("a practice row with a posed problem says the problem is waiting", () => {
 		const html = render(item({ kind: "practice", pendingProblem: true }));
-		assert.match(html, /Problem waiting ·/);
+		assert.match(html, /Practice · Problem waiting/);
 	});
 });

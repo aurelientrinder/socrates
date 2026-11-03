@@ -234,10 +234,11 @@ describe("AppearanceSection (thin SSR)", () => {
 		assert.ok(html.includes('<option value="system">System</option>'));
 	});
 
-	it("typeface defaults to the Claude-style set", () => {
+	it("one font app-wide: no typeface picker, no serif toggle, Source Sans 3 is the reading default", () => {
 		const html = renderToStaticMarkup(<AppearanceSection appearance={undefined} onSectionChange={() => {}} />);
-		assert.ok(html.includes('<option value="claude" selected="">Claude-style</option>'));
-		assert.ok(html.includes("DM Sans + Source Serif 4"));
+		assert.ok(!html.includes('data-testid="row-typeface"'), "the typeface set picker is gone");
+		assert.ok(!html.includes('data-testid="row-session-serif"'), "the serif session-name toggle is gone");
+		assert.ok(html.includes("Empty = Source Sans 3"));
 	});
 
 	it("hex inputs carry the factory placeholders; prose size resolves against the factory", () => {

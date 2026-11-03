@@ -46,7 +46,7 @@ export const DEFAULT_HEADING_WEIGHT: Record<AppearanceTypeface, number> = {
  *  setting is empty (the settings row's "Empty = …" hint). */
 export const DEFAULT_READING_FONT_FOR: Record<AppearanceTypeface, string> = {
 	classic: "Source Sans 3",
-	claude: "Source Serif 4",
+	claude: "Source Sans 3",
 };
 
 /** The resolved, fully-concrete appearance view (delta + factory merged). */

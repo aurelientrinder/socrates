@@ -373,7 +373,7 @@ function RunningPaper({ view, answers, busy, error, saveState, now, onAnswer, on
 				<span
 					data-testid="exam-clock"
 					className={cn(
-						"flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-mono text-base tabular-nums",
+						"flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-base font-semibold tabular-nums",
 						left <= 60 ? "bg-destructive/10 text-destructive" : left <= 300 ? "bg-warn-soft text-warn-ink" : "bg-accent",
 					)}
 				>
@@ -508,7 +508,7 @@ function PartInput({ part, answer, onAnswer }: { part: ExamPartView; answer: Exa
 									value={answer?.final ?? ""}
 									onChange={(e) => onAnswer({ final: e.target.value })}
 									inputMode="decimal"
-									className="lh-input h-9 w-40 rounded-lg border bg-background px-3 font-mono text-base font-normal outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+									className="lh-input h-9 w-40 rounded-lg border bg-background px-3 text-base font-normal tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
 								/>
 								{part.unit && <span className="font-normal text-muted-foreground">{part.unit}</span>}
 							</label>
@@ -670,7 +670,7 @@ function MarkedPart({ part, answer, grade }: { part: ExamPartView; answer: ExamA
 					<div className="font-prose text-base">
 						{answer.text.trim() && <MessageResponse>{repairMathForDisplay(answer.text)}</MessageResponse>}
 						{answer.final?.trim() && (
-							<p className="mt-1 font-mono text-sm">
+							<p className="mt-1 text-sm font-semibold">
 								Final answer: {answer.final}
 								{part.unit ? ` ${part.unit}` : ""}
 							</p>

@@ -55,6 +55,14 @@ export function railProgress(steps: readonly RailStep[]): number {
 	return done / steps.length;
 }
 
+/** Where the session is in its plan, for the header ("step 2 of 9"):
+ *  null without a plan or once no step is current. Pure. */
+export function planStepOf(steps: readonly RailStep[] | null): { index: number; total: number } | null {
+	if (!steps || steps.length === 0) return null;
+	const i = steps.findIndex((s) => s.status === "current");
+	return i < 0 ? null : { index: i + 1, total: steps.length };
+}
+
 /** The steps of the session's latest plan, or null when there is none. */
 export function usePlanSteps(messages: readonly PopupMessage[]): RailStep[] | null {
 	return useMemo(() => {
@@ -70,17 +78,23 @@ export function PlanRail({ steps, onOpenPlan }: { steps: readonly RailStep[]; on
 		<aside
 			aria-labelledby="plan-rail-heading"
 			data-testid="plan-rail"
-			className="hidden w-64 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-background px-5 py-6 min-[1200px]:flex"
+			className="hidden w-[270px] shrink-0 flex-col overflow-y-auto border-l border-border bg-background min-[1200px]:flex"
 		>
+			{/* The window-controls band (sidebar refine, 2026-11-03): the same
+			    height and bottom line as the session's top bar, and a drag
+			    surface, so the native minimise/maximise/close buttons sit on
+			    their own strip instead of over the Plan heading. */}
+			<div aria-hidden="true" className="lh-drag h-15 shrink-0 border-b border-border" />
+			<div className="flex flex-col gap-3 px-3.5 pt-4 pb-5">
 			<div className="flex items-baseline justify-between gap-2">
-				<h2 id="plan-rail-heading" className="text-base font-semibold">
+				<h2 id="plan-rail-heading" className="text-[14.5px] font-bold">
 					Plan
 				</h2>
-				<button type="button" onClick={onOpenPlan} className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+				<button type="button" onClick={onOpenPlan} className="text-[12.5px] font-medium text-muted-foreground transition-colors hover:text-foreground">
 					See the map
 				</button>
 			</div>
-			<ol className="flex flex-col gap-1">
+			<ol className="flex flex-col gap-[3px]">
 				{steps.map((s) => (
 					<li
 						key={s.id}
@@ -88,21 +102,21 @@ export function PlanRail({ steps, onOpenPlan }: { steps: readonly RailStep[]; on
 						data-status={s.status}
 						aria-current={s.status === "current" ? "step" : undefined}
 						className={cn(
-							"flex items-start gap-2.5 rounded-lg px-2 py-1.5 text-sm leading-snug",
-							s.status === "current" && "bg-good-soft font-semibold text-good-ink",
+							"flex items-start gap-2.5 rounded-lg px-2 py-1.75 text-[13.5px] leading-[1.3]",
+							s.status === "current" && "bg-ink-soft font-semibold text-foreground",
 							s.status === "visited" && "text-muted-foreground",
 						)}
 					>
 						<span
 							aria-hidden="true"
 							className={cn(
-								"mt-px flex size-[18px] shrink-0 items-center justify-center rounded-full",
-								s.status === "visited" && "bg-good text-background",
-								s.status === "current" && "border-2 border-good",
+								"mt-px flex size-4 shrink-0 items-center justify-center rounded-full",
+								s.status === "visited" && "bg-foreground/45 text-background",
+								s.status === "current" && "border-2 border-foreground!",
 								s.status === "upcoming" && "border-[1.5px] border-border",
 							)}
 						>
-							{s.status === "visited" && <CheckIcon className="size-3" strokeWidth={3.5} />}
+							{s.status === "visited" && <CheckIcon className="size-2.5" strokeWidth={3.5} />}
 						</span>
 						<span>
 							{s.title}
@@ -111,6 +125,7 @@ export function PlanRail({ steps, onOpenPlan }: { steps: readonly RailStep[]; on
 					</li>
 				))}
 			</ol>
+			</div>
 		</aside>
 	);
 }

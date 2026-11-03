@@ -47,11 +47,13 @@ import {
 } from "@/src/core";
 import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
-import { PlanRail, railProgress, usePlanSteps } from "@/components/session-rail";
+import { PlanRail, planStepOf, railProgress, usePlanSteps } from "@/components/session-rail";
 import { PlanProgressLine, SessionTimerChip, useSessionTimer } from "@/components/session-timer";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
-import { ArrowRightIcon, DumbbellIcon, RepeatIcon, WaypointsIcon } from "lucide-react";
+import { ArrowRightIcon, DumbbellIcon, FlagIcon, RepeatIcon, WaypointsIcon } from "lucide-react";
+import { SessionKindTile } from "@/components/sidebar";
+import { sessionDisplay } from "@/components/session-display";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock, type WarmupStep } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
@@ -1269,6 +1271,7 @@ export function Chat({
 					// never fire. Rename mode is interactive mode (owner ask) —
 					// TopBar's one escape hatch.
 					drag={!renaming}
+					railed={planSteps !== null}
 					onMouseDown={(e) => {
 						// Escape hitbox: any mousedown outside the input itself blurs
 						// it, running the existing onBlur commit path. The input is
@@ -1305,6 +1308,7 @@ export function Chat({
 						</>
 					) : (
 					<>
+						<SessionKindTile variant={sessionDisplay({ title: titleText, kind }).variant} className="ml-1 size-6" />
 						<Hint
 							// F2 renames (registry) — surfaced on the hover.
 							label="Rename session"
@@ -1317,67 +1321,17 @@ export function Chat({
 								setTitleDraft(titleText);
 								setRenaming(true);
 							}}
-							className="lh-no-drag min-w-4 shrink cursor-text truncate rounded-md px-1.5 py-1 text-left font-ui text-[15px] font-medium transition-colors hover:bg-accent"
+							title={titleText}
+							className="lh-no-drag min-w-4 shrink cursor-text truncate rounded-md px-1.5 py-1 text-left font-ui text-base font-bold transition-colors hover:bg-accent"
 						>
-							{titleText}
+							{sessionDisplay({ title: titleText, kind }).name}
 							</button>
 						</Hint>
-							{/* flex-1 spacer: keeps the chips at the right edge AND stays a
-							    drag surface (no carve-out) — the freed bar is grippable. */}
-							<div className="min-w-4 flex-1" aria-hidden="true" />
-					</>
-					)}
-					{sessionTimer && <SessionTimerChip budget={sessionTimer.budget} spent={sessionTimer.spent} />}
-					{/* Finish and recap (redesign wave): one click asks the tutor to
-					    close the session well, so stopping is an ending. */}
-					{kind !== "review" && messages.length > 0 && (
-						<button
-							type="button"
-							data-testid="finish-recap"
-							disabled={busy}
-							onClick={(e) => {
-								blurAfterPointerClick(e);
-								void send({ type: "text", text: RECAP_PROMPT });
-							}}
-							className="flex h-8 shrink-0 items-center rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-40"
-						>
-							Finish and recap
-						</button>
-					)}
-					{/* The plan chip (owner, plan-placement round): session-level
-					    structure beside the phase chip — access to the full-DAG popup
-					    at every width; the marginalia is the wide-screen glance view. */}
-					{planTree && (
-						<Hint label="Open the full plan" side="bottom">
-<button
-							type="button"
-							data-testid="plan-chip"
-							onClick={(e) => {
-								blurAfterPointerClick(e);
-								setPlanOpen(true);
-							}}
-							className="lh-no-drag flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border/80 px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground"
-						>
-							<WaypointsIcon className="size-3.5 text-primary" aria-hidden />
-							Plan
-						</button>
-</Hint>
-					)}
-					{/* The extraction ring (owner-locked redesign, 2026-09-24): fills
-					    with uncovered vs the chunk threshold, pulses while a run is in
-					    flight, vanishes when the graph is off. Click → the exact
-					    numbers. Before the phase label — the chips cluster right. */}
-					{/* Practice (owner, 2026-10-04): the coverage ring hides —
-				    practice never extracts, so an ever-filling ring with no
-				    run behind it would lie. */}
-					{kind === "teach" && <CoverageRing chatId={chatId} refreshKey={coverageTick} />}
-					{/* Practice sessions: no phase arc — a quiet Practice tag
-					    instead of the phase chip. */}
 					{warmingUp ? (
 						<span
 							data-testid="phase-chip"
 							data-phase="warmup"
-							className="pointer-events-none flex shrink-0 select-none items-center gap-1 text-xs font-medium text-muted-foreground"
+							className="pointer-events-none flex shrink-0 select-none items-center gap-1.5 text-[13px] text-muted-foreground"
 						>
 							<RepeatIcon aria-hidden="true" className="size-3" />
 							Warm-up {reviewProgress.done}/{reviewProgress.total}
@@ -1387,7 +1341,7 @@ export function Chat({
 							data-testid="phase-chip"
 							data-phase="practice"
 							aria-hidden="true"
-							className="pointer-events-none flex shrink-0 select-none items-center gap-1 text-xs font-medium text-muted-foreground"
+							className="pointer-events-none flex shrink-0 select-none items-center gap-1.5 text-[13px] text-muted-foreground"
 						>
 							<DumbbellIcon className="size-3" />
 							Practice
@@ -1396,14 +1350,66 @@ export function Chat({
 						<span
 							data-testid="phase-chip"
 							data-phase="review"
-							className="pointer-events-none flex shrink-0 select-none items-center gap-1 text-xs font-medium text-muted-foreground"
+							className="pointer-events-none flex shrink-0 select-none items-center gap-1.5 text-[13px] text-muted-foreground"
 						>
 							<RepeatIcon aria-hidden="true" className="size-3" />
 							Review {reviewProgress.done}/{reviewProgress.total}
 						</span>
 					) : (
-						<PhaseChip phase={phases.at(-1) ?? "probe"} />
+						<PhaseChip phase={phases.at(-1) ?? "probe"} step={planStepOf(planSteps)} />
 					)}
+							{/* flex-1 spacer: keeps the chips at the right edge AND stays a
+							    drag surface (no carve-out) — the freed bar is grippable. */}
+							<div className="min-w-4 flex-1" aria-hidden="true" />
+					</>
+					)}
+					{sessionTimer && <SessionTimerChip budget={sessionTimer.budget} spent={sessionTimer.spent} />}
+					{/* Finish and recap (redesign wave): one click asks the tutor to
+					    close the session well, so stopping is an ending. */}
+					{/* The plan chip (owner, plan-placement round): session-level
+					    structure beside the phase chip — access to the full-DAG popup
+					    at every width; the marginalia is the wide-screen glance view. */}
+					{/* The extraction ring (owner-locked redesign, 2026-09-24): fills
+					    with uncovered vs the chunk threshold, pulses while a run is in
+					    flight, vanishes when the graph is off. Click → the exact
+					    numbers. Before the phase label — the chips cluster right. */}
+					{/* Practice (owner, 2026-10-04): the coverage ring hides —
+				    practice never extracts, so an ever-filling ring with no
+				    run behind it would lie. */}
+					{kind === "teach" && <CoverageRing chatId={chatId} refreshKey={coverageTick} />}
+					{planTree && (
+						<Hint label="Open the full plan" side="bottom">
+<button
+							type="button"
+							data-testid="plan-chip"
+							onClick={(e) => {
+								blurAfterPointerClick(e);
+								setPlanOpen(true);
+							}}
+							className="lh-no-drag flex h-7.5 shrink-0 cursor-pointer items-center gap-1.75 rounded-lg px-2.75 text-[13.5px] font-semibold text-foreground/82 transition-colors hover:bg-ink-soft hover:text-foreground"
+						>
+							<WaypointsIcon className="size-3.5 text-muted-foreground" aria-hidden />
+							Plan
+						</button>
+</Hint>
+					)}
+					{kind !== "review" && messages.length > 0 && (
+						<button
+							type="button"
+							data-testid="finish-recap"
+							disabled={busy}
+							onClick={(e) => {
+								blurAfterPointerClick(e);
+								void send({ type: "text", text: RECAP_PROMPT });
+							}}
+							className="flex h-7.5 shrink-0 items-center gap-1.75 rounded-lg border border-border bg-card px-2.75 text-[13.5px] font-semibold text-foreground transition-colors hover:bg-ink-soft disabled:opacity-40"
+						>
+							<FlagIcon className="size-3.5 text-muted-foreground" aria-hidden />
+							Finish and recap
+						</button>
+					)}
+					{/* Practice sessions: no phase arc — a quiet Practice tag
+					    instead of the phase chip. */}
 				</TopBar>
 				{planSteps && <PlanProgressLine value={railProgress(planSteps)} />}
 
@@ -2040,8 +2046,17 @@ function DockOverlay({
 	// revealed, the normal collapse machine rules apply untouched.
 	const [revealed, setRevealed] = useState(false);
 	const revealPending = requiresReveal && !revealed;
+	const toolsInQuestion = Boolean(pending && expanded && !revealPending);
 	const toolsRow = (
-		<StatsBar turns={turns} contextTokens={contextTokens} pricing={pricing} dictationSlot={dictationSlot} chatId={chatId} flat />
+		<StatsBar
+			turns={turns}
+			contextTokens={contextTokens}
+			pricing={pricing}
+			dictationSlot={dictationSlot}
+			chatId={chatId}
+			flat
+			summaryBelow={!toolsInQuestion}
+		/>
 	);
 
 	const pendingId = pending?.toolCallId ?? null;
@@ -2403,7 +2418,7 @@ function DockOverlay({
 	return (
 		<div className="pointer-events-none absolute inset-x-0 bottom-0" style={{ right: sbInset }}>
 			<div className="h-24 bg-gradient-to-t from-background via-background/85 to-transparent" />
-			<div ref={blockRef} className="relative bg-background pb-5" style={{ "--dock-max-h": dockMaxH ? `${dockMaxH}px` : undefined } as React.CSSProperties}>
+			<div ref={blockRef} className="relative bg-background pb-7" style={{ "--dock-max-h": dockMaxH ? `${dockMaxH}px` : undefined } as React.CSSProperties}>
 				<div className={DOCK}>
 					{setupCta}
 					{/* The queued-steer indicator (owner spec 2026-10-03): quiet
@@ -2411,27 +2426,6 @@ function DockOverlay({
 					    rounding starts, truncated, no background, no container. A
 					    line dies when its card lands (visibleQueuedSteers). */}
 					<QueuedSteersBody steers={queuedSteers} />
-					{/* The reading-thinking field (owner 2026-10-03): mounted while a
-					    teach-phase check waits — the same cue that collapses it. It
-					    claims dictated speech until the learner reveals the check
-					    (the dock reclaims then). Rides the check answer on submit. */}
-					{pending && requiresReveal && (
-						<ReadingThinkingField
-							value={readingThinking}
-							onChange={onReadingThinking}
-							onEscape={dictationCancel}
-							onOpen={
-								!expanded
-									? () => {
-											void finishDictation().then(() => {
-												expandAndRevealRef.current();
-											});
-										}
-									: undefined
-							}
-							claim={revealPending}
-						/>
-					)}
 					{/* ONE BOX (owner, feed redesign 2026-11-01): the composer/question
 					    shell and its tools row (dictate, usage, model) share a single
 					    card, Claude's composer shape. The inner shell keeps its own
@@ -2440,8 +2434,8 @@ function DockOverlay({
 					{/* The tools row is built once: an expanded question carries it
 					    inside its answer box (question card redesign, 2026-11-01);
 					    everything else keeps it under the shell. */}
-					<div className="pointer-events-auto rounded-2xl border bg-card shadow-lg" data-testid="dock-card">
-					<div ref={shellRef} className="overflow-hidden rounded-t-2xl">
+					<div className="pointer-events-auto rounded-[14px] border bg-card shadow-[0_4px_18px_rgb(0_0_0/0.05)]" data-testid="dock-card">
+					<div ref={shellRef} className="overflow-hidden rounded-t-[14px]">
 						<div
 						ref={contentRef}
 						key={mode}
@@ -2484,6 +2478,28 @@ function DockOverlay({
 					{/* The stats row: beneath the composer/question shell, not
 					    flush to the screen bottom — static height, outside the
 					    morphing shell so it never joins a height animation. */}
+					{/* The reading-thinking field (owner 2026-10-03): mounted while a
+					    teach-phase check waits, INSIDE the one box under the check
+					    strip (sidebar refine, 2026-11-03). It claims dictated speech
+					    until the learner reveals the check (the dock reclaims then)
+					    and rides the check answer on submit. */}
+					{pending && requiresReveal && (
+						<ReadingThinkingField
+							value={readingThinking}
+							onChange={onReadingThinking}
+							onEscape={dictationCancel}
+							onOpen={
+								!expanded
+									? () => {
+											void finishDictation().then(() => {
+												expandAndRevealRef.current();
+											});
+										}
+									: undefined
+							}
+							claim={revealPending}
+						/>
+					)}
 					{!(pending && expanded && !revealPending) && toolsRow}
 					</div>
 					{/* The scroll-down disc (moved here from the Conversation,

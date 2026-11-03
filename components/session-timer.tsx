@@ -107,7 +107,7 @@ export function SessionTimerChip({ budget, spent }: { budget: number; spent: num
 			title={done ? "You studied for the time you planned. A good moment to finish and recap." : "Time studied in this session"}
 			className={cn(
 				"flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm tabular-nums",
-				done ? "bg-good-soft font-semibold text-good-ink" : "text-muted-foreground",
+				done ? "bg-ink-soft font-semibold text-foreground" : "text-muted-foreground",
 			)}
 		>
 			<ClockIcon className="size-3.5" aria-hidden="true" />
@@ -120,8 +120,8 @@ export function SessionTimerChip({ budget, spent }: { budget: number; spent: num
 export function PlanProgressLine({ value }: { value: number }) {
 	const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
 	return (
-		<div role="progressbar" aria-label="Plan progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-[3px] bg-accent">
-			<div className="h-full bg-good transition-[width] duration-500" style={{ width: `${pct}%` }} />
+		<div role="progressbar" aria-label="Plan progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-[2px] bg-transparent">
+			<div className="h-full bg-foreground/35 transition-[width] duration-500" style={{ width: `${pct}%` }} />
 		</div>
 	);
 }

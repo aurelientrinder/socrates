@@ -416,7 +416,7 @@ describe("teach-check reveal (W5 phase separation)", () => {
 		assert.ok(html.includes('data-testid="teach-check-reveal"'), "invitation affordance present");
 		assert.match(html, /Check your understanding/);
 		assert.match(html, /Which planet is closest/, "question teaser invites, not minimizes");
-		assert.match(html, /Open/, "a clear reveal action");
+		assert.match(html, />Answer</, "a clear reveal action");
 	});
 
 	it("probe questions keep the plain collapsed bar (no invitation copy)", () => {

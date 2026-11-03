@@ -49,11 +49,13 @@ export function ReadingThinkingField({
 	return (
 		<div
 			data-testid="reading-thinking-field"
-			className="pointer-events-auto mb-2 rounded-2xl border bg-card/60 px-3 py-2 transition-colors focus-within:border-primary/50"
+			// Inside the one chat box now (sidebar refine, 2026-11-03): no card
+			// of its own, the check strip above and the tools row below frame it.
+			className="pointer-events-auto border-t border-border px-4 pt-3 pb-1"
 		>
-			<div className="pb-1 text-xs font-medium text-muted-foreground">
+			<label className="sr-only" htmlFor="reading-thinking">
 				Thinking while reading
-			</div>
+			</label>
 			<textarea
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
@@ -94,7 +96,8 @@ export function ReadingThinkingField({
 						e.currentTarget.blur();
 					}
 				}}
-				placeholder="Whatever comes to mind as you read."
+				id="reading-thinking"
+				placeholder="Jot down what comes to mind while you read…"
 				rows={1}
 				className="field-sizing-content lh-input max-h-40 w-full resize-none bg-transparent py-0.5 outline-none placeholder:text-muted-foreground/70"
 			/>

@@ -38,15 +38,17 @@ const CHIP_LABEL: Record<Phase3, string> = {
  *  tooltip, not selectable, not interactive in any way — no pointer events
  *  at all, so it is part of the drag surface instead of a carved-out
  *  target. */
-export function PhaseChip({ phase }: { phase: Phase3 }) {
+export function PhaseChip({ phase, step }: { phase: Phase3; step?: { index: number; total: number } | null }) {
 	return (
 		<span
 			data-testid="phase-chip"
 			data-phase={phase}
 			aria-hidden="true"
-			className="pointer-events-none flex shrink-0 select-none items-center text-xs font-medium text-muted-foreground"
+			className="pointer-events-none flex shrink-0 select-none items-center gap-1.5 text-[13px] text-muted-foreground"
 		>
+			<span className="size-1.5 rounded-full bg-foreground/50" />
 			{CHIP_LABEL[phase]}
+			{phase === "teach" && step ? ` · step ${step.index} of ${step.total}` : ""}
 		</span>
 	);
 }

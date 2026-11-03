@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowDownIcon, CheckIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
+import { ArrowDownIcon, CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
@@ -265,17 +265,21 @@ export function QuestionDockBar({
 				type="button"
 				data-testid="teach-check-reveal"
 				onClick={onExpand}
-				className="dock-variant flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/40"
+				// The check strip (sidebar refine, 2026-11-03): the top of the one
+				// chat box, a shade of the sidebar paper, the ink "?" disc and a
+				// solid Answer button (Enter in the field below opens it too).
+				className="dock-variant group flex w-full items-center gap-3 bg-sidebar py-2.5 pr-2.5 pl-3.5 text-left"
 			>
-				<span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-					<PlayIcon className="size-3.5" />
+				<span aria-hidden="true" className="flex size-6.5 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-bold text-background">
+					?
 				</span>
 				<span className="min-w-0 flex-1">
-					<span className="block text-sm font-medium">Check your understanding</span>
-					<span className="block truncate text-xs text-muted-foreground">{teaserText(question)}</span>
+					<span className="block text-[14px] font-bold text-foreground">Check your understanding</span>
+					<span className="block truncate text-[12.5px] text-muted-foreground">{teaserText(question)}</span>
 				</span>
-				<span className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">
-					Open <ChevronRightIcon className="size-3.5" />
+				<span className="flex h-7.5 shrink-0 items-center gap-1.75 rounded-lg bg-primary px-2.75 text-[13.5px] font-semibold text-primary-foreground transition-opacity group-hover:opacity-90">
+					Answer
+					<kbd className="font-sans text-xs font-medium opacity-65">↵</kbd>
 				</span>
 			</button>
 		);
@@ -946,7 +950,7 @@ function QuestionDockForm({
 						<span
 							data-testid="confidence-value"
 							className={cn(
-								"w-9 shrink-0 text-right font-mono text-sm tabular-nums",
+								"w-9 shrink-0 text-right text-sm font-medium tabular-nums",
 								sel.dontKnow && "text-muted-foreground/50",
 							)}
 						>
