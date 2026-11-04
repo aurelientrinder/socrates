@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { PATHS } from "../../config.ts";
 import { emit } from "../core/events.ts";
 import type { ChatStore } from "../core/ports.ts";
-import type { ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
+import type { ChatAside, ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
 import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
@@ -132,7 +132,7 @@ function saveSummaryIndex(): void {
 function summarize(id: string): ChatSummary | null {
 	const record = getChat(id);
 	if (!record) return null;
-	const { messages, tree, turns, extractions, ...summary } = record;
+	const { messages, tree, turns, extractions, asides: _asides, ...summary } = record;
 	// Per-record isolation (Wave B): a record whose messages fail the
 	// projection (e.g. pre-Wave-B UIMessage-format scratch — the
 	// zero-back-compat wipe makes these "corrupt") must not blank the
@@ -228,6 +228,15 @@ function appendTurnUsage(id: string, entry: TurnUsage): void {
 	writeChat(record);
 }
 
+/** Append one side exchange to the record's asides log (idempotent per id). */
+function appendAside(id: string, aside: ChatAside): void {
+	const record = getChat(id);
+	if (!record) throw new Error(`Chat not found: ${id}`);
+	if (record.asides?.some((a) => a.id === aside.id)) return;
+	record.asides = [...(record.asides ?? []), aside];
+	writeChat(record);
+}
+
 /** Append one extraction-run usage entry to the record's extractions
  * log — idempotent per startedAt: a retry that reaches the append twice
  * (abort replays) does not double-count spend. */
@@ -299,5 +308,6 @@ export const chatStore: ChatStore = {
 	renameChat,
 	deleteChat,
 	appendTurnUsage,
+	appendAside,
 	appendExtractionUsage,
 };

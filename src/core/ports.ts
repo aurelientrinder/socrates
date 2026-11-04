@@ -11,6 +11,7 @@
 
 import type { LhMessage } from "./native-messages.ts";
 import type {
+	ChatAside,
 	ChatRecord,
 	ChatSettings,
 	ChatSummary,
@@ -50,6 +51,10 @@ export interface ChatStore {
 	 * a turn persisted twice appends once while continuation turns (which
 	 * share a response message id) each keep their usage. */
 	appendTurnUsage(id: string, entry: TurnUsage): void;
+	/** Append one side exchange (asked while a question waited) to the
+	 *  record's asides log — idempotent per aside id. Silent, like the other
+	 *  content writers: no updatedAt bump, no event. */
+	appendAside(id: string, aside: ChatAside): void;
 	/** Append one extraction-run usage entry — idempotent per startedAt. */
 	appendExtractionUsage(id: string, entry: ExtractionRunUsage): void;
 	/** Persist the per-chat model/thinking settings (the model control).

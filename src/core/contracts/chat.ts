@@ -55,12 +55,27 @@ export interface ChatRecord {
 	extractions?: ExtractionRunUsage[];
 	/** Per-chat model/thinking overrides for the conversation agents. */
 	settings?: ChatSettings;
+	/** Side questions asked while a quiz question waited (2026-11-04). A
+	 *  parallel log, not messages: the pending question's call must stay
+	 *  the record's open tail, so these never enter `messages`. Folded into
+	 *  the question's answer result when it is answered (core/asides.ts). */
+	asides?: ChatAside[];
 	/** SCHEMA STAMP (schema-versioning wave, owner 2026-10-10): LAZY v1 —
 	 *  existing records stay unstamped (absence reads as v1); every write
 	 *  stamps the current version. A record stamped NEWER than this build
 	 *  (the downgrade scenario) is REFUSED on read: a read-modify-write
 	 *  store must never rewrite what it doesn't understand. */
 	version?: number;
+}
+
+/** One side exchange: the learner's question and the tutor's reply, asked
+ *  while `questionCallId` was the open quiz question. */
+export interface ChatAside {
+	id: string;
+	questionCallId: string;
+	text: string;
+	reply: string;
+	at: string;
 }
 
 /** The chat record format this build writes and understands. */
