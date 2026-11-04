@@ -60,6 +60,7 @@ const SLOT_ORDER: readonly ModelSlotName[] = ["strong", "cheap", "vision"];
 /** The GET /api/models response fields the flow consumes. */
 interface ModelsBody {
 	models: ModelCatalogEntry[];
+	shown?: Record<string, string[]>;
 	providers: { id: string; keyPresent: boolean }[];
 	/** The three tiers' RESOLVED pins (BYOK: NULL per unset tier) — the
 	 *  PREFILL + "needed" marks (owner, 2026-09-22): pinned tiers open
@@ -171,7 +172,7 @@ export function SetupKeysBody({
 							testid="setup-key-provider-menu"
 							preferredSide="down"
 							align="left"
-							menuClass="flex w-[22rem] flex-col rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
+							menuClass="flex w-[min(26rem,calc(100vw-1rem))] flex-col rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
 						>
 							<ProviderMenuList providers={providers ?? []} onPick={onPick} />
 						</MenuShell>
@@ -505,10 +506,11 @@ export function SetupDialog({
 													testid={`setup-menu-${slot}`}
 													preferredSide="down"
 													align="left"
-													menuClass="flex w-[22rem] flex-col rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
+													menuClass="flex w-[min(26rem,calc(100vw-1rem))] flex-col rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
 												>
 													<ModelMenuList
 														models={catalog}
+															shown={body?.shown}
 														effectiveId={entry?.id}
 														effectiveProvider={entry?.provider}
 														onPick={(m) => {

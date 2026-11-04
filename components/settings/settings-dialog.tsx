@@ -46,6 +46,7 @@ import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { KeysSection } from "./keys-section.tsx";
+import { ModelVisibility } from "./model-visibility.tsx";
 import { Hint } from "@/components/ui/hint";
 import { downloadFile } from "@/components/artifacts/download";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
@@ -393,6 +394,7 @@ export function SettingsDialogBody({
 							{active === "keys" && (
 								<SettingsSection title="Providers" testid="section-keys">
 									<KeysSection initialRow={initialRow ?? undefined} />
+									<ModelVisibility />
 								</SettingsSection>
 							)}
 							{active === "agent" && (

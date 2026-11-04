@@ -368,6 +368,14 @@ export interface CompactionSettings {
 	thresholdTokens?: number;
 }
 
+/** Which models the menus offer (2026-11-04): per provider, the ids the
+ *  learner picked to show. A provider with no entry shows every model it
+ *  has; the list only narrows menus, it never blocks a model that is
+ *  already chosen. */
+export interface ModelListSettings {
+	shown?: Record<string, string[]>;
+}
+
 /** THE record. Every section optional (delta); unknown top-level keys are
  *  preserved verbatim by the sanitizer (forward-compat with newer records). */
 export interface UserSettings {
@@ -379,6 +387,7 @@ export interface UserSettings {
 	appearance?: AppearanceSettings;
 	graph?: GraphSettings;
 	compaction?: CompactionSettings;
+	modelList?: ModelListSettings;
 	[key: string]: unknown;
 }
 
@@ -617,6 +626,23 @@ function sanitizeCompaction(raw: Record<string, unknown>): CompactionSettings {
 	return out;
 }
 
+/** Lenient read side: keep only providers whose value is a non-empty
+ *  list of strings; anything else drops (that provider shows everything). */
+export function sanitizeModelList(raw: unknown): ModelListSettings {
+	const out: ModelListSettings = {};
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return out;
+	const shownRaw = (raw as Record<string, unknown>).shown;
+	if (shownRaw === null || typeof shownRaw !== "object" || Array.isArray(shownRaw)) return out;
+	const shown: Record<string, string[]> = {};
+	for (const [provider, ids] of Object.entries(shownRaw)) {
+		if (!Array.isArray(ids)) continue;
+		const clean = [...new Set(ids.filter((id): id is string => typeof id === "string" && id !== ""))];
+		if (clean.length) shown[provider] = clean;
+	}
+	if (Object.keys(shown).length) out.shown = shown;
+	return out;
+}
+
 /**
  * Coerce arbitrary JSON (disk file, network body) into a valid delta record:
  * known fields validated strictly (invalid ones drop/clamp per module doc),
@@ -647,6 +673,9 @@ export function sanitizeUserSettings(raw: unknown): UserSettings | null {
 		if (r.compaction !== undefined && r.compaction !== null && typeof r.compaction === "object") {
 			out.compaction = sanitizeCompaction(r.compaction as Record<string, unknown>);
 		}
+	}
+	if (r.modelList !== undefined && r.modelList !== null && typeof r.modelList === "object") {
+		out.modelList = sanitizeModelList(r.modelList);
 	}
 	// Unknown top-level keys ride along untouched (forward-compat). One
 	// known-DEAD key is stripped instead of riding: `chat` (the old
