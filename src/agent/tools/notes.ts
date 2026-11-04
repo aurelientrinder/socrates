@@ -4,6 +4,7 @@ import { serverExecute } from "../tool-execute.ts";
 import { parsePageSpec } from "../subagents/pdf-ops.ts";
 import type { NoteMeta } from "../../core/contracts.ts";
 import type { NotesLibraryReader } from "../../core/ports.ts";
+import { citeCode } from "../../core/citations.ts";
 
 /**
  * The notes tool (2026-10-26): the learner's SAVED notes — every file
@@ -80,7 +81,7 @@ export function searchNotes(notes: Array<{ meta: NoteMeta; text: string }>, quer
 			if (hits.length >= MAX_HITS) continue;
 			const where = lines[i]!.page !== null ? `${meta.name}, p. ${lines[i]!.page}` : `${meta.name}, line ${lines[i]!.lineNo}`;
 			const context = lines.slice(from, to + 1).map((r, k) => `${from + k === i ? ">" : " "} ${r.line}`).join("\n");
-			hits.push(`[${where}]\n${context}`);
+			hits.push(`[${where}] cite: ${citeCode(meta.id, lines[i]!.page !== null ? `p${lines[i]!.page}` : `l${lines[i]!.lineNo}`)}\n${context}`);
 			i = to; // don't report the neighbours of a hit as hits of their own
 		}
 	}
@@ -112,7 +113,7 @@ export function notesToolFor(library: NotesLibraryReader): AgentTool<typeof note
 			"No arguments: list them. `query`: search them all (or one `file`) and get the matching lines with file and page. " +
 			"`file` alone: read that file's text (`pages` for a PDF range). Search before reading: course files are long. " +
 			"Use it when what THEIR course says matters (a definition, a notation, a method the teacher used, what the exam covers), " +
-			"and cite the file and page you used. Pages listed as scanned have no text here: for those, dispatch a pdf job " +
+			"and cite what you use: put the cite code that the results print (like [[src_…#p3]]) right after the claim. Pages listed as scanned have no text here: for those, dispatch a pdf job " +
 			"with `path` set to the original file's path that `file` returns.",
 		parameters: notesInput,
 		execute: serverExecute("notes", notesInput, async ({ query, file, pages }) => {
@@ -133,7 +134,8 @@ export function notesToolFor(library: NotesLibraryReader): AgentTool<typeof note
 			const [only] = withText;
 			if (!only) return `The text of "${file}" is missing.`;
 			const original = library.originalPath(only.meta.id);
-			const header = `${describe(only.meta).slice(2)}${original ? `\nOriginal file: ${original}` : ""}\n\n`;
+			const cite = only.meta.kind === "pdf" ? `${citeCode(only.meta.id, "pN")} with N a page number from the "--- Page N ---" headers` : citeCode(only.meta.id, null);
+			const header = `${describe(only.meta).slice(2)}${original ? `\nOriginal file: ${original}` : ""}\nCite code: ${cite}\n\n`;
 			return header + readNote(only.meta, only.text, pages);
 		}),
 	};
