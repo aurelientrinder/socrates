@@ -562,10 +562,12 @@ export function DictationBar({ dictation, flat = false }: { dictation: Dictation
 					data-testid="dictation-toggle"
 				// Same blurring as the floating chrome (owner, fix wave round 3),
 			// but lower opacity — the mic stays quieter than the model pills.
-			className={flat ? "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[0.78rem] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" : "flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border/50 bg-card/50 text-xs text-muted-foreground/70 shadow-lg backdrop-blur transition-colors hover:border-border hover:text-muted-foreground"}
+			className={flat ? (error ? "flex h-7 min-w-0 items-center gap-1.5 rounded-[7px] px-2 text-[0.78rem] font-medium text-muted-foreground transition-colors hover:bg-ink-soft hover:text-foreground" : "flex size-7 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-ink-soft hover:text-foreground") : "flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border/50 bg-card/50 text-xs text-muted-foreground/70 shadow-lg backdrop-blur transition-colors hover:border-border hover:text-muted-foreground"}
 			>
-					<DictateIcon className="size-[15px] shrink-0" />
-					<span className="max-w-full truncate">{error ?? "Dictate"}</span>
+					<DictateIcon className="size-4 shrink-0" />
+					{/* The chat box's mic is icon-only (sidebar + chat box refine,
+					    2026-11-03); the tooltip names it, an error still reads. */}
+					{(!flat || error) && <span className="max-w-full truncate">{error ?? "Dictate"}</span>}
 				</button>
 			</Hint>
 		);

@@ -171,7 +171,7 @@ export function DeleteSessionBody({
 			    sized-up text-lg), still white. Same shape as the node
 			    dialog. */}
 			<div className="mt-1.5">
-				<code data-testid="session-name-code" className="font-mono text-sm text-foreground">
+				<code data-testid="session-name-code" className="text-sm font-semibold text-foreground">
 					{chat.title}
 				</code>
 			</div>

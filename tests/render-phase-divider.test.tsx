@@ -16,7 +16,7 @@ import { PhaseChip, PhaseDivider, planNodeCount } from "../components/phase-divi
 import { teachStepIndex } from "../src/core/phases.ts";
 
 describe("PhaseChip (header)", () => {
-	it("renders the learner-facing label — no colored dot (phase color retired)", () => {
+	it("renders the learner-facing label — an ink dot only, never a phase color", () => {
 		for (const [phase, label] of [
 			["probe", "Probing"],
 			["plan", "Planning"],
@@ -27,16 +27,20 @@ describe("PhaseChip (header)", () => {
 			assert.ok(html.includes(`data-phase="${phase}"`));
 			assert.ok(html.includes(label), `${phase} label`);
 			assert.ok(!html.includes("bg-phase-"), `${phase} dot color retired`);
-			assert.ok(!html.includes("rounded-full bg-"), "no dot of any color — label only");
+			assert.ok(html.includes("rounded-full bg-foreground/50"), "the quiet ink dot (2026-11-03 top bar)");
 		}
 	});
 
 	it("UN-PILLED (owner, extraction-UX redesign 2026-09-24): a flat tag — no border, no rounding, no padding", () => {
 		const html = renderToStaticMarkup(<PhaseChip phase="plan" />);
-		assert.ok(!html.includes("rounded-full"), "no pill curve");
 		assert.ok(!html.includes("border-border"), "no border chrome");
 		assert.ok(!html.includes("px-2"), "no pill padding");
-		assert.match(html, /class="[^"]*text-xs font-medium text-muted-foreground/, "the quiet flat label keeps its type treatment (sentence case)");
+		assert.match(html, /class="[^"]*text-\[13px\] text-muted-foreground/, "the quiet flat label");
+	});
+
+	it("teaching names the plan step when one is current", () => {
+		const html = renderToStaticMarkup(<PhaseChip phase="teach" step={{ index: 1, total: 11 }} />);
+		assert.match(html, /Teaching · step 1 of 11/);
 	});
 
 	it("NEVER shows a working spinner — the pill's curve suits text, not glyph cells (owner, round 2)", () => {

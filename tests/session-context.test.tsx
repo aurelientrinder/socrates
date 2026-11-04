@@ -77,7 +77,7 @@ describe("DeleteSessionDialog — the node-dialog shape (owner flow rework 2026-
 		assert.ok(!title.includes("font-title"), "no serif display title");
 		// the name: mono, normal text-sm size (owner, 2026-10-13), NO bg-muted code-block chrome
 		const name = html.match(/data-testid="session-name-code"[^>]*>/)?.[0] ?? "";
-		assert.match(name, /font-mono text-sm/);
+		assert.match(name, /text-sm font-semibold/); // one app font (2026-11-03): no mono
 		assert.ok(!name.includes("bg-muted"), "no code-block chrome");
 		assert.match(html, /data-testid="session-name-code"[^>]*>Orbital mechanics</);
 	});

@@ -70,7 +70,7 @@
 	   change one, change both. (owner, typography round 4: snapped from
 	   the reskin's hand-tuned 16.5 to the ladder's 16.) */
 	--lh-prose-size: 16px;
-	--lh-prose-leading: 1.5;
+	--lh-prose-leading: 1.6;
 	/* Markdown heading weight (appearance settings; 900 = the Black cut). */
 	--lh-heading-weight: 900;
 	/* Confidence-rail stop ticks: the ink at a third. */
@@ -89,6 +89,12 @@
 	--lh-warn: #c27a2c;
 	--lh-warn-ink: #8a4a06;
 	--lh-warn-soft: #f6e7d3;
+	/* The review tile (sidebar refine, 2026-11-03): a warm umber, apart
+	   from the drill amber and never blue. */
+	--lh-review-soft: #ece6dc;
+	--lh-review-ink: #5e4a33;
+	/* Selected rows and steps: a soft wash of the ink itself. */
+	--lh-ink-soft: color-mix(in srgb, var(--foreground) 7%, transparent);
 	--lh-surface: #fffefb;
 	/* The dimming behind a dialog (dark mode pass, 2026-10-27): a light
 	   wash of ink on the paper page; the dark palette swaps in a black
@@ -109,16 +115,14 @@
 	   proprietary): DM Sans chrome, Source Serif 4 reading text + titles.
 	   --lh-font-prose is what the reading-font setting overrides; its
 	   fallback is the set's own reading family (--lh-font-prose-base). */
-	--lh-font-ui: var(--font-jetbrains), ui-monospace, SFMono-Regular, monospace;
+	/* ONE FONT (sidebar + font round, 2026-11-03): the owner asked for a
+	   single face across every bit of UI text, so chrome, reading prose and
+	   titles all resolve to Source Sans 3 whichever typeface set a stored
+	   record names. Code blocks keep JetBrains Mono (--font-mono). */
+	--lh-font-ui: var(--font-sans3), ui-sans-serif, system-ui, sans-serif;
 	--lh-font-prose-base: var(--font-sans3), ui-sans-serif, system-ui, sans-serif;
 	--lh-font-prose: var(--lh-font-prose-base);
-}
-
-html[data-typeface="claude"] {
-	--lh-font-ui: var(--font-claude-sans), ui-sans-serif, system-ui, sans-serif;
-	--lh-font-prose-base: var(--font-claude-serif), Georgia, "Times New Roman", serif;
-	--font-title: var(--font-claude-serif), Georgia, serif;
-	--lh-title-weight: 500;
+	--lh-title-weight: 650;
 }
 
 .dark {
@@ -150,6 +154,9 @@ html[data-typeface="claude"] {
 	--lh-warn: #d9954a;
 	--lh-warn-ink: #e8b073;
 	--lh-warn-soft: #33271a;
+	--lh-review-soft: #2c2620;
+	--lh-review-ink: #d8c3a6;
+	--lh-ink-soft: color-mix(in srgb, var(--foreground) 9%, transparent);
 	--lh-surface: #1c1c1c;
 	--lh-scrim: rgb(0 0 0 / 0.55);
 	--cal-0-bar: #6fa3cc; --cal-0-tint: #1d2a36; --cal-0-ink: #b5d3ec;
@@ -160,14 +167,6 @@ html[data-typeface="claude"] {
 	--cal-5-bar: #d1b25a; --cal-5-tint: #2d2815; --cal-5-ink: #ecdc9d;
 }
 
-/* CMU Serif bold (titles) — bundled local file, no CDN dependency. */
-@font-face {
-	font-family: "lh-cmu";
-	src: url("/fonts/cmunbx.ttf") format("truetype");
-	font-weight: 700;
-	font-style: normal;
-	font-display: swap;
-}
 
 @theme inline {
 	/* Fonts: chrome, prose, and titles come from the typeface set in the
@@ -371,6 +370,9 @@ body {
 	--color-warn: var(--lh-warn);
 	--color-warn-ink: var(--lh-warn-ink);
 	--color-warn-soft: var(--lh-warn-soft);
+	--color-review-soft: var(--lh-review-soft);
+	--color-review-ink: var(--lh-review-ink);
+	--color-ink-soft: var(--lh-ink-soft);
 	--color-surface: var(--lh-surface);
 	--color-scrim: var(--lh-scrim);
 }
@@ -379,8 +381,8 @@ body {
    the session-name Black cut that .font-title asks for. */
 .lh-page-title {
 	font-family: var(--font-title);
-	font-weight: 500;
-	letter-spacing: -0.015em;
+	font-weight: 650;
+	letter-spacing: -0.01em;
 }
 
 /* Mermaid diagrams render through Pele (components/mermaid-render.ts), whose
@@ -647,6 +649,11 @@ body {
 .lh-electron .lh-wco-gutter {
 	padding-right: calc(0.75rem + var(--lh-wco-right, 0px));
 }
+@media (min-width: 1200px) {
+	.lh-electron .lh-wco-gutter.lh-wco-railed {
+		padding-right: 0.75rem;
+	}
+}
 .lh-electron .lh-wco-floating {
 	right: calc(0.5rem + var(--lh-wco-right, 0px));
 	max-width: max(0px, calc(100% - 5.5rem - var(--lh-wco-right, 0px)));
@@ -656,7 +663,7 @@ body {
    session-name-serif toggle overrides this var at runtime, so the
    .font-title utility must read it through var(), not carry a baked copy. */
 @theme {
-	--font-title: "lh-cmu", serif;
+	--font-title: var(--font-sans3), ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Card enter (owner round, 2026-10-05): the transcript cards' one-shot

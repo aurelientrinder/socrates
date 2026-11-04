@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightIcon, CornerDownLeftIcon, SquareIcon } from "lucide-react";
+import { ArrowRightIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Hint } from "@/components/ui/hint";
 
@@ -84,7 +84,7 @@ export function Composer({
 	return (
 		<form
 			data-testid="composer"
-			className="flex items-end gap-1.5 p-1.5"
+			className="flex items-end gap-1.5 py-1.5 pr-2 pl-1.5"
 			onSubmit={(e) => {
 				e.preventDefault();
 				act();
@@ -137,7 +137,7 @@ export function Composer({
 						type="submit"
 						data-testid="next-problem-button"
 						aria-label="Next problem"
-						className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-[16px] bg-primary px-4 font-ui text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+						className="mb-1 flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[9px] bg-primary px-3 font-ui text-[13.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
 					>
 						Next problem
 						<ArrowRightIcon className="size-4" />
@@ -148,13 +148,13 @@ export function Composer({
 						aria-label={busy && !canSend ? "Stop" : "Send"}
 						disabled={!busy && !canSend}
 						className={cn(
-							"flex size-10 shrink-0 items-center justify-center rounded-[16px] transition-colors",
+							"mb-1 flex size-8 shrink-0 items-center justify-center rounded-[9px] transition-colors",
 							busy && !canSend
 								? "bg-secondary text-foreground hover:bg-accent"
 								: "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40",
 						)}
 					>
-						{busy && !canSend ? <SquareIcon className="size-4" /> : <CornerDownLeftIcon className="size-5" />}
+						{busy && !canSend ? <SquareIcon className="size-3.5" /> : <ArrowUpIcon className="size-4" strokeWidth={2.4} />}
 					</button>
 				)}
 		</form>

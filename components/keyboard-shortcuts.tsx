@@ -187,7 +187,7 @@ function CheatSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 								{actions.map((a) => (
 									<div key={a.id} className="flex items-center justify-between gap-4 text-sm">
 										<span className="text-muted-foreground">{a.label}</span>
-										<kbd className="rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-xs text-card-foreground">
+										<kbd className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs font-medium tabular-nums text-card-foreground">
 											{formatBinding(bindingForAction(a.id))}
 										</kbd>
 									</div>

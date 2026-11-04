@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDownIcon } from "lucide-react";
 import type { ChatSettings, ModelCatalogEntry, ModelCatalogResponse, ModelsSettings, UserSettings } from "@/src/core";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { prettyModel } from "@/components/usage-format";
@@ -331,10 +332,10 @@ export function ModelControl({ chatId, onModelChange, flat = false }: { chatId?:
 				// view's floating top-right buttons (import notes, gear,
 				// coverage) — blurred, fuller opacity, shadowed — so the
 				// graph no longer bleeds through these pills.
-				className={flat ? "flex items-center gap-1.5 rounded-lg px-2 py-1 transition-colors hover:bg-muted" : "flex items-center gap-1.5 rounded-full border bg-card/85 px-2.5 py-1 shadow-lg backdrop-blur transition-colors hover:border-border hover:bg-muted"}
+				className={flat ? "flex items-center gap-1 rounded-[7px] px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-ink-soft hover:text-foreground [&>span:first-child]:text-current" : "flex items-center gap-1.5 rounded-full border bg-card/85 px-2.5 py-1 shadow-lg backdrop-blur transition-colors hover:border-border hover:bg-muted"}
 			>
 				<span className="text-card-foreground">{effectiveId ? prettyModel(effectiveId) : "—"}</span>
-				<span aria-hidden className="text-xs text-muted-foreground">▾</span>
+				{flat ? <ChevronDownIcon aria-hidden className="size-3 opacity-80" strokeWidth={2.4} /> : <span aria-hidden className="text-xs text-muted-foreground">▾</span>}
 			</button>
 			</Hint>
 			<Hint
@@ -359,14 +360,14 @@ export function ModelControl({ chatId, onModelChange, flat = false }: { chatId?:
 				// view's floating top-right buttons (import notes, gear,
 				// coverage) — blurred, fuller opacity, shadowed — so the
 				// graph no longer bleeds through these pills.
-				className={flat ? "flex items-center gap-1.5 rounded-lg px-2 py-1 transition-colors hover:bg-muted" : "flex items-center gap-1.5 rounded-full border bg-card/85 px-2.5 py-1 shadow-lg backdrop-blur transition-colors hover:border-border hover:bg-muted"}
+				className={flat ? "flex items-center gap-1 rounded-[7px] px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-ink-soft hover:text-foreground [&>span:first-child]:text-current" : "flex items-center gap-1.5 rounded-full border bg-card/85 px-2.5 py-1 shadow-lg backdrop-blur transition-colors hover:border-border hover:bg-muted"}
 			>
 				{/* Just the level — the button reads like the model button reads
 				   the model name (owner, stats-control round 1). */}
 				<span className="text-card-foreground">
 					{effectiveLevel === undefined ? "—" : (THINKING_LABEL[effectiveLevel] ?? effectiveLevel)}
 				</span>
-				<span aria-hidden className="text-xs text-muted-foreground">▾</span>
+				{flat ? <ChevronDownIcon aria-hidden className="size-3 opacity-80" strokeWidth={2.4} /> : <span aria-hidden className="text-xs text-muted-foreground">▾</span>}
 			</button>
 			</Hint>
 

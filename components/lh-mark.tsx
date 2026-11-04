@@ -40,3 +40,17 @@ export function LhMark({ className = "" }: { className?: string }) {
 		</svg>
 	);
 }
+
+/**
+ * SocratesMark (sidebar refine, 2026-11-03): the sidebar's wordmark glyph
+ * the owner picked from the prototype, a solid ink disc with a small open
+ * ring above it. Drawn in currentColor so it follows the ink in both modes.
+ */
+export function SocratesMark({ className = "" }: { className?: string }) {
+	return (
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={className} aria-hidden="true">
+			<circle cx="9" cy="14" r="6" fill="currentColor" />
+			<circle cx="16.5" cy="7" r="4" />
+		</svg>
+	);
+}

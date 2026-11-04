@@ -8,7 +8,7 @@
  * something). Hex inputs commit on blur/Enter; the background derives the
  * raised/accent/edge palette in code (components/settings/appearance.tsx).
  * Mode (light theme wave, 2026-10-26): Light (the default) / Dark / System;
- * the typeface row swaps the whole font set (Claude-style or classic).
+ * the app uses one font (Source Sans 3); the reading font can override prose.
  *
  * Graph graying (owner, 2026-09-20) follows the graph viewer's render-panel
  * convention: the whole row dims when a parent is off (stored values
@@ -210,21 +210,6 @@ export function AppearanceSection({
 				</ThinSelect>
 			</SettingsRow>
 			<SettingsRow
-				label="Typeface"
-				hint={typeface === "claude" ? "DM Sans + Source Serif 4" : "JetBrains Mono + Source Sans 3"}
-				testid="row-typeface"
-			>
-				<ThinSelect
-					value={typeface}
-					ariaLabel="typeface"
-					onChange={(v) => onSectionChange({ ...appearance, typeface: v as AppearanceSettings["typeface"] })}
-					testid="select-typeface"
-				>
-					<option value="claude">Claude-style</option>
-					<option value="classic">Classic</option>
-				</ThinSelect>
-			</SettingsRow>
-			<SettingsRow
 				label="Background"
 				hint={
 					resolved.background !== null && backgroundMode(resolved.background) !== effectiveMode
@@ -324,13 +309,6 @@ export function AppearanceSection({
 						if (!Number.isFinite(n)) return; // bad input: no write, factory stays
 						onSectionChange({ ...appearance, proseFontSize: Math.min(24, Math.max(12, Math.round(n))) });
 					}}
-				/>
-			</SettingsRow>
-			<SettingsRow label="Session names in serif" testid="row-session-serif">
-				<Toggle
-					checked={appearance?.sessionNameSerif ?? true}
-					label="session names serif"
-					onChange={(on) => onSectionChange({ ...appearance, sessionNameSerif: on })}
 				/>
 			</SettingsRow>
 			<SettingsRow label="Heading weight" hint={`${resolved.mdRendering.headingWeight}`} testid="row-heading-weight">

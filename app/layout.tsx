@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, JetBrains_Mono, Source_Sans_3, Source_Serif_4 } from "next/font/google";
+import { JetBrains_Mono, Source_Sans_3 } from "next/font/google";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { AppShell, SidebarProvider } from "@/components/sidebar";
@@ -9,16 +9,11 @@ import { AppearanceProvider } from "@/components/settings/appearance";
 import UpdateBanner from "@/components/update-banner";
 import { ReviewReminder } from "@/components/review-reminder";
 
-// Two typeface sets (globals.css picks by <html data-typeface>). Classic:
-// chrome = JetBrains Mono, teaching prose = Source Sans 3, titles = CMU
-// Serif (the bundled lh-cmu @font-face in globals.css — no CDN). Claude:
-// chrome = DM Sans, prose + titles = Source Serif 4 — open-licensed
-// stand-ins for the Claude app's proprietary Anthropic Sans/Serif. Code
-// is JetBrains Mono in both.
+// One font for every bit of UI text (owner, 2026-11-03): Source Sans 3
+// for chrome, reading prose and titles alike; JetBrains Mono is kept only
+// for code. globals.css maps both stored typeface sets onto this pair.
 const ui = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 const prose = Source_Sans_3({ subsets: ["latin"], variable: "--font-sans3" });
-const claudeSans = DM_Sans({ subsets: ["latin"], variable: "--font-claude-sans" });
-const claudeSerif = Source_Serif_4({ subsets: ["latin"], variable: "--font-claude-serif" });
 
 /** Pre-paint theme script: sets <html class="dark"> and data-typeface from
  *  the last applied appearance BEFORE the first frame, so a light (or dark)
@@ -39,7 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 		<html
 			lang="en"
 			data-typeface="claude"
-			className={`${ui.variable} ${prose.variable} ${claudeSans.variable} ${claudeSerif.variable}`}
+			className={`${ui.variable} ${prose.variable}`}
 			// The boot script below edits class/data-typeface before hydration.
 			suppressHydrationWarning
 		>

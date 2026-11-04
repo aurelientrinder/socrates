@@ -43,17 +43,21 @@ import { SidebarToggle } from "@/components/sidebar";
 
 export function TopBar({
 	drag = true,
+	railed = false,
 	onMouseDown,
 	children,
 }: {
 	drag?: boolean;
+	/** A plan rail sits to the right on wide windows (it carries the
+	 *  window-controls band then), so the bar drops its controls gutter. */
+	railed?: boolean;
 	onMouseDown?: React.MouseEventHandler<HTMLElement>;
 	children?: ReactNode;
 }) {
 	return (
 		<header
 			onMouseDown={onMouseDown}
-			className={`${drag ? "lh-drag " : ""}lh-wco-gutter flex h-15 select-none items-center gap-3 border-b border-border px-3`}
+			className={`${drag ? "lh-drag " : ""}${railed ? "lh-wco-railed " : ""}lh-wco-gutter flex h-15 select-none items-center gap-3 border-b border-border px-3`}
 		>
 			<SidebarToggle />
 			{children}

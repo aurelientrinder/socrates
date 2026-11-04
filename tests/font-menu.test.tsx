@@ -116,7 +116,7 @@ describe("the appearance section's font control (thin SSR)", () => {
 			<AppearanceSection appearance={undefined} onSectionChange={() => {}} />,
 		);
 		assert.ok(html.includes('data-testid="font-trigger"'), "the trigger");
-		assert.ok(html.includes("Source Serif 4"), "unset shows the Claude set's reading family");
+		assert.ok(html.includes("Source Sans 3"), "unset shows the one app font");
 		const classic = renderToStaticMarkup(
 			<AppearanceSection appearance={{ typeface: "classic" }} onSectionChange={() => {}} />,
 		);
