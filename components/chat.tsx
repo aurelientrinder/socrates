@@ -26,6 +26,7 @@ import { ReplyActions } from "@/components/reply-actions";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
+import { AsideBar, AsideThread, type PendingAside } from "@/components/aside";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
 import { DictationBar, finishDictation, joinDictation, useDictation } from "@/components/dictation";
 import { useFieldCycle } from "@/components/field-cycle";
@@ -63,7 +64,7 @@ import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-c
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
 import { ReviewContextCard, WarmupDoneDivider, type ReviewContextData } from "@/components/review-context-card";
 import { TopBar } from "@/components/top-bar";
-import type { ArtifactPartProps, JobRecord, Phase3, QuestionAnswerData, TurnUsage, SessionPricing } from "@/src/core";
+import type { ArtifactPartProps, ChatAside, JobRecord, Phase3, QuestionAnswerData, TurnUsage, SessionPricing } from "@/src/core";
 import type { LhViewMessage } from "@/src/core";
 import { PhaseChip, PhaseDivider } from "@/components/phase-divider";
 import {
@@ -238,6 +239,7 @@ export function Chat({
 	chatId,
 	title,
 	initialMessages,
+	initialAsides,
 	initialPrompt,
 	initiallyInFlight,
 	initiallyCompacting = false,
@@ -247,6 +249,8 @@ export function Chat({
 	chatId: string;
 	title: string;
 	initialMessages: LhMessage[];
+	/** Side questions already asked while a quiz question waited. */
+	initialAsides?: ChatAside[];
 	/** The session kind (practice sessions, owner 2026-10-04): practice
 	 *  renders no phase chip (no probe→teach arc applies) and a Practice
 	 *  tag rides the header instead. Review sessions (spaced repetition)
@@ -770,11 +774,52 @@ export function Chat({
 	 * when nothing is active; the two never overlap). */
 	useEnterSubmits(sendNext);
 
+	/* ASIDES (2026-11-04): questions for the tutor while a quiz question
+	 * waits. The exchange is answered at once and the question stays open;
+	 * `asides` mirrors the record's log, `asideInFlight` is the one being
+	 * written (or its error). A 409 means the question is gone or a turn
+	 * runs: the message goes the ordinary way instead. */
+	const [asides, setAsides] = useState<ChatAside[]>(initialAsides ?? []);
+	const [asideInFlight, setAsideInFlight] = useState<PendingAside | null>(null);
+	const askAside = useCallback(
+		async (raw: string, retryId?: string) => {
+			const q = pending?.toolCallId;
+			const t = raw.trim();
+			if (!q || !t) return;
+			const id = retryId ?? `aside_${crypto.randomUUID()}`;
+			setAsideInFlight({ id, questionCallId: q, text: t });
+			try {
+				const res = await fetch(`/api/chats/${chatId}/aside`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ input: { id, text: t } }),
+				});
+				if (res.status === 409) {
+					setAsideInFlight(null);
+					void send({ type: "text", text: t });
+					return;
+				}
+				const body = (await res.json().catch(() => null)) as { aside?: ChatAside; error?: string } | null;
+				if (!res.ok || !body?.aside) {
+					setAsideInFlight({ id, questionCallId: q, text: t, error: body?.error ?? `The question failed (${res.status}).` });
+					return;
+				}
+				const landed = body.aside;
+				setAsides((prev) => (prev.some((a) => a.id === landed.id) ? prev : [...prev, landed]));
+				setAsideInFlight(null);
+			} catch (err) {
+				setAsideInFlight({ id, questionCallId: q, text: t, error: (err as Error).message });
+			}
+		},
+		[chatId, pending?.toolCallId, send],
+	);
+
 	const syncFromServer = useCallback(async () => {
 		const res = await fetch(`/api/chats/${chatId}`);
 		if (!res.ok) return;
-		const record = (await res.json()) as { messages?: LhMessage[]; turns?: TurnUsage[]; pricing?: SessionPricing };
+		const record = (await res.json()) as { messages?: LhMessage[]; turns?: TurnUsage[]; pricing?: SessionPricing; asides?: ChatAside[] };
 		if (Array.isArray(record.turns)) setTurns(record.turns);
+		if (Array.isArray(record.asides)) setAsides(record.asides);
 		setPricing(record.pricing);
 		if (!Array.isArray(record.messages)) return;
 		setMessages(record.messages);
@@ -1618,17 +1663,27 @@ export function Chat({
 													case "tool-recall": {
 														// Pending/streaming questions live in the dock, not the
 														// transcript; answered ones render as graded records.
+														const sideTalk = (
+															<AsideThread
+																key={`aside-${pi}`}
+																asides={asides.filter((a) => a.questionCallId === part.toolCallId)}
+																pending={asideInFlight && asideInFlight.questionCallId === part.toolCallId ? asideInFlight : null}
+																onRetry={asideInFlight?.error ? () => void askAside(asideInFlight.text, asideInFlight.id) : undefined}
+															/>
+														);
 														if (part.state === "output-available") {
 															return (
-																<AnsweredCard
-																	key={pi}
-																	answer={part.output as QuestionAnswerData}
-																	input={part.input}
-																	label={kind !== "review" && part.type === "tool-review" ? "Warm-up" : undefined}
-																/>
+																<Fragment key={pi}>
+																	<AnsweredCard
+																		answer={part.output as QuestionAnswerData}
+																		input={part.input}
+																		label={kind !== "review" && part.type === "tool-review" ? "Warm-up" : undefined}
+																	/>
+																	{sideTalk}
+																</Fragment>
 															);
 														}
-														return null;
+														return sideTalk;
 													}
 													default: {
 														// A tool call being WRITTEN (owner, streaming round 2026-10-01):
@@ -1742,6 +1797,15 @@ export function Chat({
 					dictationSlot={<DictationBar dictation={dictation} flat />}
 					dictationCancel={dictation.cancel}
 					queuedSteers={visibleQueuedSteers(steerQueue, nativeMessages)}
+					asideSlot={
+						pending ? (
+							<AsideBar
+								onAsk={(t) => void askAside(t)}
+								disabled={compacting}
+								busy={asideInFlight !== null && !asideInFlight.error}
+							/>
+						) : undefined
+					}
 					warmup={
 						warmingUp
 							? {
@@ -1980,6 +2044,7 @@ function DockOverlay({
 	dictationCancel,
 	setupCta,
 	queuedSteers,
+	asideSlot,
 	warmup,
 }: {
 	pending: ReturnType<typeof findPendingToolCall>;
@@ -2027,6 +2092,8 @@ function DockOverlay({
 	/** The queued-steer indicator's lines (composer steering, 2026-10-03):
 	 *  already filtered by visibleQueuedSteers — only undrained steers. */
 	queuedSteers: QueuedSteerLine[];
+	/** The ask-the-tutor bar above a pending question (asides, 2026-11-04). */
+	asideSlot?: React.ReactNode;
 	/** The persistent setup CTA (BYOK, owner 2026-09-22): the same pill
 	 *  home and /chat/new carry, above the composer while slots are unset. */
 	setupCta?: React.ReactNode;
@@ -2426,6 +2493,7 @@ function DockOverlay({
 					    rounding starts, truncated, no background, no container. A
 					    line dies when its card lands (visibleQueuedSteers). */}
 					<QueuedSteersBody steers={queuedSteers} />
+					{asideSlot}
 					{/* ONE BOX (owner, feed redesign 2026-11-01): the composer/question
 					    shell and its tools row (dictate, usage, model) share a single
 					    card, Claude's composer shape. The inner shell keeps its own

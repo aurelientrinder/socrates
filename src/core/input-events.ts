@@ -40,6 +40,8 @@ import {
 } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 import { warmupDoneAppends } from "./review.ts";
+import { withAsideDigest } from "./asides.ts";
+import type { ChatAside } from "./contracts.ts";
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
@@ -134,7 +136,7 @@ export function parseUserSteerInput(input: unknown): UserSteerInput {
 /** The native appends a dismissal makes (pure — same orphan discipline
  *  as answers: the call must be a DANGLING question call, or — the
  *  practice variant — the ACTIVE problem). */
-export function dismissAppends(record: { messages: LhMessage[] }, input: DismissInput): LhMessage[] {
+export function dismissAppends(record: { messages: LhMessage[]; asides?: ChatAside[] }, input: DismissInput): LhMessage[] {
 	if (input.type === "dismiss-problem") {
 		const active = activeProblemOf(record.messages);
 		if (!active || active.toolCallId !== input.problemCallId) {
@@ -149,7 +151,7 @@ export function dismissAppends(record: { messages: LhMessage[] }, input: Dismiss
 	if (input.answer.kind !== toolQuestionKind(pending.tool)) {
 		throw new ChatInputError("dismiss input's answer kind does not match the question");
 	}
-	const result = newAnswerResult(input.toolCallId, pending.tool, input.answer);
+	const result = withAsideDigest(newAnswerResult(input.toolCallId, pending.tool, input.answer), record.asides);
 	return [result, ...warmupDoneAppends([...record.messages, result])];
 }
 
@@ -203,7 +205,7 @@ export function parseChatInput(input: unknown): ChatInput {
  * double-answering.
  */
 export function inputAppends(
-	record: { messages: LhMessage[]; kind?: string },
+	record: { messages: LhMessage[]; kind?: string; asides?: ChatAside[] },
 	input: ChatInput,
 ): LhMessage[] {
 	switch (input.type) {
@@ -214,7 +216,10 @@ export function inputAppends(
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
-			const result = newAnswerResult(input.toolCallId, pending.tool, withReviewTopic(input.answer, pending));
+			const result = withAsideDigest(
+				newAnswerResult(input.toolCallId, pending.tool, withReviewTopic(input.answer, pending)),
+				record.asides,
+			);
 			return [result, ...warmupDoneAppends([...record.messages, result])];
 		}
 		case "continue":

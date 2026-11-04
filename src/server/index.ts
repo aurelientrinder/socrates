@@ -5,6 +5,7 @@
  */
 
 export * from "./chat-handler.ts";
+export { handleAside, parseAsideInput } from "./aside.ts";
 export * from "./events-stream.ts";
 export * from "./chats.ts";
 export { backupIfDue, exportData } from "./backup.ts";
