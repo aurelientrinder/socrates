@@ -5,11 +5,12 @@
 //   build/icon.ico  — Windows (.ico with 16/24/32/48/64/128/256 PNG entries)
 //   build/icon.png  — Linux (512×512; AppImage/deb/desktop entry)
 //
-// macOS does NOT come from here: build/icon.icon (the Icon Composer
-// document) is the mac source of truth, compiled by actool at package
-// time into Assets.car (macOS 26 Liquid Glass) + a fallback icns; the
-// hand-packed build/icon.icns replaces that fallback's 256px cap via
-// scripts/after-pack.cjs (pre-Tahoe keeps full-res).
+//   build/icon.icns — the pre-Tahoe mac fallback (PNG entries 16→1024),
+//                     swapped in by scripts/after-pack.cjs
+//
+// macOS 26+ uses build/icon.icon (the Icon Composer document, one layer
+// per shape of the mark), compiled by actool at package time into
+// Assets.car (Liquid Glass). Keep its layers in step with the flat SVG.
 //
 // Renders each size DIRECTLY from the SVG (resvg) — sharper squircle
 // edges than downsampling a raster. Committed outputs; rerun only when
@@ -53,3 +54,24 @@ console.log(`build/icon.ico  ${ICO_SIZES.join("/")} — ${(ico.length / 1024).to
 const png512 = render(512);
 writeFileSync(path.join(root, "build", "icon.png"), png512);
 console.log(`build/icon.png  512×512 — ${(png512.length / 1024).toFixed(1)} KB`);
+
+// ---- build/icon.icns: the pre-Tahoe mac fallback -------------------------
+// PNG-payload entries only (every macOS since 10.7 reads them).
+const ICNS = [
+	["icp4", 16], ["icp5", 32], ["icp6", 64], ["ic07", 128], ["ic08", 256], ["ic09", 512], ["ic10", 1024],
+	["ic11", 32], ["ic12", 64], ["ic13", 256], ["ic14", 512],
+];
+const entries = ICNS.map(([type, size]) => {
+	const png = render(size);
+	const head = Buffer.alloc(8);
+	head.write(type, 0, "ascii");
+	head.writeUInt32BE(png.length + 8, 4);
+	return Buffer.concat([head, png]);
+});
+const body = Buffer.concat(entries);
+const icnsHead = Buffer.alloc(8);
+icnsHead.write("icns", 0, "ascii");
+icnsHead.writeUInt32BE(body.length + 8, 4);
+const icns = Buffer.concat([icnsHead, body]);
+writeFileSync(path.join(root, "build", "icon.icns"), icns);
+console.log(`build/icon.icns 16→1024 — ${(icns.length / 1024).toFixed(1)} KB`);
