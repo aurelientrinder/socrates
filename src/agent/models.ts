@@ -89,6 +89,31 @@ function defaultThinkingLevel(model: Model<Api>): ThinkingLevel {
 	return supported[0] ?? "off";
 }
 
+/** Google's documented dummy signature: it satisfies the "functionCall
+ *  parts need a thought_signature" check for calls that have no real one. */
+export const GEMINI_SKIP_SIGNATURE = "skip_thought_signature_validator";
+
+/** Gemini 3 thinking models reject any replayed functionCall part that has
+ *  no thoughtSignature (HTTP 400). pi-ai only echoes real signatures for
+ *  history from the SAME provider+model, so a chat that switched models
+ *  (or holds calls from a non-Gemini model, or a pre-signature record)
+ *  fails on its first tool call. Fill the gap with Google's documented
+ *  dummy value; real signatures are left untouched. Pure; mutates the
+ *  payload in place and returns it. */
+export function fillGeminiThoughtSignatures(payload: unknown): unknown {
+	const contents = (payload as { contents?: unknown } | null)?.contents;
+	if (!Array.isArray(contents)) return payload;
+	for (const turn of contents) {
+		const parts = (turn as { role?: string; parts?: unknown } | null)?.parts;
+		if (!Array.isArray(parts) || (turn as { role?: string }).role !== "model") continue;
+		for (const part of parts) {
+			const p = part as { functionCall?: unknown; thoughtSignature?: string };
+			if (p?.functionCall && !p.thoughtSignature) p.thoughtSignature = GEMINI_SKIP_SIGNATURE;
+		}
+	}
+	return payload;
+}
+
 /** The production engine for a RESOLVED spec (model slots wave,
  *  2026-09-20): provider-aware catalog lookup + thinking clamp. The API
  *  key is resolved by pi-ai itself from the environment per request (the
@@ -118,7 +143,16 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 		streamFn: (requestModel, context, options) => {
 			const purpose = typeof background === "function" ? background : () => background;
 			const stream = pacedStream(`${spec.provider}/${spec.id}`, purpose, models.streamSimple.bind(models));
-			return stream(requestModel, context, { ...options, reasoning: level === "off" ? undefined : level });
+			const isGoogle = requestModel.api === "google-generative-ai" || requestModel.api === "google-vertex";
+			const userOnPayload = options?.onPayload;
+			return stream(requestModel, context, {
+				...options,
+				reasoning: level === "off" ? undefined : level,
+				...(isGoogle && {
+					onPayload: async (payload: unknown, m: typeof requestModel) =>
+						fillGeminiThoughtSignatures((await userOnPayload?.(payload, m)) ?? payload),
+				}),
+			});
 		},
 	};
 }
