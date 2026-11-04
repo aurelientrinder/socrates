@@ -106,3 +106,4 @@ export * from "./coverage.ts";
 export * from "./session-markdown.ts";
 // Which gentle reminders to schedule on the Socrates calendar. Pure, browser-safe.
 export * from "./reminders.ts";
+export * from "./citations.ts";

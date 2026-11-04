@@ -55,6 +55,7 @@ import { ArrowRightIcon, DumbbellIcon, FlagIcon, RepeatIcon, WaypointsIcon } fro
 import { SessionKindTile } from "@/components/sidebar";
 import { sessionDisplay } from "@/components/session-display";
 import type { PlanBlockData } from "@/src/core";
+import { numberCitations } from "@/src/core";
 import { QuestionDock, type WarmupStep } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
 import { SessionMessageNavigation } from "@/components/session-navigation";
@@ -283,6 +284,17 @@ export function Chat({
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
+	// Note citation codes -> numbered markers, numbered per reply (a message group).
+	const citedTexts = useMemo(() => {
+		const out = new Map<string, string>();
+		for (const m of messages) {
+			if (m.role !== "assistant") continue;
+			const parts = m.parts.flatMap((p) => (p.type === "text" && p.id ? [{ id: p.id, text: p.text ?? "" }] : []));
+			if (!parts.some((p) => p.text.includes("[["))) continue;
+			numberCitations(parts.map((p) => p.text)).forEach((t, i) => out.set(parts[i]!.id, t));
+		}
+		return out;
+	}, [messages]);
 
 	// The reattach settled terminal → the sync-and-continue seam (below).
 	setReattachSettled(() => reattachSettledRef.current());
@@ -1577,7 +1589,7 @@ export function Chat({
 														const anchor = sourceId && sourceTextParts.get(sourceId) === part.id ? messageAnchorId(sourceId) : undefined;
 														return (
 															<div key={part.id || pi} id={anchor} data-source-message-id={sourceId ?? undefined} className="lh-source-passage">
-																<MessageResponse>{part.text}</MessageResponse>
+																<MessageResponse>{(part.id ? citedTexts.get(part.id) : undefined) ?? part.text}</MessageResponse>
 															</div>
 														);
 													}

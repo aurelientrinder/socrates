@@ -62,7 +62,7 @@ describe("notes tool", () => {
 
 		const search = await callNotes({ query: "chloroplast" });
 		assert.match(search, /1 match for "chloroplast"/);
-		assert.match(search, /\[Biology class notes\.pdf, p\. 2\]\n> Photosynthesis happens in the chloroplast\./);
+		assert.match(search, /\[Biology class notes\.pdf, p\. 2\] cite: \[\[src_[0-9a-f]{12}#p2\]\]\n> Photosynthesis happens in the chloroplast\./);
 
 		const twoWords = await callNotes({ query: "mitochondria ATP" });
 		assert.match(twoWords, /p\. 1/);

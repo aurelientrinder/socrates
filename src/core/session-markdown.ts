@@ -28,6 +28,7 @@ import {
 	problemInputForConclude,
 } from "./native-messages.ts";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import { stripCitations } from "./citations.ts";
 
 /** The user-facing text blocks of a native message (string or text parts). */
 function textOf(content: unknown): string[] {
@@ -35,7 +36,7 @@ function textOf(content: unknown): string[] {
 	if (!Array.isArray(content)) return [];
 	return content
 		.filter((c): c is { type: "text"; text: string } => (c as { type?: string }).type === "text")
-		.map((c) => c.text)
+		.map((c) => stripCitations(c.text))
 		.filter((t) => t.trim().length > 0);
 }
 

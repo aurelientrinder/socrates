@@ -30,6 +30,8 @@
 import { cloneElement, isValidElement, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { CheckIcon, CopyIcon, MaximizeIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CitationChip } from "@/components/citation-chip";
+import { parseCiteToken } from "@/src/core";
 import {
 	CodeBlock,
 	extractTableDataFromElement,
@@ -239,6 +241,9 @@ export function MarkdownCode(props: ComponentProps<"code"> & ExtraProps) {
 
 	// Inline code: no data-block (the pre handler stamps block fences only).
 	if (!("data-block" in props)) {
+		// A numbered note citation (src/core/citations.ts numberCitations).
+		const cite = parseCiteToken(codeSource(children));
+		if (cite) return <CitationChip n={cite.n} citation={cite.citation} />;
 		return (
 			<code className={cn("rounded bg-muted px-1.5 py-0.5 font-mono text-sm", className)} data-streamdown="inline-code" {...rest}>
 				{children}
