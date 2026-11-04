@@ -73,6 +73,11 @@ export interface ModelCatalogResponse {
 	 *  are simply absent (the Keys page is the discovery surface, same
 	 *  discipline as the search engines). */
 	providers: CatalogProvider[];
+	/** The learner's per-provider "show only these" lists (settings
+	 *  modelList.shown). `models` stays the FULL catalog — menus narrow it
+	 *  client-side (visibleModels) so a chosen-but-hidden model still
+	 *  resolves its name and thinking levels. */
+	shown?: Record<string, string[]>;
 }
 
 /** One row of the providers surface. */

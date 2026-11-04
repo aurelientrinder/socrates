@@ -22,7 +22,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { piModels } from "../agent/models.ts";
 function connectionModel(provider: string, id: string): Model<Api> | undefined { return piModels().getModel(provider, id); }
 function connectionProviderIds(): string[] { return piModels().getProviders().map((p) => p.id); }
-import { settingsStore } from "../store/settings.ts";
+import { settingsStore, readSettings } from "../store/settings.ts";
 import { effectiveSettings } from "./stores.ts";
 import { keyValue } from "./keys.ts";
 import type { ChatSettings } from "../core/contracts/chat.ts";
@@ -195,6 +195,7 @@ export function modelCatalog(): ModelCatalogResponse {
 		rolePins: catalogRolePins(),
 		slots: catalogSlots(),
 		providers: catalogProviders(),
+		shown: readSettings()?.modelList?.shown ?? {},
 	};
 }
 

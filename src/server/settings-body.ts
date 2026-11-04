@@ -22,6 +22,7 @@ import type {
 	CompactionSettings,
 	GeneralSettings,
 	GraphSettings,
+	ModelListSettings,
 	ModelsSettings,
 	RoleModelOverride,
 } from "../core/settings.ts";
@@ -403,6 +404,30 @@ export function parseCompactionSettingsBody(body: unknown): SettingsBodyResult<C
 	return { ok: true, settings };
 }
 
+/** modelList: { shown?: { [provider]: string[] } } — the ids each provider's
+ *  menus offer. Strict write side; replace-whole like every section. An
+ *  empty list is rejected (a provider with nothing shown would empty its
+ *  menus) — the UI clears a provider by dropping its key. */
+export function parseModelListSettingsBody(body: unknown): SettingsBodyResult<ModelListSettings> {
+	const raw = asRecord(body);
+	if (!raw) return { ok: false, error: "Invalid JSON body" };
+	const settings: ModelListSettings = {};
+	if (raw.shown !== undefined) {
+		const shownRaw = asRecord(raw.shown);
+		if (!shownRaw) return { ok: false, error: "shown must be an object of provider → model ids" };
+		const shown: Record<string, string[]> = {};
+		for (const [provider, ids] of Object.entries(shownRaw)) {
+			if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string" || id === "")) {
+				return { ok: false, error: `shown.${provider} must be a list of model ids` };
+			}
+			if (ids.length === 0) return { ok: false, error: `shown.${provider} must not be empty (drop the provider to show all its models)` };
+			shown[provider] = [...new Set(ids as string[])];
+		}
+		if (Object.keys(shown).length) settings.shown = shown;
+	}
+	return { ok: true, settings };
+}
+
 /** The section→parser map for PUT /api/settings/[section] (the route also
  *  carries the special prompts sub-resource). */
 export const SETTINGS_SECTIONS = {
@@ -413,6 +438,7 @@ export const SETTINGS_SECTIONS = {
 	graph: parseGraphSettingsBody,
 	compaction: parseCompactionSettingsBody,
 	models: parseModelsSettingsBody,
+	modelList: parseModelListSettingsBody,
 } as const;
 
 export type SettingsSectionName = keyof typeof SETTINGS_SECTIONS;

@@ -29,6 +29,24 @@ function priceLabel(cost: ModelCatalogEntry["cost"]): string {
 	return `${fmt(cost.input)}/${fmt(cost.output)}`;
 }
 
+/** Narrow a catalog by the learner's per-provider "show only these" lists.
+ *  A provider with no list shows everything; a model that is currently
+ *  chosen always stays so the menu never hides what is in use. Pure —
+ *  exported for tests. */
+export function visibleModels(
+	models: ModelCatalogEntry[],
+	shown: Record<string, string[]> | undefined,
+	keep?: { provider?: string; id?: string },
+): ModelCatalogEntry[] {
+	if (!shown) return models;
+	return models.filter((m) => {
+		const list = shown[m.provider];
+		if (!list) return true;
+		if (keep && keep.id === m.id && (keep.provider ?? m.provider) === m.provider) return true;
+		return list.includes(m.id);
+	});
+}
+
 /** The model dropdown body — fuzzy search + ranked list. `models ===
  *  undefined` is the catalog-loading state; an empty result list gets
  *  its own quiet line. */
@@ -38,9 +56,12 @@ export function ModelMenuList({
 	effectiveProvider,
 	onPick,
 	footer,
+	shown,
 }: {
 	/** The full catalog — undefined while it loads. */
 	models: ModelCatalogEntry[] | undefined;
+	/** The learner's per-provider shown lists (Settings → Providers). */
+	shown?: Record<string, string[]>;
 	/** Currently effective id (the row gets the quiet highlight). */
 	effectiveId: string | undefined;
 	/** The effective id's provider (model-slots wave: the catalog
@@ -69,7 +90,7 @@ export function ModelMenuList({
 	}, [menuIdx]);
 
 	// The filtered, ranked model list.
-	const results = (models ?? [])
+	const results = visibleModels(models ?? [], shown, { provider: effectiveProvider, id: effectiveId })
 		.map((m) => ({ m, s: fuzzyScore(query, m.provider, m.id, m.name) }))
 		.filter((r) => r.s !== null)
 		.sort((a, b) => b.s! - a.s! || a.m.id.localeCompare(b.m.id))
@@ -123,14 +144,14 @@ export function ModelMenuList({
 								i === menuIdx ? "bg-accent/40 ring-1 ring-inset ring-border" : ""
 							}${m.id === effectiveId && m.provider === (effectiveProvider ?? m.provider) && i !== menuIdx ? " bg-muted/60" : ""}`}
 						>
-							<span className="flex items-center justify-between gap-2">
-								<span className="truncate text-card-foreground">{m.name}</span>
+							<span className="flex items-start justify-between gap-2">
+								<span className="min-w-0 break-words text-card-foreground">{m.name}</span>
 								<span className="shrink-0 tabular-nums text-muted-foreground" title="USD per 1M tokens in/out">
 									{priceLabel(m.cost)}
 								</span>
 							</span>
 							<span className="flex items-center justify-between gap-2 text-muted-foreground">
-								<span className="truncate">{m.provider} · {m.id}</span>
+								<span className="min-w-0 break-all">{m.provider} · {m.id}</span>
 								<span className="shrink-0 tabular-nums">{formatTokens(m.contextWindow)}</span>
 							</span>
 						</button>

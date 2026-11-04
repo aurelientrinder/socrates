@@ -44,7 +44,7 @@ export function useModelCatalog(): { catalog: ModelCatalogResponse | undefined; 
 				if (section === "keys") {
 					catalogGeneration++; catalogInflight = undefined; catalogCache = undefined;
 					publishCatalog(); fetchCatalog();
-				} else if (section === "models") fetchCatalog(true);
+				} else if (section === "models" || section === "modelList") fetchCatalog(true);
 			});
 			fetchCatalog(true);
 		} else fetchCatalog();
@@ -379,11 +379,12 @@ export function ModelControl({ chatId, onModelChange, flat = false }: { chatId?:
 					anchorRef={containerRef}
 					testid="model-menu"
 					preferredSide="up"
-					menuClass="flex w-[22rem] flex-col rounded-xl border bg-card p-2 text-xs shadow-xl"
+					menuClass="flex w-[min(26rem,calc(100vw-1rem))] flex-col rounded-xl border bg-card p-2 text-xs shadow-xl"
 				>
 					{error && <div className="mb-1.5 text-destructive">{error}</div>}
 					<ModelMenuList
 						models={catalog?.models}
+							shown={catalog?.shown}
 						effectiveId={effectiveId}
 						effectiveProvider={effectiveProvider}
 						onPick={pickModel}

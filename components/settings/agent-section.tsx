@@ -311,6 +311,7 @@ export function AgentSection({
 	onCompactionChange: (next: CompactionSettings) => void;
 }) {
 	const [catalog, setCatalog] = useState<ModelCatalogEntry[] | null>(null);
+	const [shown, setShown] = useState<Record<string, string[]> | undefined>(undefined);
 	/** The three tiers' resolved pins — GET /api/models `slots`. The rows'
 	 *  Default hints and thinking lists resolve from it. */
 	const [slots, setSlots] = useState<ModelsBody["slots"] | null>(null);
@@ -357,13 +358,14 @@ export function AgentSection({
 			.then((body: ModelsBody) => {
 				if (!modelsMounted.current || request !== modelsRequest.current) return;
 				setCatalog(body.models);
+				setShown((body as { shown?: Record<string, string[]> }).shown);
 				setSlots(body.slots);
 			})
 			.catch(() => { if (modelsMounted.current && request === modelsRequest.current) setCatalog(null); });
 	}, []);
 
 	useSettingsSaved((section) => {
-		if (section === "models" || section === "keys") readModels(section === "keys");
+		if (section === "models" || section === "keys" || section === "modelList") readModels(section === "keys");
 		// THE state-echo root cause: the prompt switches write through the
 		// agent section, but this view (the toggles' truth) never re-read —
 		// the settings-saved law (every reader re-reads) was missing this
@@ -664,10 +666,11 @@ export function AgentSection({
 										preferredSide="down"
 											anchorTestid={`slot-model-${slot}`}
 										testid={`slot-model-menu-${slot}`}
-										menuClass="flex w-[22rem] flex-col rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
+										menuClass="flex w-[min(26rem,calc(100vw-1rem))] flex-col rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
 									>
 										<ModelMenuList
 											models={slotCatalog ?? undefined}
+											shown={shown}
 											effectiveId={modelId}
 											effectiveProvider={provider}
 											onPick={(entry) => {
