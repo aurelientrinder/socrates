@@ -2294,10 +2294,26 @@ function DockOverlay({
 			if (n.scrollHeight - n.clientHeight < 2) return false; // not scrollable
 			return dir < 0 ? n.scrollTop > 0 : n.scrollTop < n.scrollHeight - n.clientHeight - 0.5;
 		};
+		// A tall question scrolls inside its own area. Hitting its top/bottom
+		// edge must not hand the SAME gesture (flick momentum) to the
+		// transcript: that folded the question before its top was seen.
+		// An edge hit forwards only once the wheel has been quiet briefly.
+		let innerAt = 0;
 		const onWheel = (e: WheelEvent) => {
 			if (e.deltaY === 0) return;
+			let edgeOfScroller = false;
 			for (let n = e.target as HTMLElement | null; n && n !== root; n = n.parentElement) {
-				if (n instanceof HTMLElement && canScroll(n, e.deltaY)) return; // native
+				if (!(n instanceof HTMLElement)) continue;
+				if (canScroll(n, e.deltaY)) {
+					innerAt = Date.now();
+					return; // native
+				}
+				if (n.scrollHeight - n.clientHeight >= 2 && n.hasAttribute("data-session-find-root")) edgeOfScroller = true;
+			}
+			if (edgeOfScroller && Date.now() - innerAt < 400) {
+				innerAt = Date.now(); // momentum keeps the guard alive until the learner pauses
+				e.preventDefault();
+				return;
 			}
 			e.preventDefault();
 			el.scrollTop += e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1);
