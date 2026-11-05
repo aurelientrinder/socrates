@@ -49,3 +49,15 @@ describe("literal newline repair", () => {
 		assert.equal(repairLiteralNewlines("plain text"), "plain text");
 	});
 });
+
+describe("review fixes", () => {
+	it("keeps adjacent citation markers as separate spans", () => {
+		const out = numberCitations([`x [[${ID}#p7]][[${ID}#p8]]`])[0]!;
+		assert.ok(!out.includes("``"));
+		assert.equal(out.match(/`cite:/g)?.length, 2);
+	});
+	it("moves a display span's backslash-n line breaks outside the math", () => {
+		assert.equal(repairLiteralNewlines("vaut :\\n$$\\nFAD = 1\\n$$\\nfin"), "vaut :\n$$\nFAD = 1\n$$\nfin");
+		assert.equal(repairLiteralNewlines("$$\\nabla f$$"), "$$\\nabla f$$");
+	});
+});
