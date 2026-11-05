@@ -978,7 +978,13 @@ export function Chat({
 	// 208 ≈ gradient(96) + composer block(~112): the SSR/pre-hydration
 	// guess so the static paint has a sane tail. The first layout effect
 	// replaces it with the measured truth before paint.
-	const [dockReserve, setDockReserve] = useState(208);
+	// The dock's reserved tail is written straight to the spacer element: a
+	// state update re-rendered the whole transcript (markdown + KaTeX) on
+	// every dock open/close, which made the animation stutter.
+	const dockSpacerRef = useRef<HTMLDivElement>(null);
+	const setDockReserve = useCallback((h: number) => {
+		if (dockSpacerRef.current) dockSpacerRef.current.style.height = `${h}px`;
+	}, []);
 	const syncTurns = useCallback(async () => {
 		try {
 			const res = await fetch(`/api/chats/${chatId}`);
@@ -1782,7 +1788,7 @@ export function Chat({
 						    the overlay — the flow-space replacement for the old
 						    sticky dock. Zero only pre-measurement (the first layout
 						    effect reports before paint). */}
-						<div aria-hidden data-testid="dock-spacer" style={{ height: dockReserve }} />
+						<div ref={dockSpacerRef} aria-hidden data-testid="dock-spacer" style={{ height: 208 }} />
 				</ConversationContent>
 				{/* The dock: an overlay sibling of the scroller (the
 				    use-stick-to-bottom pattern). The scroll-down button lives
@@ -2088,7 +2094,7 @@ function DockOverlay({
 	/** The model control's pass-through (the stats bar hosts it). */
 	chatId: string;
 	/** Reports the dock's settled height (block + gradient) — ChatView's
-	 *  dockReserve state feeds the transcript's spacer from it. */
+	 *  dockReserve writes the transcript's spacer height from it. */
 	onReserve: (h: number) => void;
 	/** The plan marginalia's content (the bare diagram) — rendered only
 	 *  while a question owns the band. Null until a plan exists. */
@@ -2211,10 +2217,8 @@ function DockOverlay({
 	// events mid-transient (the box flickered to the bar and back).
 	// Width changes stamp HERE (column resizes); height growth stamps at
 	// the OFFER (see offer below) — the spacer growing is the phantom-scroll
-	// source, not the field stretching. SHRINKS never stamp anywhere: the
-	// fold's own morph shrinks the block and gives back the reserve, and
-	// stamping that self-mutes the at-bottom re-expand — the box got stuck
-	// collapsed (resize round).
+	// source, not the field stretching. SHRINKS stamp only when the folded
+	// tail is given back (see offer): that clamp is a phantom scroll too.
 	const geometryAtRef = useRef(0);
 	useIsoLayoutEffect(() => {
 		const block = blockRef.current;
@@ -2332,7 +2336,15 @@ function DockOverlay({
 	const blockRef = useRef<HTMLDivElement>(null);
 	const offer = (blockH: number) => {
 		const next = blockH + GRADIENT_H;
-		if (next <= reserveRef.current + 0.5 && pendingRef.current) return; // fold immunity
+		// Fold immunity applies only while the question is OPEN. Once it is
+		// folded to the bar the tail shrinks with it, otherwise a learner who
+		// scrolled up to read is left with a huge empty gap above the bar.
+		if (next <= reserveRef.current + 0.5 && pendingRef.current && expandedRef.current) return;
+		if (next < reserveRef.current - 0.5) {
+			// The shrink clamps scrollTop and the browser reports the clamp as a
+			// scroll event; mute it so it cannot read as the learner returning.
+			geometryAtRef.current = Date.now();
+		}
 		// Reserve GROWTH is the phantom-scroll SOURCE (flicker round,
 		// 2026-09-26): the spacer's height lands in this commit, the smooth
 		// catch-up lags it by the growth amount, and the position machine
