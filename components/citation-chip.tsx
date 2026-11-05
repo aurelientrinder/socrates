@@ -112,7 +112,7 @@ export function CitationChip({ n, citation }: { n: number; citation: Citation })
 				aria-label={`Source ${n}`}
 				onClick={() => setOpen((o) => !o)}
 				className={cn(
-					"mx-0.5 inline-flex h-[1.15em] min-w-[1.5em] -translate-y-px cursor-pointer items-center justify-center rounded-md px-1 align-baseline font-ui text-[0.72em] leading-none transition-colors",
+					"ml-0.5 mr-px inline-flex h-[1.15em] min-w-[1.5em] -translate-y-px cursor-pointer items-center justify-center rounded-md px-1 align-baseline font-ui text-[0.72em] leading-none transition-colors",
 					open ? "bg-foreground text-background" : "bg-accent text-muted-foreground hover:bg-foreground/15 hover:text-foreground",
 				)}
 			>

@@ -34,7 +34,7 @@ import {
   type PluginConfig,
 } from "streamdown";
 import { mdComponents } from "@/components/md-blocks";
-import { transformMathDelimiters } from "@/src/core";
+import { numberCitations, repairLiteralNewlines, transformMathDelimiters } from "@/src/core";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: LhViewMessage["role"];
@@ -360,9 +360,16 @@ export const MessageResponse = memo(
     // Legacy backslash delimiters are converted in a single linear scan;
     // native dollar math passes through to Streamdown unchanged. Incomplete
     // legacy spans are left for a later render when their closer arrives.
+    // Raw note-citation codes (any card or reply that did not get its
+    // numbers from the chat feed) become numbered markers here; literal "\n"
+    // from double-escaping models becomes a real line break.
     const content =
       typeof children === "string"
-        ? transformMathDelimiters(children)
+        ? repairLiteralNewlines(
+            transformMathDelimiters(
+              children.includes("[[src_") ? numberCitations([children])[0]! : children
+            )
+          )
         : children;
 
     return (
