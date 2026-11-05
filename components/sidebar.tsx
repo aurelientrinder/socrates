@@ -67,6 +67,8 @@ declare global {
 			/** Auto-update channel (Wave C, 2026-10-10): "lh:update-status" pushes once a staged update exists. */
 			onUpdateStatus?: (cb: (status: { status: string; version: string | null }) => void) => () => void;
 			installUpdate?: () => void;
+			getUpdateStatus?: () => Promise<{ status: string; version: string | null } | null>;
+			openUpdatePage?: () => void;
 			/** Open a saved note's original file in the system's default app. */
 			openNote?: (id: string) => Promise<{ ok: boolean; error?: string }>;
 			pickFolder?: () => Promise<string | null>;
