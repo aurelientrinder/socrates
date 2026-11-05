@@ -38,3 +38,14 @@ describe("note citations", () => {
 		assert.match(out, new RegExp(`\\[Calc.pdf, p. 2\\] cite: \\[\\[${ID}#p2\\]\\]`));
 	});
 });
+
+import { repairLiteralNewlines } from "../src/core/literal-newlines.ts";
+
+describe("literal newline repair", () => {
+	it("turns backslash-n in prose into a line break but leaves math and code alone", () => {
+		assert.equal(repairLiteralNewlines("One.\\nTwo.\\n\\nThree"), "One.\nTwo.\n\nThree");
+		assert.equal(repairLiteralNewlines("Gradient $\\nabla f$ and $$\\neq$$ then\\nnext"), "Gradient $\\nabla f$ and $$\\neq$$ then\nnext");
+		assert.equal(repairLiteralNewlines("Use `\\n` in code\\nok"), "Use `\\n` in code\nok");
+		assert.equal(repairLiteralNewlines("plain text"), "plain text");
+	});
+});
