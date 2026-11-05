@@ -56,7 +56,9 @@ export function numberCitations(texts: readonly string[]): string[] {
 				numbers.set(key, n);
 			}
 			return citeToken(n, c);
-		}),
+		})
+			// Two markers back to back would read as one code span (a`x``y`): a hair space keeps them apart.
+			.replace(/(`cite:[^`]*`)(?=`cite:)/g, "$1\u200a"),
 	);
 }
 
