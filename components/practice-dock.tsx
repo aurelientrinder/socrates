@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, XIcon } from "lucide-react";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { joinDictation, useDictationTarget } from "@/components/dictation";
@@ -19,9 +19,10 @@ import { repairMathForDisplay } from "@/src/core";
  * from the thinking itself; the agent reads it. One problem may carry
  * many submissions; each starts a turn.
  *
- * Collapse (scroll-up → slim bar) is owned by the DockOverlay; this
- * component is content only, and the expanded form stays MOUNTED while
- * collapsed (hidden) so a half-written trace survives scrolling.
+ * Collapse (top-right X button → slim bar; click bar → re-open) is owned
+ * by the DockOverlay; this component is content only, and the expanded
+ * form stays MOUNTED while collapsed (hidden) so a half-written trace
+ * survives hiding.
  *
  * The commitment (modelSolution, decisionPoints, …) rides the tool call's
  * arguments and is NOT rendered here — only the statement is the
@@ -38,6 +39,8 @@ export interface PracticeDockProps {
 	/** Collapse state, owned by the DockOverlay. */
 	expanded: boolean;
 	onExpand: () => void;
+	/** Collapse the expanded problem into the slim bottom bar (top-right X button). */
+	onCollapse?: () => void;
 	/** text — POST {type:"thinking"} (one lane; the register is read from the text). */
 	onSubmit: (text: string) => void;
 	/** Escape in the thinking field stops dictation (threaded from the page). */
@@ -49,7 +52,7 @@ export interface PracticeDockProps {
 	compactionRunning?: boolean;
 }
 
-export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
+export function PracticeDock({ problemCallId, input, expanded, onExpand, onCollapse, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
 	const [thinking, setThinking] = useState("");
 	// Ref MIRRORS the field ("nothing gets lost", the question-dock
 	// discipline): a submit resuming after `await finishDictation()` reads
@@ -101,13 +104,23 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 
 	/* ── the expanded form ── */
 	return (
-		<div data-testid="practice-dock" data-problem={problemCallId}>
-			{/* The agent's half: the 'Problem' eyebrow (mirroring the quiz
-			    cards' label row — owner round, 2026-10-05) + the statement,
-			    markdown + LaTeX rendered, capped by the measured column
-			    (--dock-max-h; the old fixed 40vh cut long problems short). */}
-			<div className="max-h-[var(--dock-max-h,40vh)] overflow-y-auto px-4 pt-3 pb-2">
-				<div className="mb-1 text-xs font-medium text-muted-foreground">Problem</div>
+		<div data-testid="practice-dock" data-problem={problemCallId} className="flex max-h-[var(--dock-max-h,75dvh)] flex-col">
+			{/* Pinned header row: 'Problem' eyebrow on the left, X close button
+			    in the top-right corner so hiding the problem is always reachable. */}
+			<div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">
+				<span>Problem</span>
+				<button
+					type="button"
+					data-testid="practice-dock-close"
+					aria-label="Hide problem"
+					title="Hide problem"
+					onClick={() => onCollapse?.()}
+					className="-mr-1.5 flex size-6.5 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+				>
+					<XIcon className="size-3.5" aria-hidden />
+				</button>
+			</div>
+			<div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-2">
 				<div className="lh-prose text-[15px]">
 					<MessageResponse>{typeof input.statement === "string" ? repairMathForDisplay(input.statement) : input.statement}</MessageResponse>
 				</div>
@@ -117,7 +130,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 			    Shift+Enter makes a newline — less to decide about. */}
 			<div
 				data-testid="practice-thinking-field"
-				className="m-1.5 rounded-xl border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
+				className="m-1.5 shrink-0 rounded-xl border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
 			>
 				<div className="px-2.5 pt-2 text-xs font-medium text-muted-foreground">
 					Your thinking

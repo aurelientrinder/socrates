@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowDownIcon, CheckIcon, ChevronRightIcon } from "lucide-react";
+import { ArrowDownIcon, CheckIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
@@ -52,10 +52,11 @@ import { CONFIDENCE_COLORS, confidenceRailStyle } from "@/components/confidence-
  * "Other…" option is an editable option ROW — circle + inline input,
  * styled like its siblings — so picking Other never displaces thinking.
  *
- * Collapse behavior (scroll-up → slim bar) is owned by the DockOverlay in the
- * chat view, which also owns the persistent shell and its height morph. This
- * component is content only. The expanded form stays MOUNTED while collapsed
- * (hidden, not unmounted) so a half-made selection survives scrolling.
+ * Collapse behavior (top-right X button → slim bar; click bar → re-open) is
+ * owned by the DockOverlay in the chat view, which also owns the persistent
+ * shell and its height morph. This component is content only. The expanded
+ * form stays MOUNTED while collapsed (hidden, not unmounted) so a half-made
+ * selection survives hiding.
  */
 
 export interface QuestionDockProps {
@@ -67,11 +68,13 @@ export interface QuestionDockProps {
 	/**
 	 * Teach-phase check awaiting its reveal (vision §2, W5): while collapsed,
 	 * the bar is the "Check your understanding" invitation instead of the
-	 * scroll-collapse strip. Owned by the DockOverlay; false once the learner
-	 * has revealed (afterwards the normal collapse machine rules apply).
+	 * collapsed strip. Owned by the DockOverlay; false once the learner
+	 * has revealed.
 	 */
 	reveal?: boolean;
 	onExpand: () => void;
+	/** Collapse the expanded question into the slim bottom bar (top-right X button). */
+	onCollapse?: () => void;
 	onSubmit: (output: QuestionAnswerData) => void;
 	/** Escape in a question field stops dictation (STT wave) — threaded
 	 *  from the page that owns the dictation hook. */
@@ -117,6 +120,7 @@ export function QuestionDock({
 	expanded,
 	reveal = false,
 	onExpand,
+	onCollapse,
 	onSubmit,
 	onEscape,
 	phase = "probe",
@@ -197,6 +201,7 @@ export function QuestionDock({
 					input={parsed}
 					phase={phase}
 					active={expanded}
+					onCollapse={onCollapse}
 					onSubmit={onSubmit}
 					onEscape={onEscape}
 					dictationClaim={dictationClaim}
@@ -311,6 +316,7 @@ function QuestionDockForm({
 	input,
 	phase = "probe",
 	active,
+	onCollapse,
 	onSubmit,
 	onEscape,
 	dictationClaim = true,
@@ -540,79 +546,82 @@ function QuestionDockForm({
 		el.focus();
 	};
 
+	const onKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
+	onKeyDownRef.current = (e: KeyboardEvent) => {
+		const t = e.target as HTMLElement | null;
+		// A TYPING field is where keys mean text (owner round 4): the
+		// thinking/answer fields, search boxes, renames — never a range
+		// input, whose focus after a click or drag must not kill the
+		// arrow cycling. Everywhere else the arrows act.
+		const typing =
+			!!t &&
+			((t.tagName === "INPUT" && (t as HTMLInputElement).type !== "range") ||
+				t.tagName === "TEXTAREA" ||
+				t.isContentEditable);
+		// Alt/Cmd/Ctrl combos are never ours (Alt+arrows cycle sessions
+		// globally — they must not ALSO walk the question rows).
+		const modded = e.altKey || e.metaKey || e.ctrlKey;
+		// Plain Tab toggles focus: rows → thinking. The confidence
+		// slider takes NO focus at all (owner, UI round 2026-10-01) —
+		// global ←/→ own its keyboard, so it never joins the chain.
+		// Shift+Tab falls through (the global thinking-level cycle owns
+		// it), so the shift check matters.
+		if (e.key === "Tab" && !e.shiftKey && !modded) {
+			e.preventDefault();
+			e.stopPropagation();
+			if (t?.closest?.("[data-kbdrow]")) thinkingRef.current?.focus();
+			else {
+				const idx = kbdIdx ?? 0;
+				setKbdIdx(idx);
+				focusRow(idx);
+			}
+			return;
+		}
+		// Keys from a typing surface keep their meaning (arrows move
+		// the caret, space types).
+		if (typing || modded) return;
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			const next = Math.min((kbdIdx ?? -1) + 1, rowCount - 1);
+			setKbdIdx(next);
+			// Focus follows the walk while the user is IN the rows (Tab
+			// put them there) so focused and walked never diverge.
+			if (t?.closest?.("[data-kbdrow]")) focusRow(next);
+		} else if (e.key === "ArrowUp") {
+			e.preventDefault();
+			const next = Math.max((kbdIdx ?? rowCount) - 1, 0);
+			setKbdIdx(next);
+			if (t?.closest?.("[data-kbdrow]")) focusRow(next);
+		} else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+			// Global confidence cycling (owner, UI round 2026-10-01): the
+			// SAME pattern as ↑/↓ over the rows — works wherever focus
+			// sits, no click-in, no focus ring. Dead on "I don't know"
+			// (the slider grays out and nothing is sent).
+			if (kind !== "quiz" || sel.dontKnow) return;
+			e.preventDefault();
+			setConfIdx((i) =>
+				Math.min(
+					CONFIDENCE_STOPS.length - 1,
+					Math.max(0, i + (e.key === "ArrowRight" ? 1 : -1)),
+				),
+			);
+		} else if (e.key === " ") {
+			if (kbdIdx === null) return; // plain Space keeps scrolling the page
+			e.preventDefault();
+			kbdAct(kbdIdx);
+		} else if (e.key === "Enter") {
+			if (kbdIdx === null || !canSubmit) return;
+			e.preventDefault();
+			submit();
+		}
+	};
+
 	useEffect(() => {
 		if (!active || rowCount === 0) return;
-		const onKeyDown = (e: KeyboardEvent) => {
-			const t = e.target as HTMLElement | null;
-			// A TYPING field is where keys mean text (owner round 4): the
-			// thinking/answer fields, search boxes, renames — never a range
-			// input, whose focus after a click or drag must not kill the
-			// arrow cycling. Everywhere else the arrows act.
-			const typing =
-				!!t &&
-				((t.tagName === "INPUT" && (t as HTMLInputElement).type !== "range") ||
-					t.tagName === "TEXTAREA" ||
-					t.isContentEditable);
-			// Alt/Cmd/Ctrl combos are never ours (Alt+arrows cycle sessions
-			// globally — they must not ALSO walk the question rows).
-			const modded = e.altKey || e.metaKey || e.ctrlKey;
-			// Plain Tab toggles focus: rows → thinking. The confidence
-			// slider takes NO focus at all (owner, UI round 2026-10-01) —
-			// global ←/→ own its keyboard, so it never joins the chain.
-			// Shift+Tab falls through (the global thinking-level cycle owns
-			// it), so the shift check matters.
-			if (e.key === "Tab" && !e.shiftKey && !modded) {
-				e.preventDefault();
-				e.stopPropagation();
-				if (t?.closest?.("[data-kbdrow]")) thinkingRef.current?.focus();
-				else {
-					const idx = kbdIdx ?? 0;
-					setKbdIdx(idx);
-					focusRow(idx);
-				}
-				return;
-			}
-			// Keys from a typing surface keep their meaning (arrows move
-			// the caret, space types).
-			if (typing || modded) return;
-			if (e.key === "ArrowDown") {
-				e.preventDefault();
-				const next = Math.min((kbdIdx ?? -1) + 1, rowCount - 1);
-				setKbdIdx(next);
-				// Focus follows the walk while the user is IN the rows (Tab
-				// put them there) so focused and walked never diverge.
-				if (t?.closest?.("[data-kbdrow]")) focusRow(next);
-			} else if (e.key === "ArrowUp") {
-				e.preventDefault();
-				const next = Math.max((kbdIdx ?? rowCount) - 1, 0);
-				setKbdIdx(next);
-				if (t?.closest?.("[data-kbdrow]")) focusRow(next);
-			} else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-				// Global confidence cycling (owner, UI round 2026-10-01): the
-				// SAME pattern as ↑/↓ over the rows — works wherever focus
-				// sits, no click-in, no focus ring. Dead on "I don't know"
-				// (the slider grays out and nothing is sent).
-				if (kind !== "quiz" || sel.dontKnow) return;
-				e.preventDefault();
-				setConfIdx((i) =>
-					Math.min(
-						CONFIDENCE_STOPS.length - 1,
-						Math.max(0, i + (e.key === "ArrowRight" ? 1 : -1)),
-					),
-				);
-			} else if (e.key === " ") {
-				if (kbdIdx === null) return; // plain Space keeps scrolling the page
-				e.preventDefault();
-				kbdAct(kbdIdx);
-			} else if (e.key === "Enter") {
-				if (kbdIdx === null || !canSubmit) return;
-				e.preventDefault();
-				submit();
-			}
-		};
+		const onKeyDown = (e: KeyboardEvent) => onKeyDownRef.current(e);
 		document.addEventListener("keydown", onKeyDown);
 		return () => document.removeEventListener("keydown", onKeyDown);
-	});
+	}, [active, rowCount]);
 
 	// Keep the walked row visible (the question area scrolls internally).
 	useEffect(() => {
@@ -623,47 +632,60 @@ function QuestionDockForm({
 	}, [kbdIdx]);
 
 	return (
-		<div ref={rootRef} data-testid="question-dock">
-			{/* Question area — scrolls internally if very tall; the bottom row stays put.
-			    Capped by the measured column (--dock-max-h; the old fixed 55dvh cut
-			    long questions short — owner round, 2026-10-05). */}
-			<div data-session-find-root="" className="max-h-[var(--dock-max-h,55dvh)] overflow-y-auto px-4 pt-3">
-				<div className="mb-2 flex items-center gap-2 text-[0.8rem] font-medium text-muted-foreground">
-					<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground/50" />
-					<span className="min-w-0 flex-1">
-					{warmup
-						? `Warm-up · ${warmup.step} of ${warmup.total}`
-						: toolName === "probe"
-						? "Probe"
-						: toolName === "review"
-							? "Review"
-						: freeRecall
-							? "Review · explain from memory"
-						: toolName === "recall"
-							? "Recall"
-							: kind === "quiz"
-								? qd.questionType === "predict"
-									? "Prediction"
-									: "Check"
-									: kind === "explain"
-										? toolName === "explain" && normalizeQuizType((input as { type?: unknown }).type) === "predict"
-											? "Prediction"
-											: "Explain"
-											: "Question"}
-					{qd.mode === "multi-select" && " · select all that apply"}
-					</span>
-					{warmup && (
-						<button
-							type="button"
-							data-testid="warmup-skip"
-							onClick={warmup.onSkip}
-							className="-mr-2 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-						>
-							Skip warm-up
-							<ChevronRightIcon className="size-3" aria-hidden />
-						</button>
-					)}
-				</div>
+		<div ref={rootRef} data-testid="question-dock" className="flex max-h-[var(--dock-max-h,75dvh)] flex-col">
+			{/* Pinned header row: label on the left, optional warm-up skip and
+			    the X close button in the top-right corner so hiding the quiz
+			    is always reachable even when scrolling through long options. */}
+			<div className="flex shrink-0 items-center gap-2 px-4 pt-3 pb-2 text-[0.8rem] font-medium text-muted-foreground">
+				<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground/50" />
+				<span className="min-w-0 flex-1">
+				{warmup
+					? `Warm-up · ${warmup.step} of ${warmup.total}`
+					: toolName === "probe"
+					? "Probe"
+					: toolName === "review"
+						? "Review"
+					: freeRecall
+						? "Review · explain from memory"
+					: toolName === "recall"
+						? "Recall"
+						: kind === "quiz"
+							? qd.questionType === "predict"
+								? "Prediction"
+								: "Check"
+								: kind === "explain"
+									? toolName === "explain" && normalizeQuizType((input as { type?: unknown }).type) === "predict"
+										? "Prediction"
+										: "Explain"
+										: "Question"}
+				{qd.mode === "multi-select" && " · select all that apply"}
+				</span>
+				{warmup && (
+					<button
+						type="button"
+						data-testid="warmup-skip"
+						onClick={warmup.onSkip}
+						className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+					>
+						Skip warm-up
+						<ChevronRightIcon className="size-3" aria-hidden />
+					</button>
+				)}
+				<button
+					type="button"
+					data-testid="question-dock-close"
+					aria-label="Hide question"
+					title="Hide question"
+					onClick={() => onCollapse?.()}
+					className="-mr-1.5 flex size-6.5 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+				>
+					<XIcon className="size-3.5" aria-hidden />
+				</button>
+			</div>
+
+			{/* Question + options area — scrolls internally inside the 75dvh
+			    quiz window cap while the header and bottom controls stay pinned. */}
+			<div data-session-find-root="" className="min-h-0 overflow-y-auto overscroll-contain px-4 pt-1">
 				<div className="mb-4 text-[1.2rem] leading-[1.55] font-normal">
 					<MessageResponse>{qd.question}</MessageResponse>
 				</div>
@@ -686,7 +708,7 @@ function QuestionDockForm({
 									data-kbdrow={i}
 									onClick={() => toggle(i)}
 									className={cn(
-										"relative flex min-h-14 items-center gap-3.5 rounded-2xl border border-border/80 bg-card py-3 pr-11 pl-3.5 text-left text-[1.1rem] outline-none transition-[transform,box-shadow,opacity,background-color,border-color] hover:-translate-y-px hover:border-foreground/30 hover:shadow-sm",
+										"relative flex min-h-14 items-center gap-3.5 rounded-2xl border border-border/80 bg-card py-3 pr-11 pl-3.5 text-left text-[1.1rem] outline-none transition-[box-shadow,opacity,background-color,border-color] hover:border-foreground/30 hover:shadow-sm",
 										isSel && "border-foreground bg-accent shadow-[0_0_0_1px_var(--foreground)] hover:border-foreground",
 										!isSel && anyPicked && "opacity-60 hover:opacity-100",
 										i === kbdIdx && !isSel && "ring-1 ring-border bg-accent/40",
@@ -844,7 +866,7 @@ function QuestionDockForm({
 				GRAYS it out — the layout holds, no value is sent, the IDK
 				signal stands alone. */}
 			{freeRecall && (
-				<div className="px-4 pb-2">
+				<div className="shrink-0 px-4 pb-2">
 					<button
 						type="button"
 						data-testid="dont-remember"
@@ -870,7 +892,7 @@ function QuestionDockForm({
 			)}
 
 			{rated && (
-				<div className="mx-3 rounded-2xl bg-muted/50 px-4 pt-3 pb-3.5">
+				<div className="mx-3 shrink-0 rounded-2xl bg-muted/50 px-4 pt-3 pb-3.5">
 					<div className="flex items-center gap-4">
 						<span
 							className={cn(
@@ -966,7 +988,7 @@ function QuestionDockForm({
 			    is for dumping, soon dictated; the button submits); text mode
 			    keeps "Your answer" with Enter-to-submit. */}
 			<form
-				className="p-3"
+				className="shrink-0 p-3"
 				onSubmit={(e) => {
 					e.preventDefault();
 					submit();

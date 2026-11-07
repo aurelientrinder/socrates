@@ -790,4 +790,23 @@ describe("question context renders as markdown everywhere (owner, 2026-10-12)", 
 		assert.equal((html.match(/class="katex"/g) ?? []).length, 0, "no context slot appears from nothing");
 		assert.ok(!html.includes("lh-prose block text-xs"), "no description slot without an ask input");
 	});
+
+	it("QuestionDock caps the whole card at 75dvh, keeps the question/options area scrollable, and renders the top-right X close button", () => {
+		const html = renderToStaticMarkup(
+			<QuestionDock
+				toolName="quiz"
+				toolCallId="q_cap"
+				input={quizInput as never}
+				expanded={true}
+				onExpand={() => {}}
+				onCollapse={() => {}}
+				onSubmit={() => {}}
+			/>,
+		);
+		assert.match(html, /data-testid="question-dock"[^>]*max-h-\[var\(--dock-max-h,75dvh\)\]/);
+		assert.match(html, /data-session-find-root=""[^>]*min-h-0 overflow-y-auto overscroll-contain/);
+		assert.match(html, /data-testid="question-dock-close"/);
+		assert.match(html, /aria-label="Hide question"/);
+	});
 });
+
