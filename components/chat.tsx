@@ -120,13 +120,6 @@ const MARGIN_GAP = 16;
 const MARGIN_MIN_W = 220;
 // The dock overlay's gradient band (h-24) — part of the reserved tail.
 const GRADIENT_H = 96;
-// Fold thresholds (owner, scroll round 1, tuned round 3): pixel distance
-// from the bottom — position, not velocity. Leave the bottom → the box
-// folds (visual only); reach it again → it re-opens. 96 (was 64, owner
-// round 3) tolerates a small peek upward without folding; the dead band
-// vs EXPAND_DIST absorbs trackpad drift.
-const COLLAPSE_DIST = 96;
-const EXPAND_DIST = 16;
 
 /**
  * Server-sync channel for artifact renderers: the CENTRAL jobs poll in Chat
@@ -2165,41 +2158,23 @@ function DockOverlay({
 			setExpanded(arrival.expanded);
 			setRevealed(arrival.revealed);
 		} else if (pendingId) {
-			// Probe arrival (flicker round): open iff following at the bottom.
-			// Painted in THIS render — no stale-open frame, no after-paint flip.
-			setExpanded(probeArrivalExpanded(atBottomRef.current));
+			setExpanded(true);
 		}
 	}
 
-	// New question MID-SESSION (flicker round): the open/closed state itself
-	// is decided DURING RENDER above; this effect only owns the reveal
-	// scroll for the at-bottom arrival — and now under the SAME fold
-	// suppression the teach reveal uses (the arrival's growth used to
-	// out-run the scroll catch-up, the position machine read the lag as the
-	// learner leaving, and the dock flashed open → bar → open; reproduced
-	// frame-by-frame 2026-09-26, d peaked ~405px). On session mount the dock
-	// starts in its initial state — no scroll, no morph.
 	useEffect(() => {
 		if (!pendingId || pendingId === initialPendingRef.current) return;
-		if (!requiresReveal && atBottomRef.current) void suppressFoldDuringReveal();
+		if (!requiresReveal && atBottomRef.current) void scrollToBottom();
 		// fire only when a NEW question lands
-	}, [pendingId]);
+	}, [pendingId, requiresReveal, scrollToBottom]);
 
-	// ── Fold machine (position, not velocity — owner, scroll round 1) ──
-	// The dock is an overlay: folding is visual-only and scroll geometry never
-	// moves, so the thresholds can hug the bottom. Leave it → fold; reach it
-	// again → re-open. The dead band keeps trackpad drift from chattering.
 	const expandedRef = useRef(expanded);
 	expandedRef.current = expanded;
-	// Dock ownership (the fold machine, the reserve immunity, the arrival
-	// states): a pending question OR an active practice problem — either
-	// replaces the composer and owns the band.
+	// Dock ownership (the reserve immunity, the arrival states): a pending
+	// question OR an active practice problem — either replaces the composer
+	// and owns the band.
 	const pendingRef = useRef(!!pending || !!practice);
 	pendingRef.current = !!pending || !!practice;
-	const requiresRevealRef = useRef(requiresReveal);
-	requiresRevealRef.current = requiresReveal;
-	const revealedRef = useRef(revealed);
-	revealedRef.current = revealed;
 
 	// The plan marginalia's flank width (owner, plan-placement round): from
 	// the DOCK container's right edge to the block's right edge — the bare
@@ -2211,41 +2186,14 @@ function DockOverlay({
 	// decision popped late).
 	const [flankW, setFlankW] = useState(0);
 	const flankWRef = useRef(0);
-	// Part A of the same round (the resize mute): any block size change
-	// stamps this — the fold machine ignores scroll events for a beat after,
-	// because a resize/rewrap re-clamps scrollTop and emits PHANTOM scroll
-	// events mid-transient (the box flickered to the bar and back).
-	// Width changes stamp HERE (column resizes); height growth stamps at
-	// the OFFER (see offer below) — the spacer growing is the phantom-scroll
-	// source, not the field stretching. SHRINKS stamp only when the folded
-	// tail is given back (see offer): that clamp is a phantom scroll too.
-	const geometryAtRef = useRef(0);
-	useIsoLayoutEffect(() => {
-		const block = blockRef.current;
-		if (!block) return;
-		const measure = () => {
-			const next = Math.round(block.offsetWidth / 2 - DOCK_W / 2 - 2 * MARGIN_GAP);
-			if (Math.abs(next - flankWRef.current) > 1) {
-				flankWRef.current = next;
-				setFlankW(next);
-				geometryAtRef.current = Date.now();
-			}
-		};
-		measure();
-		const ro = new ResizeObserver(measure);
-		ro.observe(block);
-		return () => ro.disconnect();
-	}, []);
 
 	// The overlay must not paint over the scroller's scrollbar (owner, scroll
 	// round 2): the scroller reserves symmetric gutters (scrollbar-gutter:
 	// stable both-edges), so inset the overlay's right edge by the gutter —
 	// zero on macOS overlay scrollbars, the real width on classic platforms.
-	// The same measure owns the QUESTION/PROBLEM HEIGHT CAP (owner round,
-	// 2026-10-05): the old fixed fractions (55dvh / 40vh) cut long problems
-	// off absurdly short — the cap is now the AVAILABLE COLUMN (the
-	// scroller already starts below the top bar) minus a 2rem breathing
-	// gap, carried as --dock-max-h for the docks' scroll areas.
+	// The same measure owns the QUESTION/PROBLEM HEIGHT CAP: never more than
+	// 75% of the application window's current height (and never overflowing
+	// the available column), carried as --dock-max-h for the docks.
 	const [sbInset, setSbInset] = useState(0);
 	const [dockMaxH, setDockMaxH] = useState<number | null>(null);
 	useEffect(() => {
@@ -2253,44 +2201,24 @@ function DockOverlay({
 		if (!el) return;
 		const measure = () => {
 			setSbInset(Math.round((el.offsetWidth - el.clientWidth) / 2));
-			setDockMaxH(Math.max(el.clientHeight - 32, 160));
+			const windowCap = Math.round(window.innerHeight * 0.75);
+			setDockMaxH(Math.max(Math.min(windowCap, el.clientHeight - 32), 160));
 		};
 		measure();
 		window.addEventListener("resize", measure);
 		return () => window.removeEventListener("resize", measure);
 	}, [scrollRef]);
 
-	// GROWTH MUTE (owner round, 2026-10-05 — the generation churn): during a
-	// live turn the transcript content grows and stick-to-bottom chases it;
-	// the transient distance-from-bottom used to read as the learner
-	// leaving, folding the dock open↔bar ("disappear and appear again").
-	// A ResizeObserver on the scroller's content stamps the SAME mute the
-	// dock's own resizes use — growth frames can never fold. Shrinks stamp
-	// nothing (the fold's own morph shrinks the reserve; muting that would
-	// self-mute the at-bottom re-expand).
-	const growthAtRef = useRef(0);
+	// Wheel over the collapsed dock or composer must still scroll the
+	// transcript (owner, scroll round 2): the overlay is a SIBLING of the
+	// scroller, so the browser's native scroll chaining stops at the overlay.
+	// While a question or practice dock is EXPANDED, skip this non-passive
+	// wheel listener so the browser scrolls the quiz's inner scroll container
+	// directly on the compositor thread without main-thread lag or accidental
+	// scroll-chaining into the transcript.
+	const dockExpanded = (Boolean(pending) || Boolean(practice)) && expanded;
 	useEffect(() => {
-		const el = scrollRef.current;
-		const content = el?.firstElementChild as HTMLElement | null | undefined;
-		if (!el || !content) return;
-		let prevH = content.getBoundingClientRect().height;
-		const ro = new ResizeObserver(() => {
-			const h = content.getBoundingClientRect().height;
-			if (h > prevH + 0.5) growthAtRef.current = Date.now();
-			prevH = Math.max(prevH, h);
-		});
-		ro.observe(content);
-		return () => ro.disconnect();
-	}, [scrollRef]);
-
-	// Wheel over the dock must still scroll the transcript (owner, scroll
-	// round 2): the overlay is a SIBLING of the scroller, so the browser's
-	// native scroll chaining stops at the overlay (the old in-flow dock
-	// chained for free). Internal scrollers — the question area, textarea
-	// overflow, the model menus — keep native scrolling, including their
-	// own edge chaining; only when nothing under the cursor can take the
-	// delta do we forward it to the transcript.
-	useEffect(() => {
+		if (dockExpanded) return;
 		const root = blockRef.current;
 		const el = scrollRef.current;
 		if (!root || !el) return;
@@ -2298,33 +2226,18 @@ function DockOverlay({
 			if (n.scrollHeight - n.clientHeight < 2) return false; // not scrollable
 			return dir < 0 ? n.scrollTop > 0 : n.scrollTop < n.scrollHeight - n.clientHeight - 0.5;
 		};
-		// A tall question scrolls inside its own area. Hitting its top/bottom
-		// edge must not hand the SAME gesture (flick momentum) to the
-		// transcript: that folded the question before its top was seen.
-		// An edge hit forwards only once the wheel has been quiet briefly.
-		let innerAt = 0;
 		const onWheel = (e: WheelEvent) => {
 			if (e.deltaY === 0) return;
-			let edgeOfScroller = false;
 			for (let n = e.target as HTMLElement | null; n && n !== root; n = n.parentElement) {
 				if (!(n instanceof HTMLElement)) continue;
-				if (canScroll(n, e.deltaY)) {
-					innerAt = Date.now();
-					return; // native
-				}
-				if (n.scrollHeight - n.clientHeight >= 2 && n.hasAttribute("data-session-find-root")) edgeOfScroller = true;
-			}
-			if (edgeOfScroller && Date.now() - innerAt < 400) {
-				innerAt = Date.now(); // momentum keeps the guard alive until the learner pauses
-				e.preventDefault();
-				return;
+				if (canScroll(n, e.deltaY)) return; // native
 			}
 			e.preventDefault();
 			el.scrollTop += e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1);
 		};
 		root.addEventListener("wheel", onWheel, { passive: false });
 		return () => root.removeEventListener("wheel", onWheel);
-	}, [scrollRef]);
+	}, [scrollRef, dockExpanded]);
 
 	// ── The reserve: the spacer's height, reported upward ──
 	// Grows immediately (typing, new variants). NEVER drops while a question
@@ -2340,58 +2253,20 @@ function DockOverlay({
 		// folded to the bar the tail shrinks with it, otherwise a learner who
 		// scrolled up to read is left with a huge empty gap above the bar.
 		if (next <= reserveRef.current + 0.5 && pendingRef.current && expandedRef.current) return;
-		if (next < reserveRef.current - 0.5) {
-			// The shrink clamps scrollTop and the browser reports the clamp as a
-			// scroll event; mute it so it cannot read as the learner returning.
-			geometryAtRef.current = Date.now();
-		}
-		// Reserve GROWTH is the phantom-scroll SOURCE (flicker round,
-		// 2026-09-26): the spacer's height lands in this commit, the smooth
-		// catch-up lags it by the growth amount, and the position machine
-		// used to read that lag as the learner leaving — form → bar → form
-		// (the dictation flush, reproduced d≈152 > COLLAPSE_DIST). Stamp the
-		// mute right where the spacer grows: it covers the scroll events of
-		// THIS growth no matter how long after the field stretched (the
-		// field grows on its own render; the offer lands on the NEXT
-		// DockOverlay render — ~1s apart live). Shrinks never stamp (the
-		// fold's own give-back must not self-mute the re-expand).
-		if (shouldStampGeometryMute(next, reserveRef.current, pendingRef.current)) geometryAtRef.current = Date.now();
 		reserveRef.current = next;
 		onReserve(next);
 	};
 
-	// Explicit expand (bar click): the smooth scroll to the bottom takes
-	// hundreds of ms, during which the position is still legitimately inside
-	// the collapse zone — the machine would instantly re-collapse the dock
-	// (open → snap shut → reopen at the bottom, the flicker). Suppress the
-	// collapse branch until the reveal scroll settles or is interrupted.
-	// (Flicker round, 2026-09-26: extracted — the probe arrival at the
-	// bottom is the SAME motion class and needs the same cover; the owner's
-	// phrasing: the arrival's open and its scroll-to-bottom "should be the
-	// same kind of motion".)
-	const expandIntentRef = useRef(false);
-	const intentTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-	const suppressFoldDuringReveal = () => {
-		expandIntentRef.current = true;
-		clearTimeout(intentTimerRef.current);
-		intentTimerRef.current = setTimeout(() => {
-			expandIntentRef.current = false;
-		}, 2000);
-		return Promise.resolve(scrollToBottom()).finally(() => {
-			clearTimeout(intentTimerRef.current);
-			expandIntentRef.current = false;
-		});
-	};
 	const expandAndReveal = () => {
 		setRevealed(true); // the teach-check invitation was accepted (W5)
 		setExpanded(true);
-		void suppressFoldDuringReveal();
+		void scrollToBottom();
 	};
 	const expandAndRevealRef = useRef(expandAndReveal);
 	expandAndRevealRef.current = expandAndReveal;
 	// ENTER OPENS THE WAITING CHECK (owner, keyboard round 2026-10-06):
 	// while a question waits with the dock CLOSED — behind its reveal
-	// invitation or collapsed by scroll — Enter is never dead. Any live
+	// invitation or collapsed to the bar — Enter is never dead. Any live
 	// dictation FINISHES FIRST (the flush lands in the reading-thinking
 	// field, its live claim — the nothing-gets-lost law), then the check
 	// opens. A typing surface or a focused button owns its own Enter (the
@@ -2420,38 +2295,6 @@ function DockOverlay({
 		document.addEventListener("keydown", onKeyDown);
 		return () => document.removeEventListener("keydown", onKeyDown);
 	}, [pending, expanded]);
-
-	useEffect(() => {
-		const el = scrollRef.current;
-		if (!el) return;
-		const onScroll = () => {
-			if (!pendingRef.current) return;
-			// Resize mute (owner, resize round): a geometry change re-clamps
-			// scrollTop and the browser emits the clamp as a scroll event —
-			// reading the transient position folded the box to the bar for a
-			// flicker. Real scrolling resumes after the brief mute window.
-			if (Date.now() - geometryAtRef.current < 400) return;
-			// Growth mute (owner round, 2026-10-05): the transcript growing
-			// under a live turn is not the learner leaving.
-			if (Date.now() - growthAtRef.current < 400) return;
-			const d = el.scrollHeight - el.clientHeight - el.scrollTop;
-			if (expandedRef.current) {
-				// INTENT-GATED FOLD (owner ruling, 2026-10-05): distance alone
-				// folded on stick-to-bottom's catch-up transients; a real fold
-				// needs the distance AND stick-to-bottom agreeing the learner
-				// left the bottom.
-				if (d > COLLAPSE_DIST && !expandIntentRef.current && !atBottomRef.current) setExpanded(false);
-			} else if (d < EXPAND_DIST) {
-				// Teach checks stay collapsed until the learner opens them (W5): the
-				// at-bottom auto-expand would pop the form over the teaching.
-				if (requiresRevealRef.current && !revealedRef.current) return;
-				setExpanded(true);
-				void scrollToBottom();
-			}
-		};
-		el.addEventListener("scroll", onScroll, { passive: true });
-		return () => el.removeEventListener("scroll", onScroll);
-	}, [scrollRef, scrollToBottom]);
 
 	// The settled block height (gradient excluded), offered to the spacer.
 	// Only ever called with NATURAL heights — never the animated mid-morph
@@ -2494,17 +2337,34 @@ function DockOverlay({
 	const stateKey = dockStateKey(mode, !!pending || !!practice, expanded);
 	const prevRef = useRef<{ key: string; height: number } | null>(null);
 	useIsoLayoutEffect(() => {
+		const block = blockRef.current;
+		if (!block) return;
+		const measure = () => {
+			const next = Math.round(block.offsetWidth / 2 - DOCK_W / 2 - 2 * MARGIN_GAP);
+			if (Math.abs(next - flankWRef.current) > 1) {
+				flankWRef.current = next;
+				setFlankW(next);
+			}
+			const el = shellRef.current;
+			if (el && el.getAnimations().length === 0) {
+				if (prevRef.current) prevRef.current.height = el.getBoundingClientRect().height;
+				measureBlock();
+			}
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(block);
+		return () => ro.disconnect();
+	}, []);
+	useIsoLayoutEffect(() => {
 		const el = shellRef.current;
 		if (!el) return;
 		const p = prevRef.current;
 		if (p && p.key === stateKey) {
-			// Same variant: keep the settled height fresh, but never measure while
-			// a morph is in flight — getBoundingClientRect would read the ANIMATED
-			// value and corrupt the start height of the next morph.
 			if (el.getAnimations().length === 0) {
 				const h = el.getBoundingClientRect().height;
 				p.height = h;
-				measureBlock(); // typing growth → the spacer grows with the box
+				measureBlock();
 			}
 			return;
 		}
@@ -2520,7 +2380,7 @@ function DockOverlay({
 			});
 		}
 		prevRef.current = { key: stateKey, height: h };
-	});
+	}, [stateKey]);
 
 	return (
 		<div className="pointer-events-none absolute inset-x-0 bottom-0" style={{ right: sbInset }}>
@@ -2558,6 +2418,7 @@ function DockOverlay({
 									reveal={revealPending}
 									phase={phase}
 									onExpand={expandAndReveal}
+									onCollapse={() => setExpanded(false)}
 									onSubmit={onSubmitAnswer}
 									onEscape={dictationCancel}
 									dictationClaim={!revealPending}
@@ -2572,8 +2433,9 @@ function DockOverlay({
 									expanded={expanded}
 									onExpand={() => {
 										setExpanded(true);
-										void suppressFoldDuringReveal();
+										void scrollToBottom();
 									}}
+									onCollapse={() => setExpanded(false)}
 									onSubmit={onSubmitThinking}
 									onEscape={dictationCancel}
 									compactionRunning={compactionRunning}

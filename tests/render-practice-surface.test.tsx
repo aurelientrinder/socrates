@@ -39,13 +39,14 @@ const part = (over: Partial<ArtifactPartProps["part"]>): ArtifactPartProps["part
 // ── the dock ─────────────────────────────────────────────────────────────────
 
 describe("PracticeDock", () => {
-	it("expanded: statement renders, the two lanes sit in the thinking field", () => {
+	it("expanded: statement renders, 75dvh cap + close button present, the two lanes sit in the thinking field", () => {
 		const html = renderToStaticMarkup(
 			<PracticeDock
 				problemCallId="call_p1"
 				input={{ statement: "Show that the sum is even." }}
 				expanded={true}
 				onExpand={() => {}}
+				onCollapse={() => {}}
 				onSubmit={() => {}}
 			/>,
 		);
@@ -53,8 +54,9 @@ describe("PracticeDock", () => {
 		// The 'Problem' eyebrow (owner round, 2026-10-05): the quiz cards'
 		// label row, mirrored — dock and transcript card read identically.
 		assert.match(html, /Problem/);
-		// The measured column cap (the old fixed 40vh is only the fallback).
-		assert.match(html, /--dock-max-h/);
+		// The 75dvh / --dock-max-h cap and top-right X close button.
+		assert.match(html, /max-h-\[var\(--dock-max-h,75dvh\)\]/);
+		assert.match(html, /data-testid="practice-dock-close"/);
 		assert.match(html, /Your thinking/);
 		assert.match(html, /data-testid="practice-send"/);
 		assert.ok(!html.includes("practice-nudge") && !html.includes("practice-commit"), "the two-lane buttons are gone");
