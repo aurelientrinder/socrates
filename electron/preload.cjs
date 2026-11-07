@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld("lh", {
 		return () => ipcRenderer.removeListener("lh:update-status", listener);
 	},
 	installUpdate: () => ipcRenderer.send("lh:update-install"),
+	// Replays the newest update state to a page that mounted after the push.
+	getUpdateStatus: () => ipcRenderer.invoke("lh:update-state"),
+	openUpdatePage: () => ipcRenderer.send("lh:update-open"),
 	// Theme sync: the last persisted theme (read once, synchronously, so the
 	// page's pre-paint script can use it) and the live report back.
 	bootTheme: (() => {

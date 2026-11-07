@@ -468,8 +468,15 @@ const ZOOM_LADDER = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
  * and before-quit alone would race the swap. */
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 let autoUpdater = null; // electron-updater's, packaged builds only
+// The newest update state, replayed to any page that asks. The push below is
+// one-shot: an update already on disk from an earlier launch is reported the
+// moment the check starts, which is usually BEFORE the app page has loaded
+// (the window opens on a splash first), so a push alone loses the banner.
+let lastUpdateStatus = null;
+let announcedVersion = null; // version electron-updater last said is available
 
 function broadcastUpdateStatus(status) {
+	lastUpdateStatus = status;
 	for (const win of BrowserWindow.getAllWindows()) {
 		try {
 			win.webContents.send("lh:update-status", status);
@@ -540,6 +547,7 @@ function setupAutoUpdater() {
 	let lastLoggedDecile = -1;
 	autoUpdater.on("update-available", (info) => {
 		lastLoggedDecile = -1;
+		announcedVersion = info?.version ?? null;
 		log(`update available: ${info?.version}`);
 	});
 	autoUpdater.on("download-progress", (p) => {
@@ -552,7 +560,19 @@ function setupAutoUpdater() {
 		log(`update downloaded: ${info?.version} — banner shown`);
 		broadcastUpdateStatus({ status: "downloaded", version: info?.version ?? null });
 	});
-	autoUpdater.on("error", (err) => log(`updater error: ${err?.message ?? err}`));
+	autoUpdater.on("error", (err) => {
+		log(`updater error: ${err?.message ?? err}`);
+		// An update was found but cannot be installed in place. The usual cause
+		// is a macOS build without an Apple Developer ID signature: Squirrel.Mac
+		// refuses it. Rather than staying silent, offer the download page.
+		if (announcedVersion && lastUpdateStatus?.status !== "downloaded") {
+			broadcastUpdateStatus({
+				status: "manual",
+				version: announcedVersion,
+				url: `https://github.com/aurelientrinder/socrates/releases/tag/v${announcedVersion}`,
+			});
+		}
+	});
 }
 
 function zoomStep(win, dir) {
@@ -721,6 +741,11 @@ async function main() {
 	// are log lines — this can never block boot.
 	setupAutoUpdater();
 	ipcMain.on("lh:update-install", () => installUpdateNow());
+	ipcMain.handle("lh:update-state", () => lastUpdateStatus);
+	ipcMain.on("lh:update-open", () => {
+		const target = lastUpdateStatus?.url;
+		if (target && isSafeExternalUrl(target)) void shell.openExternal(target);
+	});
 
 	// Theme sync (light theme wave): the renderer reports its resolved
 	// theme on every change; the native surfaces follow it live and the

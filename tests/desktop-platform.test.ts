@@ -79,7 +79,7 @@ describe("desktop window chrome", () => {
 		runInNewContext(readFileSync(new URL("../electron/preload.cjs", import.meta.url), "utf8"), context);
 		assert.equal(bridge.platform, "win32");
 		assert.deepEqual(Object.keys(bridge).sort(), [
-			"bootTheme", "expandWindow", "getZoom", "installUpdate", "onUpdateStatus", "onZoom", "openNote", "openWatchedFolder", "pickFolder", "platform", "setTheme",
+			"bootTheme", "expandWindow", "getUpdateStatus", "getZoom", "installUpdate", "onUpdateStatus", "onZoom", "openNote", "openUpdatePage", "openWatchedFolder", "pickFolder", "platform", "setTheme",
 		]);
 	});
 });
