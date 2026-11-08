@@ -75,3 +75,12 @@ describe("readSketch", () => {
 		assert.match(sketchPrompt(), /one page/);
 	});
 });
+
+describe("the question card carries the button", () => {
+	it("mounts RemarkableCapture in the answer box's bottom row", async () => {
+		// v0.15.0 shipped with the import and handler but without this line.
+		const { readFileSync } = await import("node:fs");
+		const source = readFileSync(new URL("../components/question-dock.tsx", import.meta.url), "utf8");
+		assert.match(source, /<RemarkableCapture\b[^>]*onText=\{addWrittenText\}/);
+	});
+});
