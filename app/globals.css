@@ -709,3 +709,14 @@ body {
 .cal-c3 { --bar: var(--cal-3-bar); --tint: var(--cal-3-tint); --ink: var(--cal-3-ink); }
 .cal-c4 { --bar: var(--cal-4-bar); --tint: var(--cal-4-tint); --ink: var(--cal-4-ink); }
 .cal-c5 { --bar: var(--cal-5-bar); --tint: var(--cal-5-tint); --ink: var(--cal-5-ink); }
+
+/* PERF (2026-11-08): off-screen transcript messages skip layout and paint.
+   `auto <len>` remembers each row's real height once it has rendered, so the
+   scrollbar and stick-to-bottom stay stable. */
+.lh-msg {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 480px;
+}
+.lh-msg[data-role="user"] {
+	contain-intrinsic-size: auto 72px;
+}
