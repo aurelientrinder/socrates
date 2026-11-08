@@ -33,13 +33,3 @@ export function pickCaptureWindow<T extends CaptureWindow>(windows: readonly T[]
 export function sortCaptureWindows<T extends CaptureWindow>(windows: readonly T[]): T[] {
 	return [...windows].sort((a, b) => Number(looksLikeRemarkable(b.name)) - Number(looksLikeRemarkable(a.name)) || a.name.localeCompare(b.name));
 }
-
-/** A data: URL (PNG) → its raw bytes. Null for anything else. */
-export function pngFromDataUrl(dataUrl: string): Uint8Array | null {
-	const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
-	if (!m) return null;
-	const bin = atob(m[1]!);
-	const out = new Uint8Array(bin.length);
-	for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-	return out;
-}

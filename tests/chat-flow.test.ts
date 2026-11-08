@@ -351,6 +351,36 @@ describe("teacher chat flow (scripted model)", () => {
 		assert.equal(danglingQuestionOf(saved2.messages), null);
 	});
 
+	for (const [label, modelId, sees] of [
+		["a text-only model gets no image block, the thinking says so", "~deepseek/deepseek-pro-latest", false],
+		["a vision model gets the page as an image block, never stored twice", "anthropic/claude-fable-5", true],
+	] as const) {
+		it(`a handwritten page on the answer reaches the handler: ${label}`, async () => {
+			const { engine } = scriptedTeacher(defaultLesson);
+			const chat = createConfiguredChat("Test: handwritten page");
+			createdChats.push(chat.id);
+			chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: modelId } });
+			await drainTurn(post(chat.id, { type: "text", text: "teach me the solar system" }), agentFactory(engine));
+			const savedKey = process.env.GEMINI_API_KEY;
+			delete process.env.GEMINI_API_KEY;
+			try {
+				const answer = {
+					...gradedAnswer(QUIZ_INPUT, ["Mercury"]),
+					sketch: { mimeType: "image/jpeg" as const, data: Buffer.from([1, 2, 3]).toString("base64"), thumb: Buffer.from([4]).toString("base64") },
+				};
+				await drainTurn(post(chat.id, { type: "answer", toolCallId: "call-1", answer }), agentFactory(engine));
+			} finally {
+				if (savedKey !== undefined) process.env.GEMINI_API_KEY = savedKey;
+			}
+			const result = chatStore.getChat(chat.id)!.messages[2] as { role?: string; content: Array<{ type: string }>; details?: { thinking?: string; sketch?: { data?: string; thumb?: string } } };
+			assert.equal(result.role, "toolResult");
+			assert.equal(result.content.some((b) => b.type === "image"), sees);
+			assert.equal(/handwritten page/.test(result.details?.thinking ?? ""), !sees);
+			assert.equal(result.details?.sketch?.data, undefined, "the page is never stored twice");
+			assert.ok(result.details?.sketch?.thumb, "the transcript keeps the thumbnail");
+		});
+	}
+
 	it("rejects unknown chats", async () => {
 		const res = await handleChatRequest(post("chat_nonexistent", { type: "text", text: "hi" }));
 		assert.equal(res.status, 404);

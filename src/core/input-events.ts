@@ -25,7 +25,7 @@
  * turn rides one composition.
  */
 
-import type { QuestionAnswerData } from "./question-core.ts";
+import { isAnswerSketch, type QuestionAnswerData } from "./question-core.ts";
 import type { LhMessage } from "./native-messages.ts";
 import {
 	activeProblemOf,
@@ -174,6 +174,9 @@ export function parseChatInput(input: unknown): ChatInput {
 			}
 			if (typeof i.answer !== "object" || i.answer === null) {
 				throw new ChatInputError("answer input requires the graded answer object");
+			}
+			if ((i.answer as { sketch?: unknown }).sketch !== undefined && !isAnswerSketch((i.answer as { sketch?: unknown }).sketch)) {
+				throw new ChatInputError("answer input's sketch must be a small base64 JPEG/PNG with a thumbnail");
 			}
 			return { type: "answer", toolCallId: i.toolCallId, answer: i.answer as QuestionAnswerData };
 		case "continue":
