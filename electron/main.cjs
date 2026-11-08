@@ -24,7 +24,7 @@
  *     would shadow every settings-page key change until restart.
  */
 
-const { app, BrowserWindow, Menu, ipcMain, session, shell, dialog } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, session, shell, dialog, desktopCapturer } = require("electron");
 const { trustedSender } = require("./trusted-sender.cjs");
 const { desktopAPIHeaders } = require("./desktop-api.cjs");
 const { isSafeExternalUrl } = require("./external-url.cjs");
@@ -730,6 +730,51 @@ async function main() {
 			return failure ? { ok: false, error: failure } : { ok: true };
 		} catch {
 			return { ok: false, error: "No folder is watched." };
+		}
+	});
+
+	// Live reMarkable capture (2026-11-08): the reMarkable desktop app shows
+	// the tablet's Screen Share in an ordinary window. These two handlers let
+	// the question card list open windows and take pictures of ONE of them
+	// (a preview while the learner writes, a full-size snapshot on "Use this
+	// page"). Pictures only: nothing is recorded or stored, the renderer
+	// names a window by the id the list gave it, and only the app's own
+	// trusted window may ask.
+	function captureAllowed(event) {
+		return trustedAppWindows.has(BrowserWindow.fromWebContents(event.sender)) && trustedSender(event, new URL(url).origin, BrowserWindow);
+	}
+	ipcMain.handle("lh:capture:list", async (event) => {
+		if (!captureAllowed(event)) return { ok: false, error: "Untrusted desktop request." };
+		try {
+			const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 320, height: 240 }, fetchWindowIcons: false });
+			return {
+				ok: true,
+				windows: sources
+					.filter((s) => s.name && !s.thumbnail.isEmpty())
+					.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL() })),
+			};
+		} catch (e) {
+			return { ok: false, error: "Couldn't list windows" + (e && e.message ? ": " + e.message : ".") };
+		}
+	});
+	ipcMain.handle("lh:capture:grab", async (event, id, full) => {
+		if (!captureAllowed(event) || typeof id !== "string") return { ok: false, error: "Untrusted desktop request." };
+		try {
+			// Preview: small JPEG (cheap to poll). Snapshot: large PNG (what Gemini reads).
+			const edge = full ? 2000 : 900;
+			const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: edge, height: edge }, fetchWindowIcons: false });
+			const source = sources.find((s) => s.id === id);
+			if (!source) return { ok: false, error: "That window is gone. Choose it again." };
+			if (source.thumbnail.isEmpty()) return { ok: false, error: "Can't see that window. Is it minimized?" };
+			const size = source.thumbnail.getSize();
+			return {
+				ok: true,
+				width: size.width,
+				height: size.height,
+				dataUrl: full ? source.thumbnail.toDataURL() : "data:image/jpeg;base64," + source.thumbnail.toJPEG(60).toString("base64"),
+			};
+		} catch (e) {
+			return { ok: false, error: "Couldn't capture the window" + (e && e.message ? ": " + e.message : ".") };
 		}
 	});
 

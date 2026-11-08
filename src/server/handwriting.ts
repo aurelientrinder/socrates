@@ -53,7 +53,7 @@ export interface PageImage {
 /** Read up to PAGES_PER_REQUEST rendered pages. Returns page → text. */
 export async function readHandwriting(
 	images: readonly PageImage[],
-	opts: { apiKey: string; fetchFn?: FetchLike; signal?: AbortSignal },
+	opts: { apiKey: string; fetchFn?: FetchLike; signal?: AbortSignal; /** Replaces the notes prompt (live capture). */ prompt?: string },
 ): Promise<Map<number, string>> {
 	const fetchFn = opts.fetchFn ?? fetch;
 	const url = `https://generativelanguage.googleapis.com/v1beta/models/${handwritingModel()}:generateContent`;
@@ -65,7 +65,7 @@ export async function readHandwriting(
 				{
 					role: "user",
 					parts: [
-						{ text: handwritingPrompt(images.map((i) => i.page)) },
+						{ text: opts.prompt ?? handwritingPrompt(images.map((i) => i.page)) },
 						...images.map((i) => ({ inline_data: { mime_type: "image/png", data: Buffer.from(i.png).toString("base64") } })),
 					],
 				},
@@ -130,4 +130,25 @@ export class HandwritingRequestError extends Error {
 	get rateLimited(): boolean {
 		return this.status === 429 && !this.dailyQuota;
 	}
+}
+
+/** The live-capture sketch prompt: one image of a learner's working page. */
+export function sketchPrompt(): string {
+	return handwritingPrompt([1]).replace(
+		"of a student's handwritten class notes",
+		"of a student's handwritten working, captured live from their tablet while they answer a question",
+	);
+}
+
+/** Largest snapshot accepted from the live capture (a 1600px PNG is ~1 MB). */
+export const MAX_SKETCH_BYTES = 8 * 1024 * 1024;
+
+/**
+ * One captured page (the learner's reMarkable window) → plain text, for
+ * "Your thinking". Same Gemini reader as the notes folder; an empty string
+ * means no writing was visible.
+ */
+export async function readSketch(png: Uint8Array, opts: { apiKey: string; fetchFn?: FetchLike; signal?: AbortSignal }): Promise<string> {
+	const out = await readHandwriting([{ page: 1, png }], { ...opts, prompt: sketchPrompt() });
+	return out.get(1) ?? "";
 }

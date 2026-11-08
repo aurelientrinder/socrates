@@ -31,6 +31,11 @@
  *   library, data/notes/<id>/) in the system's default app. Main resolves
  *   the path itself from the id; the renderer never names a path.
  *
+ *   window.lh.listCaptureWindows() / window.lh.captureWindow(id, full) —
+ *   live reMarkable capture (2026-11-08): the open windows (id, name,
+ *   thumbnail), and one picture of a window by id (small JPEG preview, or
+ *   a full PNG snapshot when `full`). Pictures only; nothing is stored.
+ *
  * Channel names are mirrored in electron/main.cjs — keep them in sync.
  */
 const { contextBridge, ipcRenderer } = require("electron");
@@ -68,4 +73,6 @@ contextBridge.exposeInMainWorld("lh", {
 	// and show the watched folder (or one class folder of it) in Explorer/Finder.
 	pickFolder: () => ipcRenderer.invoke("lh:folder:pick"),
 	openWatchedFolder: (sub) => ipcRenderer.invoke("lh:folder:open", sub),
+	listCaptureWindows: () => ipcRenderer.invoke("lh:capture:list"),
+	captureWindow: (id, full) => ipcRenderer.invoke("lh:capture:grab", id, full === true),
 });

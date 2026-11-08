@@ -73,6 +73,9 @@ declare global {
 			openNote?: (id: string) => Promise<{ ok: boolean; error?: string }>;
 			pickFolder?: () => Promise<string | null>;
 			openWatchedFolder?: (sub?: string) => Promise<{ ok: boolean; error?: string }>;
+			/** Live reMarkable capture (2026-11-08): open windows, and one picture of a window. */
+			listCaptureWindows?: () => Promise<{ ok: boolean; error?: string; windows?: Array<{ id: string; name: string; thumbnail: string }> }>;
+			captureWindow?: (id: string, full?: boolean) => Promise<{ ok: boolean; error?: string; dataUrl?: string; width?: number; height?: number }>;
 		};
 	}
 }
