@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode } from "@/src/core";
-import { BookOpenIcon, ChartLineIcon, DumbbellIcon, FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlayIcon, RefreshCwIcon, SearchIcon, SettingsIcon, SunIcon, TargetIcon, XIcon } from "lucide-react";
+import { BookOpenIcon, ChartLineIcon, ChevronDownIcon, ChevronRightIcon, DumbbellIcon, FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlayIcon, RefreshCwIcon, SearchIcon, SettingsIcon, SunIcon, TargetIcon, XIcon } from "lucide-react";
 import { dateGroup, sessionDisplay, shortAgo, type SessionVariant } from "@/components/session-display";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
@@ -23,7 +23,9 @@ import { fuzzyScore } from "@/src/core";
 import { useServerEvent, useServerResync } from "@/components/server-events";
 import type { ChatListItem } from "@/src/core";
 import { bindingForAction, formatBinding, kbdEventForAction } from "@/src/core";
-import { useSessionClassColors } from "@/components/use-class-colors";
+import { useClasses, useSessionClassColors } from "@/components/use-class-colors";
+import { startPlanStep } from "@/components/plan-start";
+import type { BriefingItem } from "@/src/core";
 
 /**
  * Toggleable sidebar — NOT a modal drawer: no backdrop, no focus theft. It
@@ -443,6 +445,7 @@ export function RenameRow({
  *  snapshot, persisted in localStorage, defaulting to All. */
 export type SessionKindFilter = "teach" | "all" | "practice";
 const KIND_FILTER_KEY = "lh:session-kind-filter";
+const GROUP_BY_KEY = "lh:sidebar-group-by";
 
 /** One of the sidebar's three places (redesign wave, 2026-10-26): Today,
  *  Progress, Library. Sentence case at reading size, filled while you are
@@ -525,12 +528,121 @@ function TodayLink() {
 	);
 }
 
+/** Today's next plan step as the sidebar reads it from GET /api/briefing. */
+function useNextPlanStep(pathname: string): BriefingItem | null {
+	const [next, setNext] = useState<BriefingItem | null>(null);
+	useEffect(() => {
+		let live = true;
+		void fetch("/api/briefing", { cache: "no-store" })
+			.then((r) => (r.ok ? (r.json() as Promise<{ briefing: { plan?: { items: BriefingItem[] } } | null; done?: string[] }>) : null))
+			.then((d) => {
+				if (!live || !d) return;
+				const done = new Set(d.done ?? []);
+				setNext(d.briefing?.plan?.items.find((i) => !done.has(i.id)) ?? null);
+			})
+			.catch(() => undefined);
+		return () => {
+			live = false;
+		};
+	}, [pathname]);
+	return next;
+}
+
+/** ONE WAY TO START (QoL pass, 2026-11-08): the primary button starts the
+ *  next step of today's plan; its chevron opens the Start dialog for
+ *  anything else. With no plan step left it is the plain Start studying
+ *  button that opens the dialog. */
+function NextStepStart({ onOpenDialog }: { onOpenDialog: () => void }) {
+	const pathname = usePathname();
+	const router = useRouter();
+	const next = useNextPlanStep(pathname);
+	const [starting, setStarting] = useState(false);
+	const shortcut = (
+		<kbd suppressHydrationWarning className="ml-auto font-sans text-xs font-medium opacity-60">
+			{formatBinding(bindingForAction("new-session"))}
+		</kbd>
+	);
+	if (!next) {
+		return (
+			<button
+				type="button"
+				data-testid="new-session"
+				onClick={onOpenDialog}
+				className="mx-3 mt-0.5 flex h-9.5 items-center gap-2.25 rounded-[9px] bg-primary px-3 text-[14.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+			>
+				<PlayIcon className="size-3.5 fill-current" />
+				Start studying
+				<span className="sr-only">: learn, practise or review</span>
+				{shortcut}
+			</button>
+		);
+	}
+	return (
+		<div data-testid="start-split" className="mx-3 mt-0.5 flex items-stretch overflow-hidden rounded-[9px] bg-primary text-primary-foreground">
+			<button
+				type="button"
+				data-testid="start-next-step"
+				disabled={starting}
+				onClick={async () => {
+					setStarting(true);
+					try {
+						const target = await startPlanStep(next);
+						if (target) router.push(target);
+						else onOpenDialog();
+					} catch {
+						onOpenDialog();
+					} finally {
+						setStarting(false);
+					}
+				}}
+				className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-1.5 text-left transition-opacity hover:opacity-90 disabled:opacity-70"
+			>
+				<PlayIcon className="size-3.5 shrink-0 fill-current" />
+				<span className="min-w-0">
+					<span className="block truncate text-[14px] leading-tight font-semibold">{next.title}</span>
+					<span className="block text-[12px] leading-tight opacity-70">
+						{starting ? "Starting…" : `Next in today's plan · ${next.minutes} min`}
+					</span>
+				</span>
+			</button>
+			<Hint label="Start something else" action="new-session" side="right">
+				<button
+					type="button"
+					data-testid="new-session"
+					aria-label="Start something else: learn, practise or review"
+					onClick={onOpenDialog}
+					className="flex w-9 shrink-0 items-center justify-center border-l border-primary-foreground/20 transition-opacity hover:opacity-80"
+				>
+					<ChevronDownIcon className="size-4" />
+				</button>
+			</Hint>
+		</div>
+	);
+}
+
 function SessionsSidebar() {
 	const { open, toggle } = useSidebar();
 	const [chats, setChats] = useState<ChatListItem[] | null>(null);
 	const [query, setQuery] = useState("");
 	const [kindFilter, setKindFilter] = useState<SessionKindFilter>("all");
 	const classColors = useSessionClassColors();
+	const classes = useClasses();
+	const [groupBy, setGroupByState] = useState<"date" | "class">("date");
+	useEffect(() => {
+		try {
+			if (window.localStorage.getItem(GROUP_BY_KEY) === "class") setGroupByState("class");
+		} catch {
+			// private window: the default stays
+		}
+	}, []);
+	const setGroupBy = useCallback((g: "date" | "class") => {
+		setGroupByState(g);
+		try {
+			window.localStorage.setItem(GROUP_BY_KEY, g);
+		} catch {
+			// not remembered, still applied
+		}
+	}, []);
 	useEffect(() => {
 		const stored = window.localStorage.getItem(KIND_FILTER_KEY);
 		if (stored === "teach" || stored === "all" || stored === "practice") setKindFilter(stored);
@@ -564,6 +676,32 @@ function SessionsSidebar() {
 			.sort((a, b) => b.score - a.score)
 			.map((r) => r.c);
 	}, [chats, query, kindFilter]);
+
+	/* BY CLASS (QoL pass, 2026-11-08): the same rows, grouped under their
+	   class (most recent class first), then the sessions in no class. The
+	   walk index follows this order too. A search always ranks by match. */
+	const byClass = groupBy === "class" && !query.trim();
+	const ordered = useMemo(() => {
+		if (!shown || !byClass) return shown;
+		const classOf = new Map(classes.flatMap((c) => c.sessions.map((id) => [id, c] as const)));
+		const buckets = new Map<string, ChatListItem[]>();
+		const loose: ChatListItem[] = [];
+		for (const c of shown) {
+			const k = classOf.get(c.id)?.key;
+			if (k === undefined) loose.push(c);
+			else buckets.set(k, [...(buckets.get(k) ?? []), c]);
+		}
+		return [...[...buckets.values()].flat(), ...loose];
+	}, [shown, byClass, classes]);
+	const classHeading = useMemo(() => {
+		const classOf = new Map(classes.flatMap((c) => c.sessions.map((id) => [id, c] as const)));
+		const counts = new Map<string, number>();
+		for (const c of ordered ?? []) {
+			const k = classOf.get(c.id)?.key ?? "";
+			counts.set(k, (counts.get(k) ?? 0) + 1);
+		}
+		return { classOf, counts };
+	}, [classes, ordered]);
 
 	const refreshInFlightRef = useRef(false);
 	const refresh = useCallback(async () => {
@@ -835,19 +973,7 @@ function SessionsSidebar() {
 				    Today / Progress / Library replace the six all-caps links
 				    (Calibration and Review live in Progress, Notes in Library). */}
 				<div className="flex flex-col gap-3.5">
-					<button
-						type="button"
-						data-testid="new-session"
-						onClick={() => openStart()}
-						className="mx-3 mt-0.5 flex h-9.5 items-center gap-2.25 rounded-[9px] bg-primary px-3 text-[14.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-					>
-						<PlayIcon className="size-3.5 fill-current" />
-						Start studying
-						<span className="sr-only">: learn, practise or review</span>
-						<kbd suppressHydrationWarning className="ml-auto font-sans text-xs font-medium opacity-60">
-							{formatBinding(bindingForAction("new-session"))}
-						</kbd>
-					</button>
+					<NextStepStart onOpenDialog={() => openStart()} />
 					<nav aria-label="Main" className="mx-2 flex flex-col gap-px">
 						<TodayLink />
 						<NavRow
@@ -899,7 +1025,7 @@ function SessionsSidebar() {
 								}
 								// Modified keys belong to the surface (⇧↵ etc.).
 								if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-								const n = shown?.length ?? 0;
+								const n = ordered?.length ?? 0;
 								if (n === 0) return;
 								if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 									// The rows move, not the caret.
@@ -911,7 +1037,7 @@ function SessionsSidebar() {
 									return;
 								}
 								if (e.key === "Enter") {
-									const target = shown![kbdIndex !== null && kbdIndex < n ? kbdIndex : 0];
+									const target = ordered![kbdIndex !== null && kbdIndex < n ? kbdIndex : 0];
 									if (!target) return;
 									e.preventDefault();
 									router.push(`/chat/${target.id}`);
@@ -974,26 +1100,70 @@ function SessionsSidebar() {
 							{f === "teach" ? "Learn" : f === "all" ? "All" : "Practice"}
 						</button>
 					))}
+					<div role="radiogroup" aria-label="Group sessions by" data-testid="session-group-by" className="ml-auto flex rounded-full bg-ink-soft p-0.5 text-[12.5px]">
+						{(["date", "class"] as const).map((g) => (
+							<button
+								key={g}
+								type="button"
+								role="radio"
+								aria-checked={groupBy === g}
+								data-testid={`group-by-${g}`}
+								onClick={() => setGroupBy(g)}
+								className={cn(
+									"rounded-full px-2 py-[2px] leading-tight transition-colors",
+									groupBy === g ? "bg-card font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+								)}
+							>
+								{g === "date" ? "Date" : "Class"}
+							</button>
+						))}
+					</div>
 				</div>
 
 				<div ref={listRef} className="flex-1 overflow-y-auto px-2 pt-0.5 pb-2">
-					{shown === null ? (
+					{shown === null || ordered === null ? (
 						<div className="px-2 py-4 text-xs text-muted-foreground">Loading…</div>
 					) : shown.length === 0 ? (
 						<div className="px-2 py-4 text-xs text-muted-foreground">
 							{query.trim() ? "No sessions match." : "No sessions yet."}
 						</div>
 					) : (
-						shown.map((c, i) => {
+						ordered.map((c, i) => {
 							// Date headings (sidebar refine) only for the plain
 							// list: a search ranks by match, not by time.
-							const group = query.trim() ? null : dateGroup(c.updatedAt);
-							const heading =
-								group !== null && (i === 0 || dateGroup(shown[i - 1]!.updatedAt) !== group) ? (
-									<div key={`g-${c.id}`} data-testid="session-group" className="px-2.5 pt-2.5 pb-1 text-[12px] text-muted-foreground">
-										{group}
-									</div>
-								) : null;
+							let heading: React.ReactNode = null;
+							if (byClass) {
+								const cls = classHeading.classOf.get(c.id);
+								const prev = i > 0 ? classHeading.classOf.get(ordered[i - 1]!.id) : undefined;
+								if (i === 0 || cls?.key !== prev?.key) {
+									const count = classHeading.counts.get(cls?.key ?? "") ?? 0;
+									heading = cls ? (
+										<Link
+											key={`g-${c.id}`}
+											href={`/class/${encodeURIComponent(cls.key)}`}
+											data-testid="session-class-group"
+											className={cn(`cal-c${cls.color}`, "group/cls mt-1.5 flex items-center gap-2 rounded-md px-2.5 pt-2 pb-1 text-[12.5px] font-semibold text-foreground/80 hover:text-foreground")}
+										>
+											<span aria-hidden="true" className="size-2.5 shrink-0 rounded-[3px] bg-(--bar)" />
+											<span className="min-w-0 truncate">{cls.label}</span>
+											<span className="font-normal text-muted-foreground">{count}</span>
+											<ChevronRightIcon className="ml-auto size-3.5 text-muted-foreground opacity-60 group-hover/cls:opacity-100" />
+										</Link>
+									) : (
+										<div key={`g-${c.id}`} data-testid="session-class-group" className="mt-1.5 flex items-center gap-2 px-2.5 pt-2 pb-1 text-[12.5px] font-semibold text-muted-foreground">
+											Not in a class <span className="font-normal">{count}</span>
+										</div>
+									);
+								}
+							} else {
+								const group = query.trim() ? null : dateGroup(c.updatedAt);
+								heading =
+									group !== null && (i === 0 || dateGroup(ordered[i - 1]!.updatedAt) !== group) ? (
+										<div key={`g-${c.id}`} data-testid="session-group" className="px-2.5 pt-2.5 pb-1 text-[12px] text-muted-foreground">
+											{group}
+										</div>
+									) : null;
+							}
 							const row =
 								renamingId === c.id ? (
 									<RenameRow
