@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState, type MutableRefObject } from "react";
 import { ArrowRightIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Hint } from "@/components/ui/hint";
@@ -158,5 +159,38 @@ export function Composer({
 					</button>
 				)}
 		</form>
+	);
+}
+
+/** Owns the textarea's value so a keystroke re-renders only the composer,
+ *  never the transcript above it (perf, 2026-11-08). The parent keeps a ref
+ *  mirror (textRef) and drives programmatic writes (clear after send,
+ *  dictation flush) through setterRef. */
+export function ComposerHost({
+	textRef,
+	setterRef,
+	onChange,
+	...rest
+}: Omit<React.ComponentProps<typeof Composer>, "value" | "onChange"> & {
+	textRef: MutableRefObject<string>;
+	setterRef: MutableRefObject<(v: string) => void>;
+	onChange: (v: string) => void;
+}) {
+	const [value, setValue] = useState(textRef.current);
+	useEffect(() => {
+		setterRef.current = setValue;
+		return () => {
+			setterRef.current = () => {};
+		};
+	}, [setterRef]);
+	return (
+		<Composer
+			{...rest}
+			value={value}
+			onChange={(v) => {
+				setValue(v);
+				onChange(v);
+			}}
+		/>
 	);
 }

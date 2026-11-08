@@ -21,7 +21,7 @@ import { LiveToolCard } from "@/components/artifacts/live-tool-card";
 import { AnsweredCard } from "@/components/answered-card";
 import { artifactRenderers } from "@/components/artifacts";
 import { SubagentSteerCard } from "@/components/artifacts/steer-card";
-import { Composer } from "@/components/composer";
+import { ComposerHost } from "@/components/composer";
 import { ReplyActions } from "@/components/reply-actions";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
@@ -607,7 +607,12 @@ export function Chat({
 	// session's current phase.
 	const phases = useMemo(() => phaseTimeline(messages), [messages]);
 
-	const [text, setText] = useState("");
+	/* PERF (2026-11-08): the composer's text lives in <ComposerHost> below, not
+	 * here — a keystroke used to re-render the whole transcript (10k DOM nodes
+	 * on a long session, ~80ms per key on a mid-range laptop). Chat only keeps
+	 * the ref mirror and one boolean (empty vs not) that gates canSend. */
+	const [hasText, setHasText] = useState(false);
+	const composerSetRef = useRef<(v: string) => void>(() => {});
 	/* The composer's value MIRROR ("nothing gets lost" round, owner
 	 * 2026-10-01): a dictation flush lands via setState, which a closure
 	 * waiting through `await finish()` cannot observe in time. Kept
@@ -615,7 +620,8 @@ export function Chat({
 	const textRef = useRef("");
 	const applyText = useCallback((v: string) => {
 		textRef.current = v;
-		setText(v);
+		composerSetRef.current(v);
+		setHasText(v.trim().length > 0);
 	}, []);
 	// The BYOK setup flow (owner, 2026-09-22): the persistent CTA and the
 	// refusal interception share one SetupDialog mount. `configured` is
@@ -745,7 +751,7 @@ export function Chat({
 	// affordance).
 	const [compacting, setCompacting] = useState(initiallyCompacting);
 	const canSend =
-		(text.trim().length > 0 || dictation.active) && !pending && !activeProblem && !compacting;
+		(hasText || dictation.active) && !pending && !activeProblem && !compacting;
 
 	/* THE PRACTICE PAUSE (owner round 16): between problems — practice
 	 * kind, nothing active, nothing in flight, and at least one problem
@@ -1542,7 +1548,7 @@ export function Chat({
 									})}
 								</Fragment>
 							) : (
-									<Fragment key={m.id || `m-${mi}`}>
+									<div key={m.id || `m-${mi}`} data-role={m.role} className="lh-msg flex flex-col gap-4">
 									{/* THE INFERRED TEACH SEAM (owner ruling 2026-09-26, the verdict
 									death): teaching begins where the FIRST nodeId-tagged quiz is
 									posed — the fold (phaseTimeline, the same derivation the phase chip
@@ -1722,7 +1728,7 @@ export function Chat({
 										)}
 									</Message>
 									)}
-								</Fragment>
+								</div>
 							))}
 
 							{/* THE placeholder, ACTION-gated (owner, optimistic round
@@ -1845,13 +1851,14 @@ export function Chat({
 						)
 					}
 					composer={
-						<Composer
+						<ComposerHost
+							textRef={textRef}
+							setterRef={composerSetRef}
 							// Stop aborts ANY in-flight turn (stream-reattach wave): the
 							// square renders while a reattached/wake turn runs too — the
 							// abort channel kills it server-side; stop() alone would
 							// only detach our view.
 							busy={busy}
-							value={text}
 							onChange={applyText}
 							inputRef={composerInputRef}
 							onSend={onSend}
