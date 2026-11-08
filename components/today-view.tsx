@@ -4,7 +4,7 @@ import { SettingsRecoveredNote, type SettingsRecoveredInfo } from "./settings-re
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarPlusIcon, FlameIcon, ListPlusIcon, Loader2Icon, PlayIcon, RefreshCwIcon, ZapIcon } from "lucide-react";
+import { CalendarPlusIcon, FlameIcon, ListPlusIcon, Loader2Icon, MessageSquareIcon, PlayIcon, RefreshCwIcon, ScaleIcon, ZapIcon } from "lucide-react";
 import {
 	BUDGET_CHOICES,
 	STREAK_MIN_MINUTES,
@@ -13,6 +13,7 @@ import {
 	whenLabel,
 	type BriefingItem,
 	type BriefingPlan,
+	type ExamPlan,
 	type ClassEntry,
 	type StudyEvent,
 	type StudyStreak,
@@ -27,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { RemindersCard } from "@/components/reminders-card";
 import { PageFrame } from "@/components/page-header";
 import { useStartDialog } from "@/components/start-dialog";
-import { ACTION_LABEL, ACTION_TAG, StudyPlanCard } from "@/components/study-plan-card";
+import { ACTION_LABEL, ACTION_TAG, EXAM_STATUS, StudyPlanCard } from "@/components/study-plan-card";
 import { useClassColors } from "@/components/use-class-colors";
 import { cn } from "@/lib/utils";
 
@@ -146,29 +147,46 @@ export function TodayShell({
 	const todo = integrations.todo[0];
 	const items = plan?.items ?? [];
 	const first = items[0];
+	const rest = items.slice(1);
 	const { open: openStart } = useStartDialog();
 	// Five minutes of the first step, or of something new when the plan is empty.
 	const quick = () => (first ? handlers.onQuick(first) : openStart("learn", QUICK_SESSION_MINUTES));
 	const total = items.reduce((sum, item) => sum + item.minutes, 0);
+	const exams = new Map((plan?.study?.exams ?? []).map((e) => [e.eventId, e]));
+	const pushProps = {
+		pushing,
+		canTodo: todo?.configured === true,
+		todoLabel: todo?.label ?? "to-do",
+		canCalendar: integrations.google.connected,
+		handlers,
+	};
 	return (
 		<PageFrame
 			title="Today"
 			testId="today-view"
 			width="max-w-6xl"
 			actions={
-				<Button variant="ghost" size="sm" onClick={handlers.onRefresh} disabled={busy} data-testid="today-refresh">
-					{busy ? <Loader2Icon className="size-3.5 animate-spin" /> : <RefreshCwIcon className="size-3.5" />}
-					Refresh
+				<Button
+					variant="ghost"
+					size="icon"
+					onClick={handlers.onRefresh}
+					disabled={busy}
+					data-testid="today-refresh"
+					aria-label="Rebuild today's plan"
+					title="Rebuild today's plan"
+					className="text-muted-foreground"
+				>
+					{busy ? <Loader2Icon className="size-4 animate-spin" /> : <RefreshCwIcon className="size-4" />}
 				</Button>
 			}
 		>
-			<header className="-mt-4 flex flex-col gap-3">
+			<header className="-mt-5 flex flex-col gap-2">
 				{briefing ? (
-					<p data-testid="today-note" className="max-w-2xl font-prose text-xl leading-relaxed text-foreground/85">
+					<p data-testid="today-note" className="max-w-3xl font-prose text-lg leading-relaxed text-muted-foreground">
 						{briefing.note}
 					</p>
 				) : (
-					<p className="font-prose text-xl text-muted-foreground">{busy ? "Putting today's briefing together…" : "No briefing yet today."}</p>
+					<p className="font-prose text-lg text-muted-foreground">{busy ? "Putting today's briefing together…" : "No briefing yet today."}</p>
 				)}
 				{error && (
 					<p role="alert" className="text-sm text-destructive">
@@ -178,87 +196,88 @@ export function TodayShell({
 			</header>
 
 			<div className="flex flex-wrap items-start gap-6">
-				{/* THE PLAN CARD (redesign wave): what to do, in order, inside the
-				    time you have, and one button that starts the first thing. */}
 				<div className="flex min-w-0 flex-[2_1_30rem] flex-col gap-6">
+					{/* THE PLAN CARD (Today refine, 2026-11-08): the first step is
+					    the hero, with the start button right under its title, so the
+					    first click needs no reading; the rest of today's list sits
+					    under it, quieter. */}
 					<section
 						aria-labelledby="plan-heading"
 						data-testid="today-plan"
-						className="flex min-w-0 flex-col rounded-2xl border border-border/70 bg-surface px-6 pb-6 pt-5"
+						className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-surface"
 					>
-						<div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-							<h2 id="plan-heading" className="text-lg font-semibold">
-								Today&apos;s plan
-							</h2>
-							<div role="group" aria-label="Time you have today" data-testid="today-budget" className="flex gap-0.5 rounded-lg bg-accent/70 p-0.5">
-								{BUDGET_CHOICES.map((m) => (
-									<button
-										key={m}
-										type="button"
-										aria-pressed={budgetMinutes === m}
-										onClick={() => handlers.onBudget(m)}
-										className={cn(
-											"h-8 rounded-md px-2.5 text-sm transition-colors",
-											budgetMinutes === m ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
-										)}
-									>
-										{m} min
-									</button>
-								))}
+						<div className="flex flex-col gap-4 px-6 pb-6 pt-5">
+							<div className="flex flex-wrap items-center justify-between gap-3">
+								<h2 id="plan-heading" className="text-sm font-medium text-muted-foreground">
+									{first ? (items.length > 1 ? "Up next" : "Today's plan") : "Today's plan"}
+								</h2>
+								<BudgetPicker value={budgetMinutes} onChange={handlers.onBudget} />
 							</div>
-						</div>
-						{!plan ? (
-							<p className="py-4 text-sm text-muted-foreground">{busy ? "Working out what matters most today…" : "No plan yet."}</p>
-						) : items.length === 0 ? (
-							<p className="py-4 text-base text-muted-foreground">Nothing urgent. A good day to learn something new.</p>
-						) : (
-							<ol className="flex flex-col">
-								{items.map((item, i) => (
-									<PlanRow
-										key={item.id}
-										index={i + 1}
-										item={item}
-										pushed={briefing?.pushed?.[item.id]}
-										pushing={pushing}
-										canTodo={todo?.configured === true}
-										todoLabel={todo?.label ?? "to-do"}
-										canCalendar={integrations.google.connected}
-										handlers={handlers}
-									/>
-								))}
-							</ol>
-						)}
-						{plan && plan.trackedTopics === 0 && (
-							<p className="pt-2 text-sm text-muted-foreground">
-								Your memory of each topic is measured from quiz checks and practice. Once you have answered a few, the plan can
-								tell what is fading before each exam.
-							</p>
-						)}
-						<div className="mt-2 flex flex-wrap items-center gap-4 border-t border-border/60 pt-4">
-							{first ? (
-								<Button size="lg" className="h-12 rounded-xl px-6 text-base" onClick={() => handlers.onStart(first)} data-testid="today-start-first">
-									<PlayIcon className="size-4 fill-current" />
-									{items.length > 1 ? `Start with ${ACTION_LABEL[first.action].toLowerCase()}` : "Start"} · {first.minutes} min
-								</Button>
+							{!plan ? (
+								<p className="text-base text-muted-foreground">{busy ? "Working out what matters most today…" : "No plan yet."}</p>
+							) : first ? (
+								<div data-testid="today-item" className="flex flex-col gap-1.5">
+									<div className="flex flex-wrap items-center gap-2">
+										<span className="text-2xl font-semibold tracking-tight">{first.title}</span>
+										<span className={cn("rounded-full px-2 py-px text-xs font-semibold", ACTION_TAG[first.action])}>{ACTION_LABEL[first.action]}</span>
+									</div>
+									<p className="text-base text-muted-foreground">{first.reason}</p>
+								</div>
 							) : (
-								<Button size="lg" className="h-12 rounded-xl px-6 text-base" onClick={() => openStart("learn")} data-testid="today-learn-new">
-									<PlayIcon className="size-4 fill-current" />
-									Learn something new
-								</Button>
+								<div className="flex flex-col gap-1.5">
+									<span className="text-2xl font-semibold tracking-tight">Nothing urgent today</span>
+									<p className="text-base text-muted-foreground">A good day to learn something new.</p>
+								</div>
 							)}
-							{plan && (
-								<Button variant="ghost" size="lg" className="h-12 rounded-xl px-4 text-base" onClick={quick} data-testid="today-quick">
-									<ZapIcon className="size-4" />
-									Only 5 minutes
-								</Button>
+							<div className="flex flex-wrap items-center gap-2">
+								{first ? (
+									<Button size="lg" className="h-11 rounded-xl px-5 text-base" onClick={() => handlers.onStart(first)} data-testid="today-start-first">
+										<PlayIcon className="size-4 fill-current" />
+										Start · {first.minutes} min
+									</Button>
+								) : (
+									<Button size="lg" className="h-11 rounded-xl px-5 text-base" onClick={() => openStart("learn")} data-testid="today-learn-new">
+										<PlayIcon className="size-4 fill-current" />
+										Learn something new
+									</Button>
+								)}
+								{plan && (
+									<Button variant="outline" size="lg" className="h-11 rounded-xl px-4 text-base" onClick={quick} data-testid="today-quick">
+										<ZapIcon className="size-4" />
+										Only 5 minutes
+									</Button>
+								)}
+								{first && <ItemActions item={first} pushed={briefing?.pushed?.[first.id]} {...pushProps} className="ml-auto" />}
+							</div>
+							{plan && plan.trackedTopics === 0 && (
+								<p className="text-sm text-muted-foreground">
+									Your memory of each topic is measured from quiz checks and practice. Once you have answered a few, the plan can
+									tell what is fading before each exam.
+								</p>
 							)}
-							{total > 0 && <span className="text-sm text-muted-foreground">{total} min planned in all</span>}
 						</div>
+						{rest.length > 0 && (
+							<div className="border-t border-border/60 bg-accent/25 px-6 pb-3 pt-3">
+								<div className="flex items-baseline justify-between gap-2 pb-1">
+									<h3 className="text-sm font-medium text-muted-foreground">Then</h3>
+									<span className="text-xs tabular-nums text-muted-foreground">{total} min in all</span>
+								</div>
+								<ol className="flex flex-col">
+									{rest.map((item, i) => (
+										<PlanRow key={item.id} index={i + 2} item={item} pushed={briefing?.pushed?.[item.id]} {...pushProps} />
+									))}
+								</ol>
+							</div>
+						)}
 					</section>
 					{plan && <StudyPlanCard plan={plan} onStart={handlers.onStart} />}
 				</div>
 
 				<div className="flex min-w-0 flex-[1_1_18rem] flex-col gap-5">
+					{settingsRecovery && <SettingsRecoveredNote recovery={settingsRecovery} />}
+
+					{week && <WeekCard week={week} streak={streak} onQuick={quick} />}
+
 					{plan && (
 						<SideCard title="Coming up" testId="today-coming-up">
 							{plan.upcoming.length === 0 ? (
@@ -268,9 +287,17 @@ export function TodayShell({
 										: "Connect your calendar to see exams and deadlines here."}
 								</p>
 							) : (
-								<ul className="flex flex-col gap-3">
+								<ul className="flex flex-col divide-y divide-border/60">
 									{plan.upcoming.map((u) => (
-										<UpcomingRow key={u.event.id} entry={u} now={plan.generatedAt} sessions={sessions} onLink={handlers.onLinkCourse} />
+										<UpcomingRow
+											key={u.event.id}
+											entry={u}
+											exam={exams.get(u.event.id)}
+											now={plan.generatedAt}
+											budget={plan.budgetMinutes}
+											sessions={sessions}
+											onLink={handlers.onLinkCourse}
+										/>
 									))}
 								</ul>
 							)}
@@ -296,18 +323,17 @@ export function TodayShell({
 						</SideCard>
 					)}
 
-					{settingsRecovery && <SettingsRecoveredNote recovery={settingsRecovery} />}
-
-					{week && <WeekCard week={week} streak={streak} onQuick={quick} />}
-
 					{honesty && (
-						<section data-testid="today-honesty" className="flex flex-col gap-2 rounded-2xl bg-good-soft px-5 py-4">
-							<h2 className="text-base font-semibold text-good-ink">Honesty check</h2>
-							<p className="text-base text-foreground/85">
+						<section data-testid="today-honesty" className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-surface px-5 py-4">
+							<h2 className="flex items-center gap-2 text-base font-semibold">
+								<ScaleIcon aria-hidden="true" className="size-4 text-warn" />
+								Honesty check
+							</h2>
+							<p className="text-sm text-foreground/85">
 								You feel about {honesty.points} points surer than your answers justify. When you think &ldquo;I know this&rdquo;,
 								answer one question first.
 							</p>
-							<Link href="/progress?tab=calibration" className="text-sm font-medium text-good-ink underline-offset-2 hover:underline">
+							<Link href="/progress?tab=calibration" className="self-start text-sm font-medium underline-offset-2 hover:underline">
 								See calibration
 							</Link>
 						</section>
@@ -318,6 +344,28 @@ export function TodayShell({
 				</div>
 			</div>
 		</PageFrame>
+	);
+}
+
+/** The time you have today, as one small segmented control. */
+function BudgetPicker({ value, onChange }: { value: number; onChange: (minutes: number) => void }) {
+	return (
+		<div role="group" aria-label="Time you have today" data-testid="today-budget" className="flex items-center gap-0.5 rounded-lg bg-accent/60 p-0.5">
+			{BUDGET_CHOICES.map((m) => (
+				<button
+					key={m}
+					type="button"
+					aria-pressed={value === m}
+					onClick={() => onChange(m)}
+					className={cn(
+						"h-7 rounded-md px-2 text-xs tabular-nums transition-colors",
+						value === m ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					{m} min
+				</button>
+			))}
+		</div>
 	);
 }
 
@@ -361,12 +409,12 @@ function StreakLine({ streak, onQuick }: { streak: StudyStreak; onQuick: () => v
 				className={cn("size-4 shrink-0", streak.days > 0 && streak.studiedToday ? "text-warn" : "text-muted-foreground")}
 			/>
 			<span className={cn("flex-1", streak.days > 0 ? "text-foreground" : "text-muted-foreground")}>{streakMessage(streak)}</span>
-			{!streak.studiedToday && (
+			{streak.atRisk && !streak.studiedToday && (
 				<button
 					type="button"
 					onClick={onQuick}
 					data-testid="today-streak-quick"
-					className="font-medium text-good-ink underline-offset-2 hover:underline"
+					className="font-medium underline-offset-2 hover:underline"
 				>
 					Do 5 minutes
 				</button>
@@ -389,7 +437,7 @@ function WeekCard({ week, streak = null, onQuick }: { week: StudyWeek; streak?: 
 			<div
 				role="img"
 				aria-label={`Minutes studied each day: ${week.minutes.map((m, i) => `${DAY_NAMES[i]} ${m}`).join(", ")}`}
-				className="flex h-16 items-end gap-2"
+				className="flex h-12 items-end gap-2"
 			>
 				{week.minutes.map((m, i) => (
 					<span
@@ -397,10 +445,10 @@ function WeekCard({ week, streak = null, onQuick }: { week: StudyWeek; streak?: 
 						data-testid="today-week-bar"
 						className={cn(
 							"flex-1 rounded",
-							m > 0 ? "bg-good" : "bg-accent",
+							m > 0 ? "bg-foreground/70" : "bg-accent",
 							i === week.today && "outline-dashed outline-[1.5px] outline-offset-2 outline-muted-foreground/60",
 						)}
-						style={{ height: m > 0 ? `${Math.max(8, Math.round((m / top) * 64))}px` : "4px" }}
+						style={{ height: m > 0 ? `${Math.max(6, Math.round((m / top) * 48))}px` : "4px" }}
 					/>
 				))}
 			</div>
@@ -493,8 +541,16 @@ function Connections({ integrations, briefing, handlers }: { integrations: Integ
 	);
 }
 
-function PlanRow({
-	index,
+interface PushProps {
+	pushing: string | null;
+	canTodo: boolean;
+	todoLabel: string;
+	canCalendar: boolean;
+	handlers: Handlers;
+}
+
+/** A step's side doors: back to its session, onto the to-do list, into the calendar. */
+function ItemActions({
 	item,
 	pushed,
 	pushing,
@@ -502,58 +558,76 @@ function PlanRow({
 	todoLabel,
 	canCalendar,
 	handlers,
-}: {
-	index: number;
-	item: BriefingItem;
-	pushed?: { todo?: string; calendar?: string };
-	pushing: string | null;
-	canTodo: boolean;
-	todoLabel: string;
-	canCalendar: boolean;
-	handlers: Handlers;
-}) {
+	compact = false,
+	className,
+}: PushProps & { item: BriefingItem; pushed?: { todo?: string; calendar?: string }; compact?: boolean; className?: string }) {
+	if (!item.chatId && !canTodo && !canCalendar) return null;
+	const openLabel = item.chatTitle ? `Open “${item.chatTitle}”` : "Open session";
 	return (
-		<li data-testid="today-item" className="flex gap-3.5 border-t border-border/60 py-3.5 first:border-t-0">
-			<span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-sm text-muted-foreground">{index}</span>
-			<div className="flex min-w-0 flex-1 flex-col gap-1">
+		<div className={cn("flex items-center gap-0.5 text-muted-foreground", className)}>
+			{item.chatId && (
+				<Button variant="ghost" size="sm" className={cn("h-8 text-xs", compact ? "w-8 px-0" : "px-2")} asChild>
+					<Link href={`/chat/${item.chatId}`} title={openLabel} aria-label={openLabel}>
+						<MessageSquareIcon className="size-3.5" />
+						{!compact && "Open session"}
+					</Link>
+				</Button>
+			)}
+			{canTodo && (
+				<PushButton
+					done={pushed?.todo}
+					busy={pushing === `${item.id}:todo`}
+					onClick={() => handlers.onPush(item, "todo")}
+					icon={<ListPlusIcon className="size-3.5" />}
+					label={`Add to ${todoLabel}`}
+					doneLabel={`In ${todoLabel}`}
+					compact={compact}
+				/>
+			)}
+			{canCalendar && (
+				<PushButton
+					done={pushed?.calendar}
+					busy={pushing === `${item.id}:calendar`}
+					onClick={() => handlers.onPush(item, "calendar")}
+					icon={<CalendarPlusIcon className="size-3.5" />}
+					label="Block time"
+					doneLabel="Blocked"
+					compact={compact}
+				/>
+			)}
+		</div>
+	);
+}
+
+/** A later step of today's list: one line, its why under it; the side
+ *  doors show on hover or keyboard focus, so the list reads calm. */
+function PlanRow({ index, item, pushed, ...push }: PushProps & { index: number; item: BriefingItem; pushed?: { todo?: string; calendar?: string } }) {
+	return (
+		<li data-testid="today-item" className="group flex gap-3 border-t border-border/50 py-2.5 first:border-t-0">
+			<span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums text-muted-foreground">
+				{index}
+			</span>
+			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<div className="flex flex-wrap items-center gap-2">
-					<span className="font-prose text-lg">{item.title}</span>
+					<span className="text-base font-medium">{item.title}</span>
 					<span className={cn("rounded-full px-2 py-px text-xs font-semibold", ACTION_TAG[item.action])}>{ACTION_LABEL[item.action]}</span>
 				</div>
 				<p className="text-sm text-muted-foreground">{item.reason}</p>
-				<div className="-ml-2 flex flex-wrap items-center gap-1">
-					<Button variant="ghost" size="sm" onClick={() => handlers.onStart(item)} data-testid="today-start">
-						<PlayIcon className="size-3.5" />
-						Start
-					</Button>
-					{item.chatId && (
-						<Button variant="ghost" size="sm" asChild>
-							<Link href={`/chat/${item.chatId}`}>Open {item.chatTitle ? `“${item.chatTitle}”` : "session"}</Link>
-						</Button>
-					)}
-					{canTodo && (
-						<PushButton
-							done={pushed?.todo}
-							busy={pushing === `${item.id}:todo`}
-							onClick={() => handlers.onPush(item, "todo")}
-							icon={<ListPlusIcon className="size-3.5" />}
-							label={`Add to ${todoLabel}`}
-							doneLabel={`In ${todoLabel}`}
-						/>
-					)}
-					{canCalendar && (
-						<PushButton
-							done={pushed?.calendar}
-							busy={pushing === `${item.id}:calendar`}
-							onClick={() => handlers.onPush(item, "calendar")}
-							icon={<CalendarPlusIcon className="size-3.5" />}
-							label="Block time"
-							doneLabel="Blocked"
-						/>
-					)}
-				</div>
 			</div>
-			<span className="shrink-0 pt-1 text-sm whitespace-nowrap text-muted-foreground">{item.minutes} min</span>
+			<div className="flex shrink-0 items-start gap-1">
+				<ItemActions
+					item={item}
+					pushed={pushed}
+					{...push}
+					compact
+					className="-mt-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+				/>
+				<span className="pt-1 text-sm whitespace-nowrap tabular-nums text-muted-foreground">{item.minutes} min</span>
+				<Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => push.handlers.onStart(item)} data-testid="today-start" aria-label={`Start: ${item.title}`}>
+					<PlayIcon className="size-3.5" />
+					Start
+				</Button>
+			</div>
 		</li>
 	);
 }
@@ -565,6 +639,7 @@ function PushButton({
 	icon,
 	label,
 	doneLabel,
+	compact = false,
 }: {
 	done?: string;
 	busy: boolean;
@@ -572,6 +647,8 @@ function PushButton({
 	icon: React.ReactNode;
 	label: string;
 	doneLabel: string;
+	/** Icon only, the label as its name and tooltip. */
+	compact?: boolean;
 }) {
 	if (done) {
 		return done.startsWith("https://") ? (
@@ -583,21 +660,34 @@ function PushButton({
 		);
 	}
 	return (
-		<Button variant="ghost" size="sm" onClick={onClick} disabled={busy}>
+		<Button
+			variant="ghost"
+			size="sm"
+			className={cn("h-8 text-xs", compact ? "w-8 px-0" : "px-2")}
+			onClick={onClick}
+			disabled={busy}
+			title={label}
+			aria-label={compact ? label : undefined}
+		>
 			{busy ? <Loader2Icon className="size-3.5 animate-spin" /> : icon}
-			{label}
+			{!compact && label}
 		</Button>
 	);
 }
 
 function UpcomingRow({
 	entry,
+	exam,
 	now,
+	budget,
 	sessions,
 	onLink,
 }: {
 	entry: UpcomingEntry;
+	/** What the study plan laid out for it, when it is in the plan. */
+	exam?: ExamPlan;
 	now: number;
+	budget: number;
 	sessions: SessionOption[];
 	onLink: Handlers["onLinkCourse"];
 }) {
@@ -605,46 +695,67 @@ function UpcomingRow({
 	const [picked, setPicked] = useState<string[]>(entry.chatIds);
 	const color = useClassColors().get(entry.course.key);
 	const r = entry.readiness;
+	const planned = exam?.readinessPlanned ?? null;
+	const lifts = r !== null && planned !== null && planned > r + 0.005;
+	// "Not started" says the same as "Nothing studied yet" beside it.
+	const status = exam && !(r === null && exam.status === "not-started") ? EXAM_STATUS[exam.status] : null;
+	const low = r !== null && r < 0.9;
 	return (
-		<li data-testid="today-upcoming" className="flex flex-col gap-1.5 text-sm">
+		<li data-testid="today-upcoming" className="flex flex-col gap-1.5 py-3 text-sm first:pt-0 last:pb-0">
 			<div className="flex items-baseline justify-between gap-2">
-				<span className={cn("flex min-w-0 items-center gap-2 truncate text-base", color !== undefined && `cal-c${color}`)}>
+				<span className={cn("flex min-w-0 items-center gap-2 text-base font-medium", color !== undefined && `cal-c${color}`)}>
 					{color !== undefined && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: "var(--bar)" }} />}
-					{entry.event.url ? (
-						<a href={entry.event.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">
-							{entry.event.title}
-						</a>
-					) : (
-						entry.event.title
-					)}
+					<span className="truncate">
+						{entry.event.url ? (
+							<a href={entry.event.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">
+								{entry.event.title}
+							</a>
+						) : (
+							entry.event.title
+						)}
+					</span>
 				</span>
-				<span className={cn("shrink-0 whitespace-nowrap", r !== null && r < 0.9 ? "font-semibold text-warn-ink" : "text-muted-foreground")}>
+				<span className={cn("shrink-0 whitespace-nowrap", low || r === null ? "font-semibold text-warn-ink" : "text-muted-foreground")}>
 					{whenLabel(entry.event.start, now)}
 				</span>
 			</div>
 			<div className="flex items-center gap-2">
 				{r === null ? (
-					<span className="flex-1 text-xs text-warn-ink">nothing studied yet</span>
+					<span className="flex-1 text-xs font-medium text-warn-ink">Nothing studied yet</span>
 				) : (
-					<span className="flex flex-1 items-center gap-2" title="Average predicted recall of the linked topics on the day">
-						<span className="h-1.5 flex-1 overflow-hidden rounded-full bg-accent">
-							<span className={cn("block h-full rounded-full", r >= 0.9 ? "bg-good" : "bg-warn")} style={{ width: pct(r) }} />
+					<span className="flex flex-1 items-center gap-2" title="Predicted recall of the linked topics on the day (the lighter part: with the plan)">
+						<span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-accent">
+							{lifts && <span className="absolute inset-y-0 left-0 rounded-full bg-foreground/20" style={{ width: pct(planned!) }} />}
+							<span className={cn("absolute inset-y-0 left-0 rounded-full", low ? "bg-warn" : "bg-foreground/70")} style={{ width: pct(r) }} />
 						</span>
 						<span className="tabular-nums text-xs text-muted-foreground">{pct(r)} recall</span>
 					</span>
 				)}
+				{status && <span className={cn("shrink-0 rounded-full px-2 py-px text-xs font-semibold", status.className)}>{status.label}</span>}
+			</div>
+			<div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+				<span>
+					{exam && exam.sessions > 0
+						? `${exam.sessions} session${exam.sessions === 1 ? "" : "s"} planned, ${formatStudyTotal(exam.minutes)}`
+						: entry.kind === "deadline"
+							? "Deadline"
+							: "Nothing planned"}
+					{lifts ? `, about ${pct(planned!)} if you follow it` : ""}
+				</span>
 				{(entry.noteCount ?? 0) > 0 && (
-					<span className="text-xs text-muted-foreground" title="Files in this course's group">
-						{entry.noteCount} {entry.noteCount === 1 ? "file" : "files"}
+					<span title="Files in this course's group">
+						· {entry.noteCount} {entry.noteCount === 1 ? "file" : "files"}
 					</span>
 				)}
-				<span className="text-xs text-muted-foreground">{entry.kind}</span>
 				{entry.course.key && (
-					<button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setEditing((v) => !v)}>
+					<button type="button" className="ml-auto underline-offset-2 hover:text-foreground hover:underline" onClick={() => setEditing((v) => !v)}>
 						{entry.linked ? "Sessions" : "Link sessions"}
 					</button>
 				)}
 			</div>
+			{exam && exam.unscheduledMinutes > 0 && (
+				<p className="text-xs text-warn-ink">About {formatStudyTotal(exam.unscheduledMinutes)} of it does not fit {budget} minutes a day before then.</p>
+			)}
 			{editing && (
 				<div className="flex flex-col gap-2 rounded-md bg-muted/40 p-2">
 					<p className="text-xs text-muted-foreground">

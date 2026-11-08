@@ -52,14 +52,14 @@ export function RemindersCard() {
 			<div className="flex items-center gap-2">
 				<BellIcon className="size-4 text-muted-foreground" aria-hidden />
 				<h2 className="text-base font-semibold">Reminders</h2>
-				<Button variant={enabled ? "ghost" : "default"} size="sm" className="ml-auto" disabled={busy} onClick={() => void post({ enabled: !enabled })}>
+				<Button variant={enabled ? "ghost" : "outline"} size="sm" className="ml-auto" disabled={busy} onClick={() => void post({ enabled: !enabled })}>
 					{enabled ? "Turn off" : "Turn on"}
 				</Button>
 			</div>
 			<p className="text-muted-foreground">
 				{enabled
-					? "A small alert on your phone and laptop on days with planned work, and a heads-up before each exam. They come from your Socrates calendar, so they arrive even when this app is closed. Open Socrates once in a while to refresh them."
-					: "Get one small nudge a day, only on days with planned work, plus a heads-up before exams, on your phone and laptop."}
+					? "One alert on days with planned work and a heads-up before each exam, from your Socrates calendar, so they arrive with the app closed."
+					: "One nudge on days with planned work, and a heads-up before exams, on your phone and laptop."}
 			</p>
 			{enabled && (
 				<div className="flex flex-wrap items-center gap-1" role="group" aria-label="Reminder time">
