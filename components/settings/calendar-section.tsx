@@ -121,7 +121,7 @@ export function CalendarSection({ onOpenKeys }: { onOpenKeys: (keyId: string) =>
 			<section className="flex flex-col gap-2">
 				<div>
 					<h3 className="text-[13px] font-semibold text-muted-foreground">Connections</h3>
-					<p className="text-[12.5px] text-muted-foreground">Where the plan reads your exams, classes and deadlines. Nothing is sent to them except what you push.</p>
+					<p className="text-[12.5px] text-muted-foreground">Nothing is sent to them except what you choose to add.</p>
 				</div>
 				<div className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-surface">
 					<ServiceRow

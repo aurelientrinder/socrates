@@ -100,20 +100,20 @@ export function KeyboardSection() {
 				const actions = KEYBOARD_ACTIONS.filter((a) => a.scope === scope);
 				if (!actions.length) return null;
 				return (
-					<div key={scope} data-testid={`kbd-scope-${scope}`}>
-						<p className="mb-1 text-xs text-muted-foreground/70">{label}</p>
-						<div className="flex flex-col gap-2">
+					<div key={scope} data-testid={`kbd-scope-${scope}`} className="flex flex-col gap-2">
+						<h3 className="text-[13px] font-semibold text-muted-foreground">{label}</h3>
+						<div className="divide-y divide-border/60 rounded-xl border border-border/70 bg-surface">
 							{actions.map((def) => {
 								const effective = overrides[def.id] ?? def.binding;
 								return (
 									<SettingsRow
 										key={def.id}
 										label={def.label}
-										hint={def.displayOnly ? "Fixed — part of this screen" : undefined}
+										hint={def.displayOnly ? "Fixed" : undefined}
 										testid={`kbd-row-${def.id}`}
 									>
 										<span className="flex items-center gap-2">
-											<kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-ui text-xs">
+											<kbd className="rounded-md border border-border bg-accent/60 px-2 py-0.5 font-ui text-[12.5px]">
 												{rebinding === def.id ? "Press keys…" : formatBinding(effective)}
 											</kbd>
 											{def.displayOnly ? null : rebinding === def.id ? (
@@ -154,8 +154,8 @@ export function KeyboardSection() {
 					</div>
 				);
 			})}
-			<div className="mt-1 flex items-center justify-between">
-				<span className="text-xs text-muted-foreground/70">Stored on this device (lh:keymap) — overrides only.</span>
+			<div className="flex items-center justify-between">
+				<span className="text-[12.5px] text-muted-foreground">Shortcuts are kept on this computer.</span>
 				<button
 					type="button"
 					onClick={resetAll}

@@ -151,11 +151,11 @@ describe("the emphasis-ink factory ruling (globals.css)", () => {
 		assert.ok(!/\.dark\s*\{[^}]*--lh-ink-strong/.test(css), "the dark block never re-pins the ink");
 	});
 
-	it("the appearance rows' empty-state labels say 'same as text'", () => {
+	it("the appearance rows' empty-state labels keep the text colour", () => {
 		const html = renderToStaticMarkup(
 			<AppearanceSection appearance={undefined} onSectionChange={() => {}} />,
 		);
-		assert.equal((html.match(/Empty = same as text/g) ?? []).length, 2, "bold + italic rows");
+		assert.equal((html.match(/Empty keeps the text colour/g) ?? []).length, 2, "bold + italic rows");
 		assert.ok(!html.includes("#ee928c"));
 		assert.ok(!html.includes("#6fa9d6"));
 	});

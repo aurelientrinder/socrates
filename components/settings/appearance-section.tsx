@@ -40,7 +40,8 @@ import { MenuShell } from "@/components/menu-shell";
 import { Hint } from "@/components/ui/hint";
 import { backgroundMode, DEFAULT_READING_FONT_FOR, useAppearance } from "./appearance.tsx";
 import { FontMenuList } from "./model-menu";
-import { CommitInput, SettingsRow, ThinSelect, Toggle } from "./controls.tsx";
+import { CommitInput, Segmented, SettingsAdvanced, SettingsGroup, SettingsRow, Toggle } from "./controls.tsx";
+import { cn } from "@/lib/utils";
 
 /** The classic set's reading family (the claude set's is in
  *  DEFAULT_READING_FONT_FOR). Exported for tests. */
@@ -63,6 +64,31 @@ export const CURATED_FALLBACK_FONTS: readonly string[] = [
 	"Trebuchet MS",
 	"Verdana",
 ];
+
+const THEMES: readonly { value: AppearanceSettings["mode"] & string; label: string; picture: string }[] = [
+	{ value: "system", label: "System", picture: "linear-gradient(90deg,#faf9f5 50%,#1a1a1a 50%)" },
+	{ value: "light", label: "Light", picture: "#faf9f5" },
+	{ value: "dark", label: "Dark", picture: "#1a1a1a" },
+];
+
+/** Paper swatches per mode; the first is the factory page colour. */
+const PAPER_SWATCHES: Record<"light" | "dark", readonly string[]> = {
+	light: ["#faf9f5", "#f5f1e8", "#ffffff", "#eef0ea"],
+	dark: ["#141414", "#1c1a17", "#181a1d", "#0d0d0d"],
+};
+
+const TEXT_SIZES = [
+	{ value: "s", label: "Small", px: 14 },
+	{ value: "m", label: "Default", px: 16 },
+	{ value: "l", label: "Large", px: 18 },
+	{ value: "xl", label: "Larger", px: 20 },
+] as const;
+
+const HEADING_WEIGHTS = [
+	{ value: "regular", label: "Regular", weight: 500 },
+	{ value: "semibold", label: "Semibold", weight: 600 },
+	{ value: "bold", label: "Bold", weight: 800 },
+] as const;
 
 /** Each mode's factory page color (globals.css :root / .dark). A custom
  *  background only shows in the mode it suits (appearanceVars). */
@@ -191,44 +217,86 @@ export function AppearanceSection({
 		};
 	}, [fontMenuOpen]);
 
+	const setMode = (mode: AppearanceSettings["mode"]) => onSectionChange({ ...appearance, mode });
+	const paper = PAPER_SWATCHES[effectiveMode];
+	const currentBackground = (appearance?.background ?? null)?.toLowerCase() ?? null;
+	const sizeChoice = TEXT_SIZES.find((t) => t.px === resolved.proseFontSize)?.value ?? null;
+	const weightChoice = HEADING_WEIGHTS.find((w) => w.weight === resolved.mdRendering.headingWeight)?.value ?? null;
+
 	return (
 		<>
-			<SettingsRow
-				label="Mode"
-				hint={resolved.mode === "system" ? `Following the system (${effectiveMode})` : undefined}
-				testid="row-mode"
-			>
-				<ThinSelect
-					value={resolved.mode}
-					ariaLabel="mode"
-					onChange={(v) => onSectionChange({ ...appearance, mode: v as AppearanceSettings["mode"] })}
-					testid="select-mode"
+			<SettingsGroup label="Theme" testid="group-theme">
+				<div role="radiogroup" aria-label="mode" data-testid="row-mode" className="grid grid-cols-3 gap-3 p-4">
+					{THEMES.map((t) => {
+						const on = resolved.mode === t.value;
+						return (
+							<button
+								key={t.value}
+								type="button"
+								role="radio"
+								aria-checked={on}
+								data-testid={`mode-${t.value}`}
+								onClick={() => setMode(t.value)}
+								className={cn(
+									"flex flex-col gap-2 rounded-xl border p-2 text-left transition-colors",
+									on ? "border-foreground ring-1 ring-foreground" : "border-border hover:border-foreground/40",
+								)}
+							>
+								<span aria-hidden="true" className="block h-14 overflow-hidden rounded-lg border border-border/60" style={{ background: t.picture }}>
+									<span className="m-2 mb-1.5 block h-1.5 w-10 rounded bg-[#888]/45" />
+									<span className="mx-2 block h-1.5 w-16 rounded bg-[#888]/25" />
+								</span>
+								<span className="px-1 text-[13px] font-medium">{t.label}</span>
+							</button>
+						);
+					})}
+				</div>
+				{resolved.mode === "system" && (
+					<p className="px-4 py-2.5 text-[13px] text-muted-foreground">Following your computer, {effectiveMode} right now.</p>
+				)}
+				<SettingsRow
+					label="Paper colour"
+					hint={
+						resolved.background !== null && backgroundMode(resolved.background) !== effectiveMode
+							? `This colour shows in ${backgroundMode(resolved.background)} mode only`
+							: `The page background in ${effectiveMode} mode`
+					}
+					testid="row-background"
 				>
-					<option value="light">Light</option>
-					<option value="dark">Dark</option>
-					<option value="system">System</option>
-				</ThinSelect>
-			</SettingsRow>
+					<span className="flex items-center gap-1.5">
+						{paper.map((c, i) => {
+							const on = i === 0 ? currentBackground === null : currentBackground === c;
+							return (
+								<button
+									key={c}
+									type="button"
+									aria-label={i === 0 ? "Default paper" : `Paper ${c}`}
+									aria-pressed={on}
+									data-testid={`paper-${i}`}
+									onClick={() => onSectionChange({ ...appearance, background: i === 0 ? null : c })}
+									className={cn("size-6 rounded-full border border-border", on && "ring-2 ring-foreground ring-offset-2 ring-offset-surface")}
+									style={{ background: c }}
+								/>
+							);
+						})}
+					</span>
+				</SettingsRow>
+			</SettingsGroup>
+
+			<SettingsGroup label="Reading" testid="group-reading">
+				<div className="px-4 pt-3 pb-1">
+					<div
+						data-testid="reading-preview"
+						className="rounded-lg bg-accent/40 px-4 py-3 leading-relaxed"
+						style={{ fontFamily: appearance?.fontFamily || undefined, fontSize: `${resolved.proseFontSize}px` }}
+					>
+						<span className="mb-1 block" style={{ fontWeight: resolved.mdRendering.headingWeight }}>Eigenvalues</span>
+						A matrix is <strong style={md?.boldColor ? { color: md.boldColor } : undefined}>diagonalizable</strong> when it has a basis of{" "}
+						<em style={md?.italicColor ? { color: md.italicColor } : undefined}>eigenvectors</em>.
+					</div>
+				</div>
 			<SettingsRow
-				label="Background"
-				hint={
-					resolved.background !== null && backgroundMode(resolved.background) !== effectiveMode
-						? `Shows in ${backgroundMode(resolved.background)} mode only`
-						: `Empty = ${resolved.background ?? defaultBackground(effectiveMode)}`
-				}
-				testid="row-background"
-			>
-				<CommitInput
-					value={appearance?.background ?? ""}
-					placeholder={defaultBackground(effectiveMode)}
-					ariaLabel="background hex"
-					testid="input-background"
-					onCommit={(v) => onSectionChange({ ...appearance, background: v === "" ? null : v })}
-				/>
-			</SettingsRow>
-			<SettingsRow
-				label="Reading font"
-				hint={`Empty = ${readingDefault}`}
+				label="Font"
 				testid="row-font"
 			>
 				<span ref={fontMenuOpen ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
@@ -248,7 +316,7 @@ export function AppearanceSection({
 								aria-expanded={fontMenuOpen}
 								data-testid="font-trigger"
 								onClick={openFontMenu}
-								className="flex h-7 min-w-20 items-center gap-1 rounded-sm border border-border bg-background px-1.5 font-ui text-xs text-foreground transition-colors hover:border-muted-foreground/50"
+								className="flex h-8 min-w-28 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 font-ui text-[13px] text-foreground transition-colors hover:border-muted-foreground/50"
 							>
 								<span className="min-w-0 flex-1 truncate">{appearance?.fontFamily || readingDefault}</span>
 								<span aria-hidden className="text-muted-foreground">
@@ -290,71 +358,106 @@ export function AppearanceSection({
 					)}
 				</span>
 			</SettingsRow>
-			<SettingsRow label="Reading font size" hint={`${resolved.proseFontSize}px`} testid="row-prose-size">
-				<CommitInput
-					type="number"
-					value={String(appearance?.proseFontSize ?? "")}
-					placeholder="16"
-					ariaLabel="prose font size"
-					testid="input-prose-size"
-					onCommit={(v) => {
-						// Empty = factory default (owner, fix wave): omit the key so the record
-						// UNSETS and the field stays empty (absence, not null, is the
-						// unset for numbers). Number("") is 0, so the old clamp wrote 12.
-						if (v === "") {
-							onSectionChange({ ...appearance, proseFontSize: undefined });
-							return;
+				<SettingsRow label="Text size" testid="row-text-size">
+					<Segmented
+						options={TEXT_SIZES}
+						value={sizeChoice}
+						ariaLabel="Text size"
+						testid="text-size"
+						onChange={(v) => onSectionChange({ ...appearance, proseFontSize: TEXT_SIZES.find((t) => t.value === v)!.px })}
+					/>
+				</SettingsRow>
+				<SettingsRow label="Headings" testid="row-headings">
+					<Segmented
+						options={HEADING_WEIGHTS}
+						value={weightChoice}
+						ariaLabel="Heading weight"
+						testid="heading-weight"
+						onChange={(v) =>
+							onSectionChange({ ...appearance, mdRendering: { ...md, headingWeight: HEADING_WEIGHTS.find((w) => w.value === v)!.weight } })
 						}
-						const n = Number(v);
-						if (!Number.isFinite(n)) return; // bad input: no write, factory stays
-						onSectionChange({ ...appearance, proseFontSize: Math.min(24, Math.max(12, Math.round(n))) });
-					}}
-				/>
-			</SettingsRow>
-			<SettingsRow label="Heading weight" hint={`${resolved.mdRendering.headingWeight}`} testid="row-heading-weight">
-				<CommitInput
-					type="number"
-					value={String(md?.headingWeight ?? "")}
-					placeholder={String(resolved.mdRendering.headingWeight)}
-					ariaLabel="heading weight"
-					testid="input-heading-weight"
-					onCommit={(v) => {
-						// Empty = factory default (owner, fix wave): Number("") is 0, so
-						// Absence is the unset representation — the old clamp wrote 100.
-						if (v === "") {
-							onSectionChange({ ...appearance, mdRendering: { ...md, headingWeight: undefined } });
-							return;
-						}
-						const n = Number(v);
-						if (!Number.isFinite(n)) return;
-						onSectionChange({
-							...appearance,
-							mdRendering: { ...md, headingWeight: Math.min(900, Math.max(100, Math.round(n))) },
-						});
-					}}
-				/>
-			</SettingsRow>
-			{/* The emphasis inks default to the REGULAR TEXT COLOR now
-			    (appearance wave, 2026-09-26) — the empty-state labels say
-			    so; explicit hex overrides ride unchanged. */}
-			<SettingsRow label="Bold color" hint="Empty = same as text" testid="row-bold-color">
-				<CommitInput
-					value={md?.boldColor ?? ""}
-					placeholder="same as text"
-					ariaLabel="bold color"
-					testid="input-bold-color"
-					onCommit={(v) => onSectionChange({ ...appearance, mdRendering: { ...md, boldColor: v === "" ? null : v } })}
-				/>
-			</SettingsRow>
-			<SettingsRow label="Italic color" hint="Empty = same as text" testid="row-italic-color">
-				<CommitInput
-					value={md?.italicColor ?? ""}
-					placeholder="same as text"
-					ariaLabel="italic color"
-					testid="input-italic-color"
-					onCommit={(v) => onSectionChange({ ...appearance, mdRendering: { ...md, italicColor: v === "" ? null : v } })}
-				/>
-			</SettingsRow>
+					/>
+				</SettingsRow>
+			</SettingsGroup>
+
+			<SettingsAdvanced testid="appearance-advanced">
+				<SettingsGroup label="Exact values">
+					<SettingsRow label="Custom paper colour" hint="Any hex colour. Empty uses the default" testid="row-background-hex">
+						<CommitInput
+							value={appearance?.background ?? ""}
+							placeholder={defaultBackground(effectiveMode)}
+							ariaLabel="background hex"
+							testid="input-background"
+							onCommit={(v) => onSectionChange({ ...appearance, background: v === "" ? null : v })}
+						/>
+					</SettingsRow>
+					<SettingsRow label="Exact text size" hint="In pixels, 12 to 24" testid="row-prose-size">
+						<CommitInput
+							type="number"
+							value={String(appearance?.proseFontSize ?? "")}
+							placeholder="16"
+							ariaLabel="prose font size"
+							testid="input-prose-size"
+							onCommit={(v) => {
+								// Empty = factory default (owner, fix wave): omit the key so the record
+								// UNSETS and the field stays empty (absence, not null, is the
+								// unset for numbers). Number("") is 0, so the old clamp wrote 12.
+								if (v === "") {
+									onSectionChange({ ...appearance, proseFontSize: undefined });
+									return;
+								}
+								const n = Number(v);
+								if (!Number.isFinite(n)) return; // bad input: no write, factory stays
+								onSectionChange({ ...appearance, proseFontSize: Math.min(24, Math.max(12, Math.round(n))) });
+							}}
+						/>
+					</SettingsRow>
+					<SettingsRow label="Exact heading weight" hint="100 to 900" testid="row-heading-weight">
+						<CommitInput
+							type="number"
+							value={String(md?.headingWeight ?? "")}
+							placeholder={String(resolved.mdRendering.headingWeight)}
+							ariaLabel="heading weight"
+							testid="input-heading-weight"
+							onCommit={(v) => {
+								// Empty = factory default (owner, fix wave): Number("") is 0, so
+								// Absence is the unset representation — the old clamp wrote 100.
+								if (v === "") {
+									onSectionChange({ ...appearance, mdRendering: { ...md, headingWeight: undefined } });
+									return;
+								}
+								const n = Number(v);
+								if (!Number.isFinite(n)) return;
+								onSectionChange({
+									...appearance,
+									mdRendering: { ...md, headingWeight: Math.min(900, Math.max(100, Math.round(n))) },
+								});
+							}}
+						/>
+					</SettingsRow>
+					{/* The emphasis inks default to the REGULAR TEXT COLOR now
+					    (appearance wave, 2026-09-26) — the empty-state labels say
+					    so; explicit hex overrides ride unchanged. */}
+					<SettingsRow label="Bold text colour" hint="Empty keeps the text colour" testid="row-bold-color">
+						<CommitInput
+							value={md?.boldColor ?? ""}
+							placeholder="same as text"
+							ariaLabel="bold color"
+							testid="input-bold-color"
+							onCommit={(v) => onSectionChange({ ...appearance, mdRendering: { ...md, boldColor: v === "" ? null : v } })}
+						/>
+					</SettingsRow>
+					<SettingsRow label="Italic text colour" hint="Empty keeps the text colour" testid="row-italic-color">
+						<CommitInput
+							value={md?.italicColor ?? ""}
+							placeholder="same as text"
+							ariaLabel="italic color"
+							testid="input-italic-color"
+							onCommit={(v) => onSectionChange({ ...appearance, mdRendering: { ...md, italicColor: v === "" ? null : v } })}
+						/>
+					</SettingsRow>
+				</SettingsGroup>
+			</SettingsAdvanced>
 		</>
 	);
 }
@@ -380,13 +483,14 @@ export function GraphSection({
 	const resolved = resolveSettings(graph === undefined ? null : { version: 1, graph }).graph;
 	return (
 		<>
+			<SettingsGroup label="Your map" testid="group-graph">
 			{/* EXTRACTION (renamed, owner 2026-10-06): this switch is the DATA
 			    channel — the pipeline, the auditor, the prober's graph tools. It
 			    was born labeled "Graph" and that label lied once the rendering
 			    switch below arrived: off ≠ no graph, off = the graph stops
 			    growing. The testid keeps the old name's shape (row-enabled) so
 			    this stays one rename, not a test re-pin. */}
-			<SettingsRow label="Extraction" hint="Off = the graph stops growing" testid="graph-row-enabled">
+			<SettingsRow label="Keep building my map" hint="After each session, what you learned is added to your knowledge map. Off, the map stops growing" testid="graph-row-enabled">
 				<Toggle
 					checked={graph?.enabled ?? true}
 					label="extraction enabled"
@@ -402,16 +506,19 @@ export function GraphSection({
 			    round): display-only. Off = the home shows the chains view
 			    instead of the canvas. The ledgers, the pipeline, everything
 			    data keeps working — that is the extraction switch above. */}
-			<SettingsRow label="Graph rendering" hint="Off = home shows the chains view" testid="graph-row-rendering">
+			<SettingsRow label="Show the map as a graph" hint="Off, the map page shows simple lists instead" testid="graph-row-rendering">
 				<Toggle
 					checked={graph?.rendering ?? true}
 					label="graph rendering enabled"
 					onChange={(on) => onSectionChange({ ...graph, rendering: on })}
 				/>
 			</SettingsRow>
+			</SettingsGroup>
+			<SettingsAdvanced testid="graph-advanced">
+			<SettingsGroup>
 			<SettingsRow
-				label="Extraction chunk budget"
-				hint={`${resolved.extractionChunkTokens} tok`}
+				label="Update the map every"
+				hint={`${resolved.extractionChunkTokens} tokens of conversation. Lower is fresher and costs more`}
 				testid="graph-row-chunk-tokens"
 			>
 				<CommitInput
@@ -439,6 +546,8 @@ export function GraphSection({
 					}}
 				/>
 			</SettingsRow>
+			</SettingsGroup>
+			</SettingsAdvanced>
 		</>
 	);
 }

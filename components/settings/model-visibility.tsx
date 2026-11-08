@@ -73,10 +73,7 @@ export function ModelVisibility() {
 	if (!catalog || providers.length === 0) return null;
 
 	return (
-		<SettingsGroup label="Models in menus" testid="group-model-list">
-			<p className="text-xs text-muted-foreground/70">
-				Choose which models the model menus list. A model you are already using always stays available.
-			</p>
+		<SettingsGroup label="Models in menus" hint="Choose which models the model menus list. A model you already use always stays available." testid="group-model-list">
 			{providers.map(([provider, models]) => {
 				const ids = models.map((m) => m.id);
 				const current = shown[provider]?.filter((id) => ids.includes(id));
@@ -90,20 +87,20 @@ export function ModelVisibility() {
 							.map((r) => r.m)
 					: [];
 				return (
-					<div key={provider} data-testid={`model-list-${provider}`} className="rounded-lg border border-border/60">
+					<div key={provider} data-testid={`model-list-${provider}`}>
 						<button
 							type="button"
 							aria-expanded={isOpen}
 							onClick={() => { setOpen(isOpen ? null : provider); setQuery(""); }}
-							className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+							className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-accent/40"
 						>
-							<span className="font-prose text-(length:--lh-prose-size)">{provider}</span>
-							<span className="text-xs text-muted-foreground">
+							<span className="text-[14.5px] font-medium">{provider}</span>
+							<span className="text-[13px] text-muted-foreground">
 								{count === ids.length ? `All ${ids.length} shown` : `${count} of ${ids.length} shown`}
 							</span>
 						</button>
 						{isOpen && (
-							<div className="flex flex-col gap-1.5 border-t border-border/60 px-3 py-2">
+							<div className="flex flex-col gap-1.5 border-t border-border/60 px-4 py-2">
 								<div className="flex items-center gap-2">
 									<input
 										value={query}
@@ -153,7 +150,7 @@ export function ModelVisibility() {
 					</div>
 				);
 			})}
-			{error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+			{error && <p role="alert" className="px-4 py-2 text-xs text-destructive">{error}</p>}
 		</SettingsGroup>
 	);
 }

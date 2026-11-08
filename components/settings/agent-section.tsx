@@ -71,15 +71,24 @@ import {
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { prettyModel } from "@/components/usage-format";
 import { cn } from "@/lib/utils";
-import { SettingsGroup, SettingsRow, Toggle, CommitInput } from "./controls.tsx";
+import { SettingsAdvanced, SettingsGroup, SettingsRow, Toggle, CommitInput } from "./controls.tsx";
+import { readWarmupPreference, writeWarmupPreference } from "@/components/new-session";
 import { ModelMenuList, ThinkingMenuList } from "./model-menu";
 
 /** One slot's display identity — the tier's roster as the row hint rides
  *  with the resolved default (owner: the hint ALWAYS names the default). */
 const SLOT_META: Record<ModelSlotName, { label: string; roster: string }> = {
-	strong: { label: "Strong", roster: "The main model for your sessions" },
-	cheap: { label: "Cheap", roster: "The assistants that research, build demos, and grade your work" },
-	vision: { label: "Vision", roster: "The assistants that draw and read PDFs" },
+	strong: { label: "Teaching", roster: "The tutor you talk to" },
+	cheap: { label: "Background work", roster: "Research, demos and grading" },
+	vision: { label: "Vision", roster: "Reads PDFs and draws" },
+};
+
+/** Plain names for the tool switches (settings redesign). */
+const TOOL_META: Record<(typeof TOGGLE_TOOLS)[number], { label: string; hint: string }> = {
+	research: { label: "Look things up", hint: "Searches the web for sources and checks its references" },
+	demo: { label: "Build interactive demos", hint: "Small simulations you can play with, like a pendulum or a matrix" },
+	visual: { label: "Draw diagrams", hint: "Sketches and figures next to the explanation" },
+	pdf: { label: "Read your PDFs", hint: "Reads scanned pages and slides from your notes" },
 };
 
 /** The owner's final toggleable-tool list (confirm with the user before
@@ -266,7 +275,7 @@ function MenuTrigger({
 			onClick={() => {
 				if (!disabled) onClick();
 			}}
-			className={`flex h-7 items-center gap-1 rounded-sm border border-border bg-background px-1.5 font-ui text-xs text-foreground transition-colors ${
+			className={`flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 font-ui text-[13px] text-foreground transition-colors ${
 				disabled ? "cursor-not-allowed" : "hover:border-muted-foreground/50"
 			} ${widthClass}`}
 		>
@@ -292,7 +301,11 @@ export function AgentSection({
 	onSectionChange,
 	onModelsChange,
 	onCompactionChange,
+	part = "all",
 }: {
+	/** Which page this renders (settings redesign): the tutor's behaviour,
+	 *  the model pickers, or both (tests). */
+	part?: "tutor" | "models" | "all";
 	agent: AgentSettings | undefined;
 	/** The `models` section (slot pins — engine-level, PUT /api/settings/models). */
 	models: ModelsSettings | undefined;
@@ -310,6 +323,8 @@ export function AgentSection({
 	/** Writes the whole compaction section (replace-PUT discipline). */
 	onCompactionChange: (next: CompactionSettings) => void;
 }) {
+	const [warmup, setWarmup] = useState<boolean>(true);
+	useEffect(() => setWarmup(readWarmupPreference()), []);
 	const [catalog, setCatalog] = useState<ModelCatalogEntry[] | null>(null);
 	const [shown, setShown] = useState<Record<string, string[]> | undefined>(undefined);
 	/** The three tiers' resolved pins — GET /api/models `slots`. The rows'
@@ -603,9 +618,9 @@ export function AgentSection({
 		compaction === undefined ? null : { version: 1, compaction },
 	).compaction;
 
-	return (
+	const modelsGroup = (
 		<>
-			<SettingsGroup label="Models" testid="group-models">
+			<SettingsGroup label="Models" hint="One for teaching, a cheaper one for background work, one that can see." testid="group-models">
 				{MODEL_SLOTS.map((slot) => {
 					const override = models?.[slot];
 					const modelId = override?.model?.id ?? "";
@@ -713,49 +728,68 @@ export function AgentSection({
 					);
 				})}
 			</SettingsGroup>
+		</>
+	);
+	if (part === "models") return modelsGroup;
 
-			<SettingsGroup label="Tools" testid="group-tools">
-				{/* The prober's graph tools (wave 7, owner ruling 2026-09-23):
-				    FIRST row of the group — its subject is the map, its
-				    mechanism is agent capability, so it lives in Tools but
-				    NOT in the tool-toggles list. Its own agent-section key
-				    (agent.graphTools), the search-row hint discipline: a
-				    smaller line under it explaining what it is — this
-				    connects prior sessions' knowledge into new ones. */}
+	return (
+		<>
+			{part === "all" && modelsGroup}
+			<SettingsGroup label="Teaching" testid="group-teaching">
 				{(() => {
-					const graphOn = graph?.enabled ?? true;
+					const language = agent?.replyLanguage ?? null;
+					const open = openMenu?.target === "reply-language";
 					return (
 						<SettingsRow
-							label="Graph tools"
-							hint={graphOn ? "Lets the tutor consult your knowledge map between sessions" : "Graph is disabled"}
-							testid="graph-tools-row"
-							dimmed={!graphOn}
+							label="Language"
+							hint="The tutor answers in this language. Automatic follows the one you write in"
+							testid="reply-language-row"
 						>
-							<Toggle
-								checked={agent?.graphTools?.enabled ?? true}
-								disabled={!graphOn}
-								label="graph tools"
-								onChange={(on) => onSectionChange(composeGraphTools(agent, on))}
-							/>
+							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
+								<MenuTrigger
+									value={replyLanguageLabel(language) ?? ""}
+									emptyLabel="Automatic"
+									ariaLabel="Tutor's language"
+									testid="reply-language-trigger"
+									open={open}
+									onClick={() => setOpenMenu(open ? null : { target: "reply-language", kind: "engine" })}
+									widthClass="min-w-20"
+								/>
+								{open && (
+									<MenuShell
+										preferredSide="down"
+										anchorTestid="reply-language-trigger"
+										testid="reply-language-menu"
+										menuClass="flex w-44 flex-col gap-0.5 rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
+									>
+										{engineOption("reply-language-auto", "Automatic", language === null, null, () => {
+											onSectionChange(composeReplyLanguage(agent, null));
+											setOpenMenu(null);
+										})}
+										{REPLY_LANGUAGES.map((l) =>
+											engineOption(`reply-language-${l.code}`, l.label, language === l.code, null, () => {
+												onSectionChange(composeReplyLanguage(agent, l.code));
+												setOpenMenu(null);
+											}),
+										)}
+									</MenuShell>
+								)}
+							</span>
 						</SettingsRow>
 					);
 				})()}
-				{/* The quizzing mechanic (owner 2026-09-27): segmented — exactly one
-				    of Multiple choice / Free recall is active; the choice swaps which
-				    quizzing tool BOTH agents carry (prober checks + teach checks).
-				    Persisted as agent.tools.explain; absent = Multiple choice. */}
 				{(() => {
 					const free = agent?.tools?.explain === true;
 					return (
 						<SettingsRow
-							label="Quizzing"
-							hint="How both tutors check your understanding"
+							label="Checks"
+							hint="How the tutor tests your understanding during a lesson"
 							testid="quiz-mechanics-row"
 						>
 							<div
 								role="radiogroup"
 								aria-label="Quizzing mechanics"
-								className="flex rounded-lg border border-border/60 bg-muted/30 p-0.5"
+								className="flex shrink-0 rounded-lg bg-accent/60 p-0.5"
 								>
 								{(["choice", "free"] as const).map((m) => {
 									const active = m === "free" ? free : !free;
@@ -768,8 +802,8 @@ export function AgentSection({
 											data-testid={`quiz-mechanics-${m}`}
 											onClick={() => onSectionChange(composeQuizMechanics(agent, m))}
 											className={cn(
-												"h-8 rounded-md px-3 text-sm font-medium transition-colors",
-												active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+												"h-7 rounded-md px-2.5 text-[13px] transition-colors",
+												active ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
 											)}
 										>
 											{m === "choice" ? "Multiple choice" : "Free recall"}
@@ -780,10 +814,39 @@ export function AgentSection({
 						</SettingsRow>
 					);
 				})()}
+				<SettingsRow
+					label="Warm-up question"
+					hint="Learn and practice sessions open with a quick question on what you saw last time"
+					testid="warmup-row"
+				>
+					<Toggle checked={warmup} label="warm-up" onChange={(on) => { setWarmup(on); writeWarmupPreference(on); }} />
+				</SettingsRow>
+				{(() => {
+					const graphOn = graph?.enabled ?? true;
+					return (
+						<SettingsRow
+							label="Use my knowledge map"
+							hint={graphOn ? "The tutor looks at what you already know before teaching" : "Turned off with the knowledge map"}
+							testid="graph-tools-row"
+							dimmed={!graphOn}
+						>
+							<Toggle
+								checked={agent?.graphTools?.enabled ?? true}
+								disabled={!graphOn}
+								label="graph tools"
+								onChange={(on) => onSectionChange(composeGraphTools(agent, on))}
+							/>
+						</SettingsRow>
+					);
+				})()}
+			</SettingsGroup>
+
+			<SettingsGroup label="What the tutor can do" hint="Turn one off if it gets in the way; the tutor simply stops offering it." testid="group-tools">
 				{TOGGLE_TOOLS.map((id) => (
 					<SettingsRow
 						key={id}
-						label={`Tool · ${id}`}
+						label={TOOL_META[id].label}
+						hint={TOOL_META[id].hint}
 						testid={`tool-row-${id}`}
 					>
 						<Toggle
@@ -793,13 +856,16 @@ export function AgentSection({
 						/>
 					</SettingsRow>
 				))}
+			</SettingsGroup>
+
+			<SettingsGroup label="Dictation" testid="group-dictation">
 				{(() => {
 					const language = agent?.dictation?.language ?? null;
 					const open = openMenu?.target === "dictation-language";
 					return (
 						<SettingsRow
-							label="Dictation language"
-							hint={dictation && !dictation.available ? dictation.reason : "The language you speak — Automatic detects it"}
+							label="Spoken language"
+							hint={dictation && !dictation.available ? dictation.reason : "What you speak when you dictate. Automatic detects it"}
 							testid="dictation-language-row"
 						>
 							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
@@ -837,56 +903,10 @@ export function AgentSection({
 				})()}
 			</SettingsGroup>
 
-			{/* The tutor's language (2026-10-27): what the tutor writes in.
-			    Automatic = the learner's own language, as before. */}
-			<SettingsGroup label="Language" testid="group-language">
-				{(() => {
-					const language = agent?.replyLanguage ?? null;
-					const open = openMenu?.target === "reply-language";
-					return (
-						<SettingsRow
-							label="Tutor's language"
-							hint="The language Socrates writes to you in. Automatic answers in the language you write in"
-							testid="reply-language-row"
-						>
-							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
-								<MenuTrigger
-									value={replyLanguageLabel(language) ?? ""}
-									emptyLabel="Automatic"
-									ariaLabel="Tutor's language"
-									testid="reply-language-trigger"
-									open={open}
-									onClick={() => setOpenMenu(open ? null : { target: "reply-language", kind: "engine" })}
-									widthClass="min-w-20"
-								/>
-								{open && (
-									<MenuShell
-										preferredSide="down"
-										anchorTestid="reply-language-trigger"
-										testid="reply-language-menu"
-										menuClass="flex w-44 flex-col gap-0.5 rounded-xl border border-border bg-card p-2 text-xs shadow-xl"
-									>
-										{engineOption("reply-language-auto", "Automatic", language === null, null, () => {
-											onSectionChange(composeReplyLanguage(agent, null));
-											setOpenMenu(null);
-										})}
-										{REPLY_LANGUAGES.map((l) =>
-											engineOption(`reply-language-${l.code}`, l.label, language === l.code, null, () => {
-												onSectionChange(composeReplyLanguage(agent, l.code));
-												setOpenMenu(null);
-											}),
-										)}
-									</MenuShell>
-								)}
-							</span>
-						</SettingsRow>
-					);
-				})()}
-			</SettingsGroup>
-
-			<SettingsGroup label="Context" testid="group-context">
+			<SettingsAdvanced testid="tutor-advanced">
+			<SettingsGroup label="Memory" hint="When a long session gets summarized to stay within the model's limit." testid="group-context">
 				<SettingsRow
-					label="Compaction threshold"
+					label="Summarize after"
 					hint={`${resolvedCompaction.thresholdTokens} tok`}
 					testid="compaction-row-threshold"
 				>
@@ -917,7 +937,7 @@ export function AgentSection({
 				</SettingsRow>
 			</SettingsGroup>
 
-			<SettingsGroup label="System prompts" testid="group-prompts">
+			<SettingsGroup label="Instructions" hint="The tutor's written instructions. Edits replace a part; reset puts the original back." testid="group-prompts" bare>
 				{prompts === null ? (
 					<p className="text-xs text-muted-foreground/70">Loading prompt segments…</p>
 				) : (
@@ -942,6 +962,7 @@ export function AgentSection({
 					</div>
 				)}
 			</SettingsGroup>
+			</SettingsAdvanced>
 		</>
 	);
 }
