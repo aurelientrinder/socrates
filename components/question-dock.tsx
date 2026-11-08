@@ -1089,6 +1089,9 @@ function QuestionDockForm({
 					    in), then Submit. The chord lives on Submit's tooltip. */}
 					<div className="flex items-center gap-1 pr-2 pb-2">
 						<div className="min-w-0 flex-1 [&_[data-testid=stats-bar]]:pb-0">{tools}</div>
+						{/* Desktop app only: write on the reMarkable (Screen Share),
+						    read into the field above, editable before Submit. */}
+						<RemarkableCapture disabled={compactionRunning} onText={addWrittenText} />
 						<Button
 							type="submit"
 							disabled={!canSubmit || compactionRunning}
