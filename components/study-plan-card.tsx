@@ -50,7 +50,15 @@ export const EXAM_STATUS: Record<ExamPlan["status"], { label: string; className:
 	ready: { label: "Ready", className: "bg-accent text-foreground/80" },
 };
 
-export function StudyPlanCard({ plan, onStart }: { plan: BriefingPlan; onStart: (item: BriefingItem) => void }) {
+export function StudyPlanCard({
+	plan,
+	onStart,
+	colorOf = () => undefined,
+}: {
+	plan: BriefingPlan;
+	onStart: (item: BriefingItem) => void;
+	colorOf?: (item: BriefingItem) => number | undefined;
+}) {
 	const study = plan.study;
 	if (!study) return null;
 	const now = plan.generatedAt;
@@ -94,6 +102,9 @@ export function StudyPlanCard({ plan, onStart }: { plan: BriefingPlan; onStart: 
 								<ul className="flex min-w-0 flex-1 flex-col gap-1">
 									{day.items.map((item) => (
 										<li key={item.id} className="group flex min-h-7 items-center gap-2 text-sm">
+											{colorOf(item) !== undefined && (
+												<span aria-hidden="true" className={`cal-c${colorOf(item)} size-2.5 shrink-0 rounded-[3px]`} style={{ background: "var(--bar)" }} />
+											)}
 											<span className="min-w-0 flex-1 truncate" title={item.reason}>
 												{item.title}
 											</span>

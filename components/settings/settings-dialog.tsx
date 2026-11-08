@@ -51,6 +51,7 @@ import { Hint } from "@/components/ui/hint";
 import { downloadFile } from "@/components/artifacts/download";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
 import { KeyboardSection } from "./keyboard-section.tsx";
+import { CalendarSection } from "./calendar-section.tsx";
 
 /** Owner (2026-09-20): hints earn their place — mechanics-explaining
  *  prose is out; only the keyboard note stays (storage location is a
@@ -58,6 +59,7 @@ import { KeyboardSection } from "./keyboard-section.tsx";
 const SECTIONS = [
 	{ id: "keys", label: "Providers" },
 	{ id: "agent", label: "Agent" },
+	{ id: "calendar", label: "Calendar & reminders" },
 	{ id: "appearance", label: "Appearance" },
 	{ id: "graph", label: "Graph" },
 	{ id: "keyboard", label: "Keyboard", hint: "Stored on this device" },
@@ -190,6 +192,9 @@ export function SettingsDialogBody({
 	useEffect(() => {
 		setActive(initialSection);
 	}, [initialSection]);
+	// The keys row to unfold: the deep link, or a jump from another section.
+	const [row, setRow] = useState<string | null>(initialRow);
+	useEffect(() => setRow(initialRow), [initialRow]);
 
 	// Fetch once per dialog mount. 200 {settings: null} is FIRST BOOT
 	// (no record = factory everything), not a failure — the error state is
@@ -393,7 +398,7 @@ export function SettingsDialogBody({
 							)}
 							{active === "keys" && (
 								<SettingsSection title="Providers" testid="section-keys">
-									<KeysSection initialRow={initialRow ?? undefined} />
+									<KeysSection initialRow={row ?? undefined} />
 									<ModelVisibility />
 								</SettingsSection>
 							)}
@@ -443,6 +448,18 @@ export function SettingsDialogBody({
 											void write("graph", next)
 										}
 									/>
+								</SettingsSection>
+							)}
+							{active === "calendar" && (
+								<SettingsSection title="Calendar & reminders" testid="section-calendar">
+									<div className="px-6 pb-6">
+										<CalendarSection
+											onOpenKeys={(keyId) => {
+												setRow(keyId);
+												setActive("keys");
+											}}
+										/>
+									</div>
 								</SettingsSection>
 							)}
 							{active === "keyboard" && (

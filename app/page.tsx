@@ -3,6 +3,9 @@ import { CALIBRATED_WITHIN, CALIBRATION_MIN_ANSWERS } from "@/src/core";
 import {
 	backupIfDue,
 	calibrationAcrossSessions,
+	doneSteps,
+	notesLibrary,
+	weekSessions,
 	googleCalendarStatus,
 	listChats,
 	readBriefingPrefs,
@@ -33,11 +36,15 @@ export default function TodayPage() {
 	const now = new Date();
 	const study = studyRecord(now);
 	const week = { minutes: study.week, today: (now.getDay() + 6) % 7 };
+	const briefing = savedBriefing();
+	const google = googleCalendarStatus();
+	// First run (QoL pass): the checklist shows until all three are done.
+	const setup = { calendar: google.connected, notes: notesLibrary.list().length > 0, quiz: calibration.answered > 0 };
 	return (
 		<TodayView
-			initialBriefing={savedBriefing()}
+			initialBriefing={briefing}
 			initialIntegrations={{
-				google: googleCalendarStatus(),
+				google,
 				todo: TASK_PROVIDERS.map((p) => ({ id: p.id, label: p.label, configured: p.configured() })),
 			}}
 			initialBudget={readBriefingPrefs().budgetMinutes}
@@ -46,6 +53,9 @@ export default function TodayPage() {
 			week={week}
 			streak={study.streak}
 			settingsRecovery={recovery && { keptAs: recovery.keptAs, restoredFrom: recovery.restoredFrom }}
+			doneIds={doneSteps(briefing, now)}
+			weekDays={weekSessions(now)}
+			setup={setup.calendar && setup.notes && setup.quiz ? null : setup}
 		/>
 	);
 }

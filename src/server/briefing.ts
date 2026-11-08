@@ -38,6 +38,8 @@ import { resolveRoleSpec } from "../core/settings-resolution.ts";
 import { piEngineForSpec } from "../agent/models.ts";
 import { runSubagent } from "../agent/subagents/pi-run.ts";
 import { calibrationAcrossSessions, listChats, retentionAcrossSessions } from "./chats.ts";
+import { chatDigests } from "./chat-digests.ts";
+import { studyMinutesByDay, weekStartOf } from "../core/study-time.ts";
 import { courseMaterial, readCoursePins, readCourseLinks } from "./courses.ts";
 import { stores } from "./stores.ts";
 import { createStudyBlock, googleCalendarStatus, listCalendarEvents, type GoogleCalendarStatus } from "./integrations/google-calendar.ts";
@@ -68,6 +70,9 @@ export interface Briefing {
 	events: StudyEvent[];
 	/** Item id → where it was pushed, so the buttons show it is done. */
 	pushed: Record<string, { todo?: string; calendar?: string }>;
+	/** Item id → the session started for it today (QoL pass, 2026-11-08):
+	 *  a step counts as done once that session has had its time. */
+	started?: Record<string, string>;
 }
 
 export interface BriefingPrefs {
@@ -274,10 +279,11 @@ export async function getBriefing(opts: { refresh?: boolean; now?: number } = {}
 	if (!slot.current) {
 		slot.current = generate(now)
 			.then((b) => {
-				if (saved?.pushed && Object.keys(saved.pushed).length > 0) {
-					b.pushed = saved.pushed;
-					writeJson(dayFile(day), b);
-				}
+				const keepPushed = saved?.pushed && Object.keys(saved.pushed).length > 0;
+				const keepStarted = saved?.started && Object.keys(saved.started).length > 0;
+				if (keepPushed) b.pushed = saved.pushed;
+				if (keepStarted) b.started = saved.started;
+				if (keepPushed || keepStarted) writeJson(dayFile(day), b);
 				// Keep the phone/laptop alerts in step with the fresh plan (no-op while reminders are off).
 				void syncReminders(b.plan).catch(() => undefined);
 				return b;
@@ -299,6 +305,52 @@ function findItem(id: string): { briefing: Briefing; item: BriefingItem } {
 	const item = briefing?.plan.items.find((i) => i.id === id);
 	if (!briefing || !item) throw new Error("That briefing item is gone. Refresh the briefing.");
 	return { briefing, item };
+}
+
+/** Remember which session a plan step started (a click on Start). */
+export function markStepStarted(id: string, chatId: string): void {
+	const briefing = savedBriefing();
+	if (!briefing || !briefing.plan.items.some((i) => i.id === id)) return;
+	briefing.started = { ...briefing.started, [id]: chatId };
+	writeJson(dayFile(briefing.plan.day), briefing);
+}
+
+/** Minutes a step's session needs today before the step ticks off: most
+ *  of its planned time, and never less than two minutes of real study. */
+export function stepDoneMinutes(planned: number): number {
+	return Math.max(2, Math.round(planned * 0.6));
+}
+
+/** Today's plan steps whose session has had its time today. */
+export function doneSteps(briefing: Briefing | null, now: Date = new Date()): string[] {
+	const started = briefing?.started;
+	if (!briefing || !started) return [];
+	const dayStart = new Date(now);
+	dayStart.setHours(0, 0, 0, 0);
+	const stamps = new Map(chatDigests().map((d) => [d.chatId, d.stamps]));
+	return briefing.plan.items
+		.filter((item) => {
+			const chatId = started[item.id];
+			const minutes = chatId ? (studyMinutesByDay([stamps.get(chatId) ?? []], dayStart, 1)[0] ?? 0) : 0;
+			return minutes >= stepDoneMinutes(item.minutes);
+		})
+		.map((i) => i.id);
+}
+
+/** This week's sessions, per day (Monday first): what "This week" opens
+ *  when you click a day. At most five per day, longest first. */
+export function weekSessions(now: Date = new Date()): { chatId: string; title: string; minutes: number }[][] {
+	const start = weekStartOf(now);
+	const days: { chatId: string; title: string; minutes: number }[][] = Array.from({ length: 7 }, () => []);
+	for (const d of chatDigests()) {
+		if (d.archived) continue;
+		const stamps = d.stamps.filter((t) => t >= start.getTime());
+		if (stamps.length < 2) continue;
+		studyMinutesByDay([stamps], start, 7).forEach((m, i) => {
+			if (m > 0) days[i]!.push({ chatId: d.chatId, title: d.title, minutes: m });
+		});
+	}
+	return days.map((list) => list.sort((a, b) => b.minutes - a.minutes).slice(0, 5));
 }
 
 function markPushed(briefing: Briefing, id: string, patch: { todo?: string; calendar?: string }): void {

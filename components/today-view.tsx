@@ -1,12 +1,13 @@
 "use client";
 
 import { SettingsRecoveredNote, type SettingsRecoveredInfo } from "./settings-recovered-note";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarPlusIcon, FlameIcon, ListPlusIcon, Loader2Icon, MessageSquareIcon, PlayIcon, RefreshCwIcon, ScaleIcon, ZapIcon } from "lucide-react";
+import { CalendarPlusIcon, CheckIcon, CircleIcon, FlameIcon, SettingsIcon, ListPlusIcon, Loader2Icon, MessageSquareIcon, PlayIcon, RefreshCwIcon, ScaleIcon, ZapIcon } from "lucide-react";
 import {
 	BUDGET_CHOICES,
+	courseKeyOfEvent,
 	STREAK_MIN_MINUTES,
 	quickPrompt,
 	startPrompt,
@@ -25,10 +26,10 @@ import { QUICK_SESSION_MINUTES, setSessionBudget } from "@/components/session-ti
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { onSettingsSaved } from "@/components/settings-signal";
 import { Button } from "@/components/ui/button";
-import { RemindersCard } from "@/components/reminders-card";
 import { PageFrame } from "@/components/page-header";
 import { useStartDialog } from "@/components/start-dialog";
 import { ACTION_LABEL, ACTION_TAG, EXAM_STATUS, StudyPlanCard } from "@/components/study-plan-card";
+import { useSessionClassColors } from "@/components/use-class-colors";
 import { useClassColors } from "@/components/use-class-colors";
 import { cn } from "@/lib/utils";
 
@@ -84,6 +85,8 @@ interface Handlers {
 	onDisconnectGoogle: () => void;
 	onOpenKeys: (keyId: string) => void;
 	onLinkCourse: (key: string, label: string, chatIds: string[]) => void;
+	/** Open Settings on a section (setup lives there now). */
+	onOpenSettings?: (section: string) => void;
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -123,6 +126,10 @@ export function TodayShell({
 	week = null,
 	streak = null,
 	settingsRecovery = null,
+	colorOf: colorOverride,
+	doneIds = NO_DONE,
+	weekDays = null,
+	setup = null,
 }: {
 	briefing: BriefingData | null;
 	integrations: IntegrationsData;
@@ -142,12 +149,31 @@ export function TodayShell({
 	streak?: StudyStreak | null;
 	/** Set when settings.json was unreadable and got recovered. */
 	settingsRecovery?: SettingsRecoveredInfo | null;
+	/** A plan step's class color (the calendar's .cal-cN); by default from
+	 *  the step's event's class, else its session's class. */
+	colorOf?: (item: BriefingItem) => number | undefined;
+	/** Steps already done today: they tick off and the hero moves on. */
+	doneIds?: ReadonlySet<string>;
+	/** This week's sessions per day (Monday first): a click on a day's bar shows them. */
+	weekDays?: WeekDaySession[][] | null;
+	/** First run: what is set up yet (null hides the checklist). */
+	setup?: SetupState | null;
 }) {
 	const plan = briefing?.plan;
 	const todo = integrations.todo[0];
 	const items = plan?.items ?? [];
-	const first = items[0];
-	const rest = items.slice(1);
+	const first = items.find((i) => !doneIds.has(i.id));
+	const rest = items.filter((i) => i !== first);
+	const doneCount = items.filter((i) => doneIds.has(i.id)).length;
+	const classColors = useClassColors();
+	const sessionColors = useSessionClassColors();
+	const colorOf =
+		colorOverride ??
+		((item: BriefingItem) => {
+			const event = plan?.upcoming.find((u) => u.event.id === item.eventId);
+			const key = event?.course.key ?? (item.eventTitle ? courseKeyOfEvent({ title: item.eventTitle }) : "");
+			return (key ? classColors.get(key) : undefined) ?? (item.chatId ? sessionColors.get(item.chatId) : undefined);
+		});
 	const { open: openStart } = useStartDialog();
 	// Five minutes of the first step, or of something new when the plan is empty.
 	const quick = () => (first ? handlers.onQuick(first) : openStart("learn", QUICK_SESSION_MINUTES));
@@ -202,6 +228,7 @@ export function TodayShell({
 				)}
 			</header>
 
+			{setup && <SetupChecklist setup={setup} onConnect={() => handlers.onOpenSettings?.("calendar")} onQuiz={quick} />}
 			<div className="flex flex-wrap items-start gap-6">
 				<div className="flex min-w-0 flex-[2_1_30rem] flex-col gap-6">
 					{/* THE PLAN CARD (Today refine, 2026-11-08): the first step is
@@ -222,6 +249,11 @@ export function TodayShell({
 									{first && (
 										<span className={cn("rounded-full px-2 py-px text-xs font-semibold", ACTION_TAG[first.action])}>{ACTION_LABEL[first.action]}</span>
 									)}
+									{doneCount > 0 && (
+										<span className="flex items-center gap-1 text-xs text-muted-foreground">
+											<CheckIcon className="size-3.5" /> {doneCount} of {items.length} done
+										</span>
+									)}
 								</div>
 								<BudgetPicker value={budgetMinutes} onChange={handlers.onBudget} />
 							</div>
@@ -237,8 +269,16 @@ export function TodayShell({
 								)
 							) : first ? (
 								<div data-testid="today-item" className="flex flex-col gap-1.5">
-									<span className="text-2xl font-semibold tracking-tight text-balance">{first.title}</span>
+									<span className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight text-balance">
+										<ClassDot color={colorOf(first)} className="size-3" />
+										{first.title}
+									</span>
 									<p className="max-w-2xl text-base text-muted-foreground">{first.reason}</p>
+								</div>
+							) : doneCount > 0 ? (
+								<div className="flex flex-col gap-1.5">
+									<span className="text-2xl font-semibold tracking-tight">Today&apos;s plan is done</span>
+									<p className="text-base text-muted-foreground">Everything planned for today counts. More now is a bonus, not a debt.</p>
 								</div>
 							) : (
 								<div className="flex flex-col gap-1.5">
@@ -264,7 +304,7 @@ export function TodayShell({
 										Only 5 minutes
 									</Button>
 								)}
-								{first && <ItemActions item={first} pushed={briefing?.pushed?.[first.id]} {...pushProps} className="ml-auto" />}
+								{first && <ItemActions item={first} pushed={briefing?.pushed?.[first.id]} {...pushProps} compact className="ml-auto" />}
 							</div>
 							{plan && plan.trackedTopics === 0 && (
 								<p className="text-sm text-muted-foreground">
@@ -276,24 +316,32 @@ export function TodayShell({
 						{rest.length > 0 && (
 							<div className="border-t border-border/60 bg-accent/25 px-6 pb-3 pt-3">
 								<div className="flex items-baseline justify-between gap-2 pb-1">
-									<h3 className="text-sm font-medium text-muted-foreground">Then</h3>
+									<h3 className="text-sm font-medium text-muted-foreground">{doneCount > 0 ? "Today" : "Then"}</h3>
 									<span className="text-xs tabular-nums text-muted-foreground">{total} min in all</span>
 								</div>
 								<ol className="flex flex-col">
 									{rest.map((item, i) => (
-										<PlanRow key={item.id} index={i + 2} item={item} pushed={briefing?.pushed?.[item.id]} {...pushProps} />
+										<PlanRow
+											key={item.id}
+											index={items.indexOf(item) + 1}
+											item={item}
+											done={doneIds.has(item.id)}
+											color={colorOf(item)}
+											pushed={briefing?.pushed?.[item.id]}
+											{...pushProps}
+										/>
 									))}
 								</ol>
 							</div>
 						)}
 					</section>
-					{plan && <StudyPlanCard plan={plan} onStart={handlers.onStart} />}
+					{plan && <StudyPlanCard plan={plan} onStart={handlers.onStart} colorOf={colorOf} />}
 				</div>
 
 				<div className="flex min-w-0 flex-[1_1_18rem] flex-col gap-5">
 					{settingsRecovery && <SettingsRecoveredNote recovery={settingsRecovery} />}
 
-					{week && <WeekCard week={week} streak={streak} onQuick={quick} />}
+					{week && <WeekCard week={week} streak={streak} onQuick={quick} days={weekDays} />}
 
 					{plan && (
 						<SideCard title="Coming up" testId="today-coming-up">
@@ -356,8 +404,7 @@ export function TodayShell({
 						</section>
 					)}
 
-					{integrations.google.connected && <RemindersCard />}
-					<Connections integrations={integrations} briefing={briefing} handlers={handlers} />
+					<SetupNudge integrations={integrations} briefing={briefing} onFix={() => handlers.onOpenSettings?.("calendar")} />
 				</div>
 			</div>
 		</PageFrame>
@@ -387,6 +434,97 @@ function BudgetPicker({ value, onChange }: { value: number; onChange: (minutes: 
 				))}
 			</div>
 			<span aria-hidden="true">min</span>
+		</div>
+	);
+}
+
+const NO_DONE: ReadonlySet<string> = new Set();
+
+export interface WeekDaySession {
+	chatId: string;
+	title: string;
+	minutes: number;
+}
+
+export interface SetupState {
+	calendar: boolean;
+	notes: boolean;
+	quiz: boolean;
+}
+
+/** A class's color as a small square (the calendar's .cal-cN bar). */
+export function ClassDot({ color, className }: { color?: number; className?: string }) {
+	if (color === undefined) return null;
+	return <span aria-hidden="true" className={cn(`cal-c${color} size-2.5 shrink-0 rounded-[3px]`, className)} style={{ background: "var(--bar)" }} />;
+}
+
+/** First run: three steps that make the plan worth reading. */
+function SetupChecklist({ setup, onConnect, onQuiz }: { setup: SetupState; onConnect: () => void; onQuiz: () => void }) {
+	const [hidden, setHidden] = useState(false);
+	const steps = [
+		{ key: "calendar", done: setup.calendar, title: "Connect your calendar", body: "Exams and classes are what the plan works back from.", action: "Connect", href: null, onClick: onConnect },
+		{ key: "notes", done: setup.notes, title: "Import your course notes", body: "A folder per class: the tutor teaches and quizzes from them.", action: "Import", href: "/library", onClick: undefined },
+		{ key: "quiz", done: setup.quiz, title: "Answer one quiz", body: "Five minutes. It is how Socrates learns what you really know.", action: "Start 5 minutes", href: null, onClick: onQuiz },
+	];
+	const left = steps.filter((x) => !x.done).length;
+	if (left === 0 || hidden) return null;
+	return (
+		<section data-testid="today-setup" className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-surface px-6 py-5">
+			<div className="flex items-baseline justify-between gap-3">
+				<h2 className="text-lg font-semibold">Get set up</h2>
+				<span className="flex items-center gap-3 text-sm text-muted-foreground">
+					{3 - left} of 3 done
+					<button type="button" onClick={() => setHidden(true)} className="underline-offset-2 hover:text-foreground hover:underline">
+						Not now
+					</button>
+				</span>
+			</div>
+			<ol className="grid gap-3 sm:grid-cols-3">
+				{steps.map((x) => (
+					<li key={x.key} className={cn("flex flex-col gap-2 rounded-xl border border-border/60 p-4", x.done && "bg-accent/35")}>
+						<span className="flex items-center gap-2 font-medium">
+							{x.done ? (
+								<span className="flex size-5 items-center justify-center rounded-full bg-foreground text-background">
+									<CheckIcon className="size-3" strokeWidth={2.75} />
+								</span>
+							) : (
+								<CircleIcon className="size-5 text-muted-foreground/60" />
+							)}
+							<span className={cn(x.done && "text-muted-foreground")}>{x.title}</span>
+						</span>
+						<p className="text-sm text-muted-foreground">{x.body}</p>
+						{!x.done &&
+							(x.href ? (
+								<Button variant="outline" size="sm" className="mt-auto self-start" asChild>
+									<Link href={x.href}>{x.action}</Link>
+								</Button>
+							) : (
+								<Button variant="outline" size="sm" className="mt-auto self-start" onClick={x.onClick}>
+									{x.action}
+								</Button>
+							))}
+					</li>
+				))}
+			</ol>
+		</section>
+	);
+}
+
+/** Setup lives in Settings now; Today only says so when something is broken. */
+function SetupNudge({ integrations, briefing, onFix }: { integrations: IntegrationsData; briefing: BriefingData | null; onFix: () => void }) {
+	const g = integrations.google;
+	const problem = g.needsReconnect
+		? "Google Calendar needs reconnecting."
+		: (briefing?.sources.calendar.error ?? briefing?.sources.todo.error ?? null);
+	if (!problem) return null;
+	return (
+		<div data-testid="today-setup-nudge" className="flex items-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm">
+			<span className="size-2 shrink-0 rounded-full bg-warn" aria-hidden="true" />
+			<span className="min-w-0 flex-1">{problem}</span>
+			<Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onFix} data-testid="today-fix-setup">
+				<SettingsIcon className="size-3.5" />
+				Fix in Settings
+			</Button>
 		</div>
 	);
 }
@@ -446,7 +584,20 @@ function StreakLine({ streak, onQuick }: { streak: StudyStreak; onQuick: () => v
 }
 
 /** This week (redesign wave): minutes studied per day, as small bars. */
-function WeekCard({ week, streak = null, onQuick }: { week: StudyWeek; streak?: StudyStreak | null; onQuick: () => void }) {
+function WeekCard({
+	week,
+	streak = null,
+	onQuick,
+	days = null,
+}: {
+	week: StudyWeek;
+	streak?: StudyStreak | null;
+	onQuick: () => void;
+	days?: WeekDaySession[][] | null;
+}) {
+	const [open, setOpen] = useState<number | null>(null);
+	const sessionColors = useSessionClassColors();
+	const openDay = open !== null && days ? { index: open, sessions: days[open] ?? [] } : null;
 	const total = week.minutes.reduce((a, b) => a + b, 0);
 	// Scale to the busiest day, but never so that a few minutes fill the bar.
 	const top = Math.max(30, ...week.minutes);
@@ -457,23 +608,39 @@ function WeekCard({ week, streak = null, onQuick }: { week: StudyWeek; streak?: 
 				<span className="text-sm text-muted-foreground tabular-nums">{total > 0 ? formatStudyTotal(total) : "Nothing yet"}</span>
 			</div>
 			<div
-				role="img"
+				role={days ? "group" : "img"}
 				aria-label={`Minutes studied each day: ${week.minutes.map((m, i) => `${DAY_NAMES[i]} ${m}`).join(", ")}`}
 				className="flex h-12 items-end gap-2"
 			>
-				{week.minutes.map((m, i) => (
-					<span key={i} className="flex flex-1 justify-center">
+				{week.minutes.map((m, i) => {
+					const clickable = days !== null && m > 0;
+					const Wrap = clickable ? "button" : "span";
+					return (
+					<Wrap
+						key={i}
+						{...(clickable
+							? {
+									type: "button" as const,
+									"aria-label": `${DAY_NAMES[i]}: ${formatStudyTotal(m)}`,
+									"aria-expanded": open === i,
+									onClick: () => setOpen((o) => (o === i ? null : i)),
+								}
+							: {})}
+						className={cn("flex flex-1 justify-center self-stretch items-end", clickable && "cursor-pointer rounded-md")}
+					>
 						<span
 							data-testid="today-week-bar"
 							className={cn(
 								"w-full max-w-7 rounded-[5px]",
 								m === 0 ? "bg-accent" : i === week.today ? "bg-foreground/75" : "bg-foreground/35",
 								i === week.today && "outline-dashed outline-[1.5px] outline-offset-2 outline-muted-foreground/60",
+								openDay?.index === i && "bg-foreground/75 ring-2 ring-foreground/20 ring-offset-2 ring-offset-surface",
 							)}
 							style={{ height: m > 0 ? `${Math.max(6, Math.round((m / top) * 48))}px` : "4px" }}
 						/>
-					</span>
-				))}
+					</Wrap>
+					);
+				})}
 			</div>
 			<div aria-hidden="true" className="flex gap-2 text-xs text-muted-foreground">
 				{DAY_LETTERS.map((d, i) => (
@@ -482,6 +649,26 @@ function WeekCard({ week, streak = null, onQuick }: { week: StudyWeek; streak?: 
 					</span>
 				))}
 			</div>
+			{openDay && (
+				<div data-testid="today-week-day" className="flex flex-col gap-1.5 rounded-xl bg-accent/45 px-3.5 py-3 text-sm">
+					<div className="flex items-baseline justify-between">
+						<span className="font-medium">{DAY_NAMES[openDay.index]}</span>
+						<span className="text-xs tabular-nums text-muted-foreground">{formatStudyTotal(week.minutes[openDay.index] ?? 0)}</span>
+					</div>
+					<ul className="flex flex-col gap-1">
+						{openDay.sessions.length === 0 && <li className="text-muted-foreground">Flashcards or a mock exam.</li>}
+						{openDay.sessions.map((x) => (
+							<li key={x.chatId} className="flex items-center gap-2">
+								<ClassDot color={sessionColors.get(x.chatId)} />
+								<Link href={`/chat/${x.chatId}`} className="min-w-0 flex-1 truncate underline-offset-2 hover:underline">
+									{x.title}
+								</Link>
+								<span className="text-xs tabular-nums text-muted-foreground">{x.minutes} min</span>
+							</li>
+						))}
+					</ul>
+				</div>
+			)}
 			{streak && <StreakLine streak={streak} onQuick={onQuick} />}
 		</section>
 	);
@@ -501,69 +688,6 @@ function timeOf(e: StudyEvent): string {
 	return e.allDay ? "all day" : new Date(e.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function Connections({ integrations, briefing, handlers }: { integrations: IntegrationsData; briefing: BriefingData | null; handlers: Handlers }) {
-	const g = integrations.google;
-	const todo = integrations.todo[0];
-	const calendarError = briefing?.sources.calendar.error ?? g.error;
-	const todoError = briefing?.sources.todo.error;
-	const allGood = g.connected && !g.needsReconnect && todo?.configured && !calendarError && !todoError;
-	if (allGood) return null;
-	return (
-		<section data-testid="today-connections" className="flex flex-col gap-3 rounded-2xl border border-dashed border-border px-5 py-4 text-sm">
-			<h2 className="text-base font-semibold">Connections</h2>
-			<div className="flex flex-wrap items-center gap-2">
-				<span className="font-medium">Google Calendar</span>
-				{g.connected ? (
-					<>
-						<span className="text-muted-foreground">connected{g.email ? ` as ${g.email}` : ""}</span>
-						{g.needsReconnect && (
-							<>
-								<span className="text-muted-foreground" data-testid="today-reconnect-note">
-									Reconnect once so Socrates can keep its study blocks and reminders on its own “Socrates” calendar.
-								</span>
-								<Button size="sm" onClick={handlers.onConnectGoogle} disabled={g.pending} data-testid="today-reconnect-google">
-									{g.pending ? "Waiting for the browser…" : "Reconnect"}
-								</Button>
-							</>
-						)}
-						<Button variant="ghost" size="sm" className="ml-auto" onClick={handlers.onDisconnectGoogle}>
-							Disconnect
-						</Button>
-					</>
-				) : g.configured ? (
-					<Button size="sm" className="ml-auto" onClick={handlers.onConnectGoogle} disabled={g.pending} data-testid="today-connect-google">
-						{g.pending ? "Waiting for the browser…" : "Sign in with Google"}
-					</Button>
-				) : (
-					<>
-						<span className="text-muted-foreground">needs your own Google OAuth client (one-time, about 5 minutes).</span>
-						<Button variant="ghost" size="sm" className="ml-auto" onClick={() => handlers.onOpenKeys("GOOGLE_OAUTH_CLIENT_ID")}>
-							Add client ID
-						</Button>
-					</>
-				)}
-			</div>
-			{calendarError && <p className="text-destructive">{calendarError}</p>}
-			{todo && (
-				<div className="flex flex-wrap items-center gap-2">
-					<span className="font-medium">{todo.label}</span>
-					{todo.configured ? (
-						<span className="text-muted-foreground">connected</span>
-					) : (
-						<>
-							<span className="text-muted-foreground">paste your API token to see dated tasks and add study tasks.</span>
-							<Button variant="ghost" size="sm" className="ml-auto" onClick={() => handlers.onOpenKeys("TODOIST_API_TOKEN")}>
-								Add token
-							</Button>
-						</>
-					)}
-				</div>
-			)}
-			{todoError && <p className="text-destructive">{todoError}</p>}
-		</section>
-	);
-}
-
 interface PushProps {
 	pushing: string | null;
 	canTodo: boolean;
@@ -572,7 +696,6 @@ interface PushProps {
 	handlers: Handlers;
 }
 
-/** A step's side doors: back to its session, onto the to-do list, into the calendar. */
 function ItemActions({
 	item,
 	pushed,
@@ -624,32 +747,48 @@ function ItemActions({
 
 /** A later step of today's list: one line, its why under it; the side
  *  doors show on hover or keyboard focus, so the list reads calm. */
-function PlanRow({ index, item, pushed, ...push }: PushProps & { index: number; item: BriefingItem; pushed?: { todo?: string; calendar?: string } }) {
+function PlanRow({
+	index,
+	item,
+	pushed,
+	done = false,
+	color,
+	...push
+}: PushProps & { index: number; item: BriefingItem; pushed?: { todo?: string; calendar?: string }; done?: boolean; color?: number }) {
 	return (
 		<li data-testid="today-item" className="group flex gap-3 border-t border-border/50 py-2.5 first:border-t-0">
-			<span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums text-muted-foreground">
-				{index}
-			</span>
+			{done ? (
+				<span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+					<CheckIcon className="size-3.5" strokeWidth={2.5} />
+				</span>
+			) : (
+				<span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums text-muted-foreground">
+					{index}
+				</span>
+			)}
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<div className="flex flex-wrap items-center gap-2">
-					<span className="text-base font-medium">{item.title}</span>
+					<ClassDot color={color} />
+					<span className={cn("text-base font-medium", done && "text-muted-foreground line-through decoration-muted-foreground/40")}>{item.title}</span>
 					<span className={cn("rounded-full px-2 py-px text-xs font-semibold", ACTION_TAG[item.action])}>{ACTION_LABEL[item.action]}</span>
 				</div>
 				<p className="text-sm text-muted-foreground">{item.reason}</p>
 			</div>
 			<div className="flex shrink-0 items-start gap-1">
-				<ItemActions
+				{!done && <ItemActions
 					item={item}
 					pushed={pushed}
 					{...push}
 					compact
 					className="-mt-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-				/>
-				<span className="pt-1 text-sm whitespace-nowrap tabular-nums text-muted-foreground">{item.minutes} min</span>
-				<Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => push.handlers.onStart(item)} data-testid="today-start" aria-label={`Start: ${item.title}`}>
-					<PlayIcon className="size-3.5" />
-					Start
-				</Button>
+				/>}
+				<span className="pt-1 text-sm whitespace-nowrap tabular-nums text-muted-foreground">{done ? `Done · ${item.minutes} min` : `${item.minutes} min`}</span>
+				{!done && (
+					<Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => push.handlers.onStart(item)} data-testid="today-start" aria-label={`Start: ${item.title}`}>
+						<PlayIcon className="size-3.5" />
+						Start
+					</Button>
+				)}
 			</div>
 		</li>
 	);
@@ -828,6 +967,18 @@ function UpcomingRow({
 
 // ─── The stateful view ──────────────────────────────────────────────────────
 
+/** Tell the server which session a plan step started, so Today can tick
+ *  it off once the session has had its time. Best effort. */
+function noteStarted(id: string, target: string): void {
+	const chatId = /^\/chat\/([^/?#]+)/.exec(target)?.[1];
+	if (!chatId) return;
+	void fetch("/api/briefing/started", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ id, chatId }),
+	}).catch(() => undefined);
+}
+
 async function json<T>(res: Response): Promise<T> {
 	const body = (await res.json().catch(() => ({}))) as T & { error?: string };
 	if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
@@ -843,6 +994,9 @@ export function TodayView({
 	week = null,
 	streak = null,
 	settingsRecovery = null,
+	doneIds = [],
+	weekDays = null,
+	setup = null,
 }: {
 	initialBriefing: BriefingData | null;
 	initialIntegrations: IntegrationsData;
@@ -852,6 +1006,10 @@ export function TodayView({
 	week?: StudyWeek | null;
 	streak?: StudyStreak | null;
 	settingsRecovery?: SettingsRecoveredInfo | null;
+	/** Today's plan steps already done (server-side: their session had its time). */
+	doneIds?: string[];
+	weekDays?: WeekDaySession[][] | null;
+	setup?: SetupState | null;
 }) {
 	const router = useRouter();
 	const { open: openSettings } = useSettingsDialog();
@@ -861,6 +1019,7 @@ export function TodayView({
 	const [busy, setBusy] = useState(false);
 	const [pushing, setPushing] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const done = useMemo(() => new Set(doneIds), [doneIds]);
 
 	const generate = useCallback(async (refresh: boolean) => {
 		setBusy(true);
@@ -933,6 +1092,7 @@ export function TodayView({
 					(await startDraftSession(startPrompt(item), fetch, undefined, undefined, undefined, recall ? { warmup: false } : undefined));
 				if (target) {
 					setSessionBudget(target, item.minutes);
+					noteStarted(item.id, target);
 					router.push(target);
 				}
 			} catch {
@@ -949,6 +1109,7 @@ export function TodayView({
 					(await startDraftSession(item.title, fetch, undefined, undefined, quickPrompt(item), { warmup: false }));
 				if (target) {
 					setSessionBudget(target, QUICK_SESSION_MINUTES);
+					noteStarted(item.id, target);
 					router.push(target);
 				}
 			} catch {
@@ -1042,6 +1203,7 @@ export function TodayView({
 			}
 		},
 		onOpenKeys: (keyId) => openSettings("keys", keyId),
+		onOpenSettings: (section) => openSettings(section),
 		onLinkCourse: async (key, label, chatIds) => {
 			try {
 				await json(
@@ -1072,6 +1234,9 @@ export function TodayView({
 			week={week}
 			streak={streak}
 			settingsRecovery={settingsRecovery}
+			doneIds={done}
+			weekDays={weekDays}
+			setup={setup}
 		/>
 	);
 }
