@@ -23,6 +23,7 @@ import { fuzzyScore } from "@/src/core";
 import { useServerEvent, useServerResync } from "@/components/server-events";
 import type { ChatListItem } from "@/src/core";
 import { bindingForAction, formatBinding, kbdEventForAction } from "@/src/core";
+import { useSessionClassColors } from "@/components/use-class-colors";
 
 /**
  * Toggleable sidebar — NOT a modal drawer: no backdrop, no focus theft. It
@@ -286,18 +287,34 @@ const VARIANT_TILE: Record<SessionVariant, string> = {
 };
 
 /** The kind tile: what sort of session this is, at a glance. Exported so
- *  the session header shows the same mark. */
-export function SessionKindTile({ variant, className }: { variant: SessionVariant; className?: string }) {
+ *  the session header shows the same mark. With a class color (the
+ *  calendar's `.cal-cN`), the tile takes that class's tint and ink, so a
+ *  class's sessions read as one group; the icon still says the kind. */
+export function SessionKindTile({ variant, classColor, className }: { variant: SessionVariant; classColor?: number; className?: string }) {
 	const Icon = VARIANT_ICON[variant];
+	const tinted = classColor !== undefined;
 	return (
 		<span
 			aria-hidden="true"
 			data-testid={`session-kind-${variant}`}
-			className={cn("flex size-6.5 shrink-0 items-center justify-center rounded-[7px]", VARIANT_TILE[variant], className)}
+			data-class-color={tinted ? classColor : undefined}
+			className={cn(
+				"flex size-6.5 shrink-0 items-center justify-center rounded-[7px]",
+				tinted ? `cal-c${classColor}` : VARIANT_TILE[variant],
+				className,
+			)}
+			style={tinted ? { background: "var(--tint)", color: "var(--ink)" } : undefined}
 		>
 			<Icon className="size-3.5" strokeWidth={2.1} />
 		</span>
 	);
+}
+
+/** The kind tile in a session's own header, tinted with its class. Its
+ *  own component, so the class fetch never re-renders the whole chat. */
+export function SessionClassKindTile({ chatId, variant, className }: { chatId: string; variant: SessionVariant; className?: string }) {
+	const colors = useSessionClassColors();
+	return <SessionKindTile variant={variant} classColor={colors.get(chatId)} className={className} />;
 }
 
 /**
@@ -313,9 +330,12 @@ export function SessionRow({
 	onOpen,
 	kbdSelected = false,
 	onContextMenu,
+	classColor,
 }: {
 	chat: ChatListItem;
 	active: boolean;
+	/** The session's class color, when it belongs to a class. */
+	classColor?: number;
 	onOpen: () => void;
 	/** Keyboard-cycle highlight (shortcut wave A: Alt+↑/↓ + Alt+Enter) —
 	 *  visually distinct from the active session, which stays filled. */
@@ -339,7 +359,7 @@ export function SessionRow({
 				kbdSelected && !active && "bg-ink-soft ring-1 ring-border",
 			)}
 		>
-			<SessionKindTile variant={display.variant} />
+			<SessionKindTile variant={display.variant} classColor={classColor} />
 			<span className="min-w-0 flex-1">
 				<span className="block truncate text-[14.5px] leading-[1.25] font-semibold text-foreground">{display.name}</span>
 				<span className="block truncate text-[12px] leading-[1.3] text-muted-foreground">{sessionMeta(chat)}</span>
@@ -368,7 +388,17 @@ export function SessionRow({
  *  select-all on entry (the click means "replace", the header rename's
  *  rule), Enter/blur commits, Esc discards. The meta line stays so the row
  *  never changes height mid-edit. */
-export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; onCommit: (next: string) => void; onCancel: () => void }) {
+export function RenameRow({
+	chat,
+	onCommit,
+	onCancel,
+	classColor,
+}: {
+	chat: ChatListItem;
+	onCommit: (next: string) => void;
+	onCancel: () => void;
+	classColor?: number;
+}) {
 	const [draft, setDraft] = useState(chat.title);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	useEffect(() => {
@@ -383,7 +413,7 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 			data-testid="session-rename-row"
 			className="relative mb-px flex w-full items-center gap-2.5 rounded-[9px] bg-ink-soft px-2 py-1.5"
 		>
-			<SessionKindTile variant={sessionDisplay(chat).variant} />
+			<SessionKindTile variant={sessionDisplay(chat).variant} classColor={classColor} />
 			<span className="flex min-w-0 w-full flex-col">
 				<input
 					ref={inputRef}
@@ -500,6 +530,7 @@ function SessionsSidebar() {
 	const [chats, setChats] = useState<ChatListItem[] | null>(null);
 	const [query, setQuery] = useState("");
 	const [kindFilter, setKindFilter] = useState<SessionKindFilter>("all");
+	const classColors = useSessionClassColors();
 	useEffect(() => {
 		const stored = window.localStorage.getItem(KIND_FILTER_KEY);
 		if (stored === "teach" || stored === "all" || stored === "practice") setKindFilter(stored);
@@ -970,6 +1001,7 @@ function SessionsSidebar() {
 										chat={c}
 										onCommit={(next) => void commitRename(c.id, next)}
 										onCancel={() => setRenamingId(null)}
+										classColor={classColors.get(c.id)}
 									/>
 								) : (
 									<SessionRow
@@ -982,6 +1014,7 @@ function SessionsSidebar() {
 											router.push(`/chat/${c.id}`);
 										}}
 										onContextMenu={(e) => openContext(e, c)}
+										classColor={classColors.get(c.id)}
 									/>
 								);
 							return heading ? [heading, row] : row;
