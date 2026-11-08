@@ -146,15 +146,21 @@ export function newAnswerResult(
 	toolName: string,
 	answer: unknown,
 ): LhMessage & ToolResultMessage {
+	const sketch = (answer as { sketch?: QuestionAnswerData["sketch"] } | null)?.sketch;
 	return {
 		id: newMessageId(),
 		role: "toolResult",
 		toolCallId,
 		toolName,
-		content: [{ type: "text", text: JSON.stringify(compactAnswerForModel(answer as QuestionAnswerData)) }],
+		content: [
+			{ type: "text", text: JSON.stringify(compactAnswerForModel(answer as QuestionAnswerData)) },
+			...(sketch?.data ? [{ type: "image" as const, data: sketch.data, mimeType: sketch.mimeType }] : []),
+		],
 		// 0.87.1 narrowed ToolResultMessage.details to JsonRepresentation —
 		// our payloads are JSON-safe answer structures, so the cast is honest.
-		details: answer as ToolResultMessage["details"],
+		// The handwritten page's bytes live in `content` only; details keeps
+		// the thumbnail (never the page twice).
+		details: (sketch ? { ...(answer as object), sketch: { mimeType: sketch.mimeType, thumb: sketch.thumb } } : answer) as ToolResultMessage["details"],
 		isError: false,
 		timestamp: Date.now(),
 	};

@@ -462,6 +462,8 @@ export interface QuestionAnswerData {
 	 *  2026-10-03) — a separate channel from `thinking`, captured by the
 	 *  reading field and riding the check answer. Absent when empty. */
 	readingThinking?: string;
+	/** The learner's handwritten page: only the thumbnail persists here. */
+	sketch?: AnswerSketch;
 	confidence?: number; // quiz (and free-recall review): the learner's stated probability (0-100, raw) that his selected answer is correct — never sent on "I don't know" (owner, 2026-10-01)
 	correct?: boolean; // quiz only
 	correctIndices?: number[]; // quiz only (rendering)
@@ -487,6 +489,33 @@ export interface ClientQuestion {
 	options: QuizOption[];
 }
 
+/** A page of the learner's handwritten working (live reMarkable capture,
+ *  2026-11-08). `data` (base64) rides the request and becomes an image block
+ *  on the answer's tool result for the model; the persisted answer record
+ *  keeps only the small `thumb` for the transcript card, so the page is
+ *  never stored twice. */
+export interface AnswerSketch {
+	mimeType: "image/jpeg" | "image/png";
+	data?: string;
+	thumb: string;
+}
+
+/** Largest accepted sizes (base64 characters): the page and its thumbnail. */
+export const SKETCH_DATA_MAX = 2_500_000;
+export const SKETCH_THUMB_MAX = 120_000;
+
+/** Is this a well-formed sketch off the wire? */
+export function isAnswerSketch(v: unknown): v is AnswerSketch {
+	if (typeof v !== "object" || v === null) return false;
+	const s = v as Record<string, unknown>;
+	const b64 = /^[A-Za-z0-9+/]+={0,2}$/;
+	return (
+		(s.mimeType === "image/jpeg" || s.mimeType === "image/png") &&
+		typeof s.thumb === "string" && s.thumb.length > 0 && s.thumb.length <= SKETCH_THUMB_MAX && b64.test(s.thumb) &&
+		(s.data === undefined || (typeof s.data === "string" && s.data.length > 0 && s.data.length <= SKETCH_DATA_MAX && b64.test(s.data)))
+	);
+}
+
 /** What the server passes to the bridge when the learner answers. */
 export interface AnswerRequest {
 	dontKnow?: boolean;
@@ -495,6 +524,7 @@ export interface AnswerRequest {
 	text?: string; // ask text-mode
 	thinking?: string; // the reasoning-on-the-question channel (was `note`)
 	readingThinking?: string; // the thinking-while-reading channel (check answers)
+	sketch?: AnswerSketch; // a handwritten page, read as an image by the tutor
 	confidence?: number; // quiz only: 0-100 raw probability — 50 is a real coin flip, always sent (owner, 2026-10-01)
 }
 
@@ -707,6 +737,7 @@ export function buildAnswer(qd: QuestionData, req: AnswerRequest, tool?: string)
 		answers: [],
 		thinking: req.thinking?.trim() || undefined,
 		readingThinking: req.readingThinking?.trim() || undefined,
+		...(req.sketch ? { sketch: req.sketch } : {}),
 		answeredAt: new Date().toISOString(),
 	};
 	// resolve selected option values → OptionAnswer (in display order)
@@ -795,5 +826,7 @@ export function compactAnswerForModel(ad: QuestionAnswerData): Record<string, un
 	const thinking = ad.thinking ?? ad.note;
 	if (thinking) out.thinking = thinking;
 	if (ad.readingThinking) out.thinkingWhileReading = ad.readingThinking;
+	// The page itself rides as an image block on the same tool result.
+	if (ad.sketch?.data) out.handwrittenWorking = "attached as an image after this result: the learner's own handwriting, their reasoning on the question";
 	return out;
 }

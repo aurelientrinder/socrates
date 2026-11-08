@@ -27,6 +27,7 @@ import { runPiTurn } from "./pi/ui-stream.ts";
 import { collectToolCallIds } from "./pi/call-ids.ts";
 import { providerEventNote } from "../agent/provider-events.ts";
 import { effectiveSettings, stores } from "./stores.ts";
+import { answerForModel } from "./sketch.ts";
 import { searchAvailable, searchProvider } from "./search.ts";
 import { providerKeyPresent } from "./keys.ts";
 import {
@@ -259,6 +260,14 @@ export async function handleChatInput(
 	// re-fire of an already-landed one) - with claimSteers gone, this wake
 	// input is the only steer appender; in-run delivery rides pi's own
 	// follow-up queue and never builds an input event at all.
+	// A handwritten page on an answer: the tutor reads it as an image when the
+	// model can see, otherwise it is read into text first (server/sketch.ts).
+	if (input.type === "answer" && input.answer.sketch?.data) {
+		input = {
+			...input,
+			answer: await answerForModel(input.answer, { acceptsImages: conversationEngine.model.input.includes("image") }),
+		};
+	}
 	let appends;
 	try {
 		appends =

@@ -223,6 +223,13 @@ export function AnsweredCard({
 				/>
 			)}
 
+			{answer.sketch && (
+				<div className="mt-3" data-testid="your-sketch">
+					{/* eslint-disable-next-line @next/next/no-img-element */}
+					<img src={`data:${answer.sketch.mimeType};base64,${answer.sketch.thumb}`} alt="Your handwritten page" className="max-h-40 w-auto rounded-lg border border-border" />
+				</div>
+			)}
+
 			{/* The explain reveal (owner ruling 2026-09-27): the committed answer
 			    — one field, reasoning included — shown on submit; no verdict,
 			    the model's next reply IS the grading. */}

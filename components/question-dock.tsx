@@ -27,6 +27,7 @@ import {
 	toggleOption,
 	toggleOther,
 	type AnswerRequest,
+	type AnswerSketch,
 	type AskToolInput,
 	type DockSelection,
 	type ExplainToolInput,
@@ -433,22 +434,9 @@ function QuestionDockForm({
 		dictationClaim,
 	);
 
-	// Text read off the learner's reMarkable page (components/remarkable-
-	// capture.tsx) joins the same field dictation feeds, mirror-first.
-	const addWrittenText = useCallback(
-		(t: string) => {
-			if (qd.mode === "text") {
-				const v = joinDictation(answerTextRef.current, t);
-				answerTextRef.current = v;
-				setText(v);
-			} else {
-				const v = joinDictation(thinkingTextRef.current, t);
-				thinkingTextRef.current = v;
-				setThinking(v);
-			}
-		},
-		[qd.mode],
-	);
+	// The learner's handwritten page (components/remarkable-capture.tsx): a
+	// picture the tutor reads, part of their thinking for this question.
+	const [sketch, setSketch] = useState<AnswerSketch | null>(null);
 
 	const toggle = (idx: number) => setSel(toggleOption(selectMode, sel, idx));
 
@@ -493,6 +481,7 @@ function QuestionDockForm({
 			other: sel.otherSelected ? other : undefined,
 			text: qd.mode === "text" && !sel.dontKnow ? answerTextRef.current : undefined,
 			thinking: qd.mode !== "text" ? thinkingTextRef.current.trim() || undefined : undefined,
+			sketch: sketch ?? undefined,
 			// Always sent on quiz answers (owner: 50 must mean 50, never
 			// "untouched"); buildAnswer drops it on "I don't know".
 			confidence: rated ? CONFIDENCE_STOPS[confIdx] : undefined,
@@ -1084,6 +1073,21 @@ function QuestionDockForm({
 							)}
 						/>
 					)}
+					{sketch && (
+						<div className="flex items-center gap-2 px-4 pb-2" data-testid="remarkable-sketch">
+							{/* eslint-disable-next-line @next/next/no-img-element */}
+							<img src={`data:${sketch.mimeType};base64,${sketch.thumb}`} alt="Your handwritten page" className="h-14 w-auto rounded-md border border-border" />
+							<span className="min-w-0 flex-1 text-xs text-muted-foreground">Your handwritten page goes with your thinking.</span>
+							<button
+								type="button"
+								aria-label="Remove the handwritten page"
+								onClick={() => setSketch(null)}
+								className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+							>
+								<XIcon className="size-3.5" aria-hidden />
+							</button>
+						</div>
+					)}
 					{/* One bottom row, the chat composer's: dictate, usage, model and
 					    effort (the session's tools row, when the dock card hands it
 					    in), then Submit. The chord lives on Submit's tooltip. */}
@@ -1091,7 +1095,7 @@ function QuestionDockForm({
 						<div className="min-w-0 flex-1 [&_[data-testid=stats-bar]]:pb-0">{tools}</div>
 						{/* Desktop app only: write on the reMarkable (Screen Share),
 						    read into the field above, editable before Submit. */}
-						<RemarkableCapture disabled={compactionRunning} onText={addWrittenText} />
+						<RemarkableCapture disabled={compactionRunning} onSketch={setSketch} />
 						<Button
 							type="submit"
 							disabled={!canSubmit || compactionRunning}

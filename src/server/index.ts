@@ -15,6 +15,7 @@ export * from "./flashcards.ts";
 export * from "./exams.ts";
 export * from "./graph.ts";
 export * from "./handwriting.ts";
+export * from "./sketch.ts";
 export * from "./notes.ts";
 export * from "./notes-folder.ts";
 export * from "./reading-queue.ts";
