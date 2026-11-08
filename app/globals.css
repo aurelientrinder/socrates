@@ -81,11 +81,12 @@
 	   remembered / on track, amber = fading or overconfident. -ink is the
 	   text shade (passes 4.5:1 on -soft and on the page), -soft the tint
 	   behind badges and callouts. --lh-surface is a raised card, a step
-	   lighter than the page. Blue/amber, not green/red: they differ in
-	   lightness too, so they stay apart for color-blind eyes. */
-	--lh-good: #2c5d84;
-	--lh-good-ink: #1d4566;
-	--lh-good-soft: #e5edf4;
+	   lighter than the page. Ink/amber, not green/red (and no blue since
+	   2026-11-08, owner taste): they differ in lightness and hue, so they
+	   stay apart for color-blind eyes. */
+	--lh-good: #46403a;
+	--lh-good-ink: #2a2623;
+	--lh-good-soft: #ebe7de;
 	--lh-warn: #c27a2c;
 	--lh-warn-ink: #8a4a06;
 	--lh-warn-soft: #f6e7d3;
@@ -148,9 +149,9 @@
 	--ring: #8d8d8d;
 	/* The tint is DARKER than the page (owner note, chrome-melt tweaks). */
 	--lh-code-bg: color-mix(in oklab, var(--background) 86%, black);
-	--lh-good: #6fa3cc;
-	--lh-good-ink: #9cc3e3;
-	--lh-good-soft: #1b2733;
+	--lh-good: #cfc7bb;
+	--lh-good-ink: #ece6dc;
+	--lh-good-soft: #2a2724;
 	--lh-warn: #d9954a;
 	--lh-warn-ink: #e8b073;
 	--lh-warn-soft: #33271a;

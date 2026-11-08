@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpenIcon, ClipboardCheckIcon, DumbbellIcon, Loader2Icon, PlayIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import { BookOpenIcon, ClipboardCheckIcon, DumbbellIcon, Loader2Icon, PlayIcon, RotateCcwIcon, ScaleIcon, XIcon } from "lucide-react";
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { readWarmupPreference, startDraftSession, writeWarmupPreference } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
@@ -109,6 +109,7 @@ function StartDialog({
 	const [mode, setMode] = useState<StartMode>(initialMode);
 	const [topic, setTopic] = useState(preset?.topic ?? "");
 	const [due, setDue] = useState<number | null>(null);
+	const [honesty, setHonesty] = useState<{ points: number } | null>(null);
 	const [notes, setNotes] = useState<NoteChip[]>([]);
 	const [minutes, setMinutes] = useState<number>(initialMinutes);
 	const [examMinutes, setExamMinutes] = useState<number>(DEFAULT_EXAM_LENGTH);
@@ -125,7 +126,10 @@ function StartDialog({
 	useEffect(() => {
 		void fetch("/api/review")
 			.then((r) => (r.ok ? r.json() : null))
-			.then((body: { due: number } | null) => setDue(body?.due ?? 0))
+			.then((body: { due: number; honesty?: { points: number } | null } | null) => {
+				setDue(body?.due ?? 0);
+				setHonesty(body?.honesty ?? null);
+			})
 			.catch(() => setDue(0));
 		void fetch("/api/notes")
 			.then((r) => (r.ok ? r.json() : null))
@@ -246,6 +250,7 @@ function StartDialog({
 				classKey={classKey}
 				onClass={pickClass}
 				warmup={warmup}
+				honesty={honesty}
 				onWarmup={(on) => {
 					setWarmup(on);
 					writeWarmupPreference(on);
@@ -294,6 +299,7 @@ export function StartDialogBody({
 	onExamMinutes = () => {},
 	warmup = true,
 	onWarmup,
+	honesty = null,
 	classes = [],
 	classKey = null,
 	onClass = () => {},
@@ -322,6 +328,8 @@ export function StartDialogBody({
 	/** Open Learn and Practice with a warm-up on due topics (warm-up recall). */
 	warmup?: boolean;
 	onWarmup?: (on: boolean) => void;
+	/** Set when answers show clear overconfidence: the gap in points. */
+	honesty?: { points: number } | null;
 	/** Classes to study; picking one fills the topic and offers its notes. */
 	classes?: StartClass[];
 	classKey?: string | null;
@@ -541,6 +549,22 @@ export function StartDialogBody({
 							</button>
 						))}
 					</div>
+				</div>
+			)}
+
+			{/* The honesty check (QoL pass, 2026-11-08): said here, where it
+			    changes what you do, next to the warm-up that answers it. */}
+			{(mode === "learn" || mode === "practice") && honesty && (
+				<div data-testid="start-honesty" className="flex items-start gap-3 rounded-xl border border-border/70 bg-surface px-4 py-3 text-sm">
+					<ScaleIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warn" />
+					<span className="flex-1">
+						<span className="block font-semibold">Lately you feel about {honesty.points} points surer than your answers show.</span>
+						<span className="text-muted-foreground">
+							{warmup && due !== null && due > 0 && minutes !== QUICK_SESSION_MINUTES
+								? "The warm-up below checks what you think you know before anything new."
+								: "When you think \u201cI know this\u201d, answer one question first."}
+						</span>
+					</span>
 				</div>
 			)}
 
