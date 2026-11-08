@@ -5,6 +5,7 @@ import { ArrowDownIcon, CheckIcon, ChevronRightIcon, XIcon } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
+import { RemarkableCapture } from "@/components/remarkable-capture";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 import {
@@ -430,6 +431,23 @@ function QuestionDockForm({
 		// Released while a teach check sits unrevealed (owner 2026-10-03):
 		// the reading-thinking field owns dictated speech during the reading.
 		dictationClaim,
+	);
+
+	// Text read off the learner's reMarkable page (components/remarkable-
+	// capture.tsx) joins the same field dictation feeds, mirror-first.
+	const addWrittenText = useCallback(
+		(t: string) => {
+			if (qd.mode === "text") {
+				const v = joinDictation(answerTextRef.current, t);
+				answerTextRef.current = v;
+				setText(v);
+			} else {
+				const v = joinDictation(thinkingTextRef.current, t);
+				thinkingTextRef.current = v;
+				setThinking(v);
+			}
+		},
+		[qd.mode],
 	);
 
 	const toggle = (idx: number) => setSel(toggleOption(selectMode, sel, idx));
