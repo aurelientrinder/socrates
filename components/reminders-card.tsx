@@ -48,7 +48,7 @@ export function RemindersCard() {
 	if (!status) return null;
 	const { enabled, hour } = status.prefs;
 	return (
-		<section data-testid="today-reminders" className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface px-5 py-4 text-sm">
+		<section data-testid="today-reminders" className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-surface px-5 py-3.5 text-sm">
 			<div className="flex items-center gap-2">
 				<BellIcon className="size-4 text-muted-foreground" aria-hidden />
 				<h2 className="text-base font-semibold">Reminders</h2>
@@ -56,7 +56,7 @@ export function RemindersCard() {
 					{enabled ? "Turn off" : "Turn on"}
 				</Button>
 			</div>
-			<p className="text-muted-foreground">
+			<p className="text-xs text-muted-foreground">
 				{enabled
 					? "One alert on days with planned work and a heads-up before each exam, from your Socrates calendar, so they arrive with the app closed."
 					: "One nudge on days with planned work, and a heads-up before exams, on your phone and laptop."}

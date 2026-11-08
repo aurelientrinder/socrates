@@ -366,7 +366,7 @@ describe("TodayShell", () => {
 			<TodayShell briefing={null} integrations={disconnected} budgetMinutes={30} sessions={[]} busy={false} pushing={null} error={null} handlers={handlers} />,
 		);
 		assert.equal(html.match(/aria-pressed="true"/g)?.length, 1);
-		assert.match(html, /aria-pressed="true"[^>]*>30 min</);
+		assert.match(html, /aria-pressed="true"[^>]*aria-label="30 minutes"[^>]*>30</);
 	});
 
 	it("shows a gentle streak in the week card, with five minutes to keep it", () => {

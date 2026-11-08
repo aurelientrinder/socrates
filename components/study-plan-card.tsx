@@ -97,19 +97,27 @@ export function StudyPlanCard({ plan, onStart }: { plan: BriefingPlan; onStart: 
 											<span className="min-w-0 flex-1 truncate" title={item.reason}>
 												{item.title}
 											</span>
-											<span className={cn("shrink-0 rounded-full px-2 py-px text-xs font-semibold", ACTION_TAG[item.action])}>
-												{ACTION_LABEL[item.action]}
+											{/* The tag and "Do now" share one slot: hover or focus swaps them. */}
+											<span className="relative flex shrink-0 justify-end">
+												<span
+													className={cn(
+														"rounded-full px-2 py-px text-xs font-semibold transition-opacity group-focus-within:opacity-0 group-hover:opacity-0",
+														ACTION_TAG[item.action],
+													)}
+												>
+													{ACTION_LABEL[item.action]}
+												</span>
+												<Button
+													variant="ghost"
+													size="sm"
+													className="absolute right-0 top-1/2 h-7 -translate-y-1/2 px-2 text-xs opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
+													onClick={() => onStart(item)}
+													aria-label={`Start now: ${item.title}`}
+												>
+													<PlayIcon className="size-3" />
+													Do now
+												</Button>
 											</span>
-											<Button
-												variant="ghost"
-												size="sm"
-												className="h-7 shrink-0 px-2 text-xs text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
-												onClick={() => onStart(item)}
-												aria-label={`Start now: ${item.title}`}
-											>
-												<PlayIcon className="size-3" />
-												Do now
-											</Button>
 										</li>
 									))}
 								</ul>

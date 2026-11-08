@@ -324,7 +324,7 @@ describe("StudyPlanCard", () => {
 			/>,
 		);
 		assert.match(today, /data-testid="today-upcoming"[\s\S]*Physics exam[\s\S]*(On track|Tight|Ready)/);
-		assert.match(today, /if you follow it/);
+		assert.match(today, /if you follow the plan/);
 	});
 
 	it("renders nothing for a briefing saved before the plan existed", () => {

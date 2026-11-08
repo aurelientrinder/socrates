@@ -166,7 +166,13 @@ export function TodayShell({
 			testId="today-view"
 			width="max-w-6xl"
 			actions={
-				<Button
+				<>
+					{plan && (
+						<span data-testid="today-date" className="text-sm text-muted-foreground">
+							{new Date(plan.generatedAt).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+						</span>
+					)}
+					<Button
 					variant="ghost"
 					size="icon"
 					onClick={handlers.onRefresh}
@@ -177,7 +183,8 @@ export function TodayShell({
 					className="text-muted-foreground"
 				>
 					{busy ? <Loader2Icon className="size-4 animate-spin" /> : <RefreshCwIcon className="size-4" />}
-				</Button>
+					</Button>
+				</>
 			}
 		>
 			<header className="-mt-5 flex flex-col gap-2">
@@ -208,20 +215,30 @@ export function TodayShell({
 					>
 						<div className="flex flex-col gap-4 px-6 pb-6 pt-5">
 							<div className="flex flex-wrap items-center justify-between gap-3">
-								<h2 id="plan-heading" className="text-sm font-medium text-muted-foreground">
-									{first ? (items.length > 1 ? "Up next" : "Today's plan") : "Today's plan"}
-								</h2>
+								<div className="flex items-center gap-2">
+									<h2 id="plan-heading" className="text-sm font-medium text-muted-foreground">
+										{first && items.length > 1 ? "Up next" : "Today's plan"}
+									</h2>
+									{first && (
+										<span className={cn("rounded-full px-2 py-px text-xs font-semibold", ACTION_TAG[first.action])}>{ACTION_LABEL[first.action]}</span>
+									)}
+								</div>
 								<BudgetPicker value={budgetMinutes} onChange={handlers.onBudget} />
 							</div>
 							{!plan ? (
-								<p className="text-base text-muted-foreground">{busy ? "Working out what matters most today…" : "No plan yet."}</p>
+								busy ? (
+									<div aria-busy="true" className="flex flex-col gap-2.5 py-1">
+										<span className="sr-only">Working out what matters most today…</span>
+										<span className="h-7 w-2/3 animate-pulse rounded-lg bg-accent" />
+										<span className="h-4 w-5/6 animate-pulse rounded bg-accent/70" />
+									</div>
+								) : (
+									<p className="text-base text-muted-foreground">No plan yet.</p>
+								)
 							) : first ? (
 								<div data-testid="today-item" className="flex flex-col gap-1.5">
-									<div className="flex flex-wrap items-center gap-2">
-										<span className="text-2xl font-semibold tracking-tight">{first.title}</span>
-										<span className={cn("rounded-full px-2 py-px text-xs font-semibold", ACTION_TAG[first.action])}>{ACTION_LABEL[first.action]}</span>
-									</div>
-									<p className="text-base text-muted-foreground">{first.reason}</p>
+									<span className="text-2xl font-semibold tracking-tight text-balance">{first.title}</span>
+									<p className="max-w-2xl text-base text-muted-foreground">{first.reason}</p>
 								</div>
 							) : (
 								<div className="flex flex-col gap-1.5">
@@ -350,21 +367,26 @@ export function TodayShell({
 /** The time you have today, as one small segmented control. */
 function BudgetPicker({ value, onChange }: { value: number; onChange: (minutes: number) => void }) {
 	return (
-		<div role="group" aria-label="Time you have today" data-testid="today-budget" className="flex items-center gap-0.5 rounded-lg bg-accent/60 p-0.5">
-			{BUDGET_CHOICES.map((m) => (
-				<button
-					key={m}
-					type="button"
-					aria-pressed={value === m}
-					onClick={() => onChange(m)}
-					className={cn(
-						"h-7 rounded-md px-2 text-xs tabular-nums transition-colors",
-						value === m ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
-					)}
-				>
-					{m} min
-				</button>
-			))}
+		<div className="flex items-center gap-2 text-xs text-muted-foreground">
+			<span aria-hidden="true">Time today</span>
+			<div role="group" aria-label="Time you have today" data-testid="today-budget" className="flex items-center rounded-lg bg-accent/60 p-0.5">
+				{BUDGET_CHOICES.map((m) => (
+					<button
+						key={m}
+						type="button"
+						aria-pressed={value === m}
+						aria-label={`${m} minutes`}
+						onClick={() => onChange(m)}
+						className={cn(
+							"h-6 min-w-8 rounded-md px-1.5 text-xs tabular-nums transition-colors",
+							value === m ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+						)}
+					>
+						{m}
+					</button>
+				))}
+			</div>
+			<span aria-hidden="true">min</span>
 		</div>
 	);
 }
@@ -440,16 +462,17 @@ function WeekCard({ week, streak = null, onQuick }: { week: StudyWeek; streak?: 
 				className="flex h-12 items-end gap-2"
 			>
 				{week.minutes.map((m, i) => (
-					<span
-						key={i}
-						data-testid="today-week-bar"
-						className={cn(
-							"flex-1 rounded",
-							m > 0 ? "bg-foreground/70" : "bg-accent",
-							i === week.today && "outline-dashed outline-[1.5px] outline-offset-2 outline-muted-foreground/60",
-						)}
-						style={{ height: m > 0 ? `${Math.max(6, Math.round((m / top) * 48))}px` : "4px" }}
-					/>
+					<span key={i} className="flex flex-1 justify-center">
+						<span
+							data-testid="today-week-bar"
+							className={cn(
+								"w-full max-w-7 rounded-[5px]",
+								m === 0 ? "bg-accent" : i === week.today ? "bg-foreground/75" : "bg-foreground/35",
+								i === week.today && "outline-dashed outline-[1.5px] outline-offset-2 outline-muted-foreground/60",
+							)}
+							style={{ height: m > 0 ? `${Math.max(6, Math.round((m / top) * 48))}px` : "4px" }}
+						/>
+					</span>
 				))}
 			</div>
 			<div aria-hidden="true" className="flex gap-2 text-xs text-muted-foreground">
@@ -699,9 +722,11 @@ function UpcomingRow({
 	const lifts = r !== null && planned !== null && planned > r + 0.005;
 	// "Not started" says the same as "Nothing studied yet" beside it.
 	const status = exam && !(r === null && exam.status === "not-started") ? EXAM_STATUS[exam.status] : null;
-	const low = r !== null && r < 0.9;
+	// The plan's verdict wins over the raw number: 77% today on an exam
+	// the plan has on track is not a warning.
+	const low = exam ? exam.status === "tight" || exam.status === "not-started" : r !== null && r < 0.9;
 	return (
-		<li data-testid="today-upcoming" className="flex flex-col gap-1.5 py-3 text-sm first:pt-0 last:pb-0">
+		<li data-testid="today-upcoming" className="group flex flex-col gap-1.5 py-3 text-sm first:pt-0 last:pb-0">
 			<div className="flex items-baseline justify-between gap-2">
 				<span className={cn("flex min-w-0 items-center gap-2 text-base font-medium", color !== undefined && `cal-c${color}`)}>
 					{color !== undefined && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: "var(--bar)" }} />}
@@ -736,11 +761,11 @@ function UpcomingRow({
 			<div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
 				<span>
 					{exam && exam.sessions > 0
-						? `${exam.sessions} session${exam.sessions === 1 ? "" : "s"} planned, ${formatStudyTotal(exam.minutes)}`
+						? `${exam.sessions} session${exam.sessions === 1 ? "" : "s"} · ${formatStudyTotal(exam.minutes)}`
 						: entry.kind === "deadline"
 							? "Deadline"
 							: "Nothing planned"}
-					{lifts ? `, about ${pct(planned!)} if you follow it` : ""}
+					{lifts ? ` · ${pct(planned!)} if you follow the plan` : ""}
 				</span>
 				{(entry.noteCount ?? 0) > 0 && (
 					<span title="Files in this course's group">
@@ -748,7 +773,14 @@ function UpcomingRow({
 					</span>
 				)}
 				{entry.course.key && (
-					<button type="button" className="ml-auto underline-offset-2 hover:text-foreground hover:underline" onClick={() => setEditing((v) => !v)}>
+					<button
+						type="button"
+						className={cn(
+							"ml-auto underline-offset-2 transition-opacity hover:text-foreground hover:underline focus-visible:opacity-100 group-hover:opacity-100",
+							!editing && "opacity-0",
+						)}
+						onClick={() => setEditing((v) => !v)}
+					>
 						{entry.linked ? "Sessions" : "Link sessions"}
 					</button>
 				)}
