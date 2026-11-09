@@ -25,6 +25,7 @@ import {
 	suggestCourses,
 	IGNORED,
 	colorsFor,
+	inferSessionClasses,
 	mergeGroups,
 	type LensClass,
 	prunePins,
@@ -359,16 +360,24 @@ export function listCourses(events: readonly StudyEvent[], now: number = Date.no
 	return { courses, suggestions: suggestCourses(events, links, readDismissedCourses(), now) };
 }
 
-/** Every class that owns sessions, for screens that colour or filter by class. */
+/** Every class that owns sessions, for screens that colour or filter by class.
+ *  Sessions nobody filed are placed by their title (inferSessionClasses). */
 export function courseLens(): LensClass[] {
 	const links = readCourseLinks();
 	const colors = colorsFor(Object.keys(links));
-	return Object.entries(links)
-		.map(([key, g]): LensClass => ({
-			key,
-			label: g.label,
-			sessions: [...new Set([...(g.chatIds ?? []), ...(g.noteIds ?? [])])],
-			color: colors.get(key) ?? 0,
+	const own = Object.entries(links).map(([key, g]) => ({
+		key,
+		label: g.label,
+		aliases: g.aliases ?? [],
+		sessions: [...new Set([...(g.chatIds ?? []), ...(g.noteIds ?? [])])],
+	}));
+	const inferred = inferSessionClasses(own, stores.chatStore.listChats().map((c) => ({ id: c.id, title: c.title })));
+	return own
+		.map((c): LensClass => ({
+			key: c.key,
+			label: c.label,
+			sessions: [...c.sessions, ...[...inferred].filter(([, k]) => k === c.key).map(([id]) => id)],
+			color: colors.get(c.key) ?? 0,
 		}))
 		.filter((c) => c.sessions.length > 0)
 		.sort((a, b) => a.label.localeCompare(b.label));

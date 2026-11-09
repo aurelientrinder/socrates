@@ -24,6 +24,49 @@ export function colorsFor(keys: readonly string[]): Map<string, number> {
 	return new Map([...keys].sort((a, b) => a.localeCompare(b)).map((k, i) => [k, i % CLASS_COLORS]));
 }
 
+/** Lowercase, accent-free, words only: "Dynamique des Structures" and "dynamique-des structures" compare equal. */
+function plain(text: string): string {
+	return ` ${text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+}
+
+/** The shortest name worth matching on: shorter ones ("td", "cm") match too much. */
+const MIN_NAME = 5;
+
+/**
+ * Auto-filing (2026-11-09): sessions no class owns yet are placed in the class
+ * whose name (label, key or alias) their title carries, or that the title is
+ * a whole-word part of ("Dynamique des Structures" in "GM-M1-Dynamique des
+ * Structures"). The longest matching name wins. Nothing is saved: a session
+ * the learner files by hand always keeps that class, because only unowned
+ * sessions are looked at, and an inferred one stops being inferred as soon as
+ * it is filed. Returns session id → class key.
+ */
+export function inferSessionClasses(
+	classes: readonly { key: string; label: string; aliases?: readonly string[]; sessions: readonly string[] }[],
+	chats: readonly { id: string; title: string }[],
+): Map<string, string> {
+	const owned = new Set(classes.flatMap((c) => c.sessions));
+	const names = classes.flatMap((c) =>
+		[c.label, c.key, ...(c.aliases ?? [])]
+			.map((n) => plain(n))
+			.filter((n) => n.trim().length >= MIN_NAME)
+			.map((n) => ({ key: c.key, name: n })),
+	);
+	const out = new Map<string, string>();
+	for (const chat of chats) {
+		if (owned.has(chat.id)) continue;
+		const title = plain(chat.title);
+		let best: { key: string; len: number } | null = null;
+		for (const { key, name } of names) {
+			const hit = title.includes(name) || (title.trim().length >= MIN_NAME && name.includes(title));
+			const len = Math.min(name.length, title.length);
+			if (hit && (!best || len > best.len)) best = { key, len };
+		}
+		if (best) out.set(chat.id, best.key);
+	}
+	return out;
+}
+
 /** The class a session belongs to (the first, when it was filed under several). */
 export function classOfSession(classes: readonly LensClass[], sessionId: string): LensClass | null {
 	return classes.find((c) => c.sessions.includes(sessionId)) ?? null;
