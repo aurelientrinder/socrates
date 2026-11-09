@@ -1,7 +1,7 @@
 /** The class lens (src/core/course-lens.ts): a class owns sessions; looking at one keeps its cross-class links. */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { classOfSession, classView, colorsFor, memoryByClass, CLASS_COLORS } from "../src/core/course-lens.ts";
+import { classOfSession, classView, colorsFor, inferSessionClasses, memoryByClass, CLASS_COLORS } from "../src/core/course-lens.ts";
 
 const analyse = { key: "analyse", label: "Analyse", sessions: ["chat1", "src_aaaaaaaaaaaa"], color: 0 };
 const thermo = { key: "thermo", label: "Thermo", sessions: ["chat2"], color: 1 };
@@ -42,5 +42,27 @@ describe("memory by class", () => {
 		const m = memoryByClass([t("chat2", 0.5, true), t("chat1", 0.9, false), t("chat1", 0.7, true), t("other", 0.8, false)], [analyse, thermo]);
 		assert.deepEqual(m.map((x) => [x.cls?.key ?? null, x.topics, x.due]), [["analyse", 2, 1], ["thermo", 1, 1], [null, 1, 0]]);
 		assert.ok(Math.abs(m[0]!.retention - 0.8) < 1e-9);
+	});
+});
+
+describe("auto-filing sessions by title", () => {
+	const dyn = { key: "gm m1 dynamique des structures", label: "GM-M1-Dynamique des Structures", sessions: ["own"] };
+	const gp = { key: "gestion de projet", label: "Gestion de Projet", sessions: [] as string[] };
+
+	it("places an unfiled session in the class its title names, ignoring accents and case", () => {
+		const got = inferSessionClasses([dyn, gp], [
+			{ id: "a", title: "Dynamique des Structures" },
+			{ id: "b", title: "Start on GESTION de projet" },
+			{ id: "c", title: "Aéronautique" },
+			{ id: "d", title: "Review" },
+		]);
+		assert.equal(got.get("a"), dyn.key);
+		assert.equal(got.get("b"), gp.key);
+		assert.equal(got.has("c"), false);
+		assert.equal(got.has("d"), false);
+	});
+
+	it("never moves a session a class already owns", () => {
+		assert.equal(inferSessionClasses([dyn, gp], [{ id: "own", title: "Gestion de projet" }]).size, 0);
 	});
 });

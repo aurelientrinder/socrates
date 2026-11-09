@@ -17,7 +17,7 @@ import {
 } from "../core/index.ts";
 import { savedBriefing } from "./briefing.ts";
 import { listChats, retentionAcrossSessions } from "./chats.ts";
-import { courseMaterial, listCourses, readCourseLinks } from "./courses.ts";
+import { courseLens, courseMaterial, listCourses, readCourseLinks } from "./courses.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -40,6 +40,7 @@ export function classPage(key: string, now: number = Date.now()): ClassPageData 
 	// Its sessions: the confirmed ones, plus the ones the plan linked to its events.
 	const sessionIds = new Set(group.chatIds ?? []);
 	for (const u of plan?.upcoming ?? []) if (eventIds.has(u.event.id)) for (const id of u.chatIds) sessionIds.add(id);
+	for (const id of courseLens().find((c) => c.key === key)?.sessions ?? []) sessionIds.add(id);
 	const sessions = listChats()
 		.filter((c) => sessionIds.has(c.id))
 		.map((c): ChatListItem => ({ ...c, busy: false, compacting: false }));
