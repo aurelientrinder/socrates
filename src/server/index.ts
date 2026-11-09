@@ -64,6 +64,7 @@ export { sessionCost } from "./pricing.ts";
 export * from "./briefing.ts";
 // Course groups: one per class, with its notes and sessions.
 export * from "./courses.ts";
+export * from "./class-page.ts";
 export * from "./course-calendar.ts";
 export {
 	googleCalendarStatus,

@@ -51,18 +51,34 @@ import { Hint } from "@/components/ui/hint";
 import { downloadFile } from "@/components/artifacts/download";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
 import { KeyboardSection } from "./keyboard-section.tsx";
+import { CalendarSection } from "./calendar-section.tsx";
+import { SettingsGroup, SettingsAdvanced } from "./controls.tsx";
+import { CalendarIcon, DatabaseIcon, GraduationCapIcon, KeyboardIcon, KeyRoundIcon, NetworkIcon, PaletteIcon, SearchIcon, XIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 /** Owner (2026-09-20): hints earn their place — mechanics-explaining
  *  prose is out; only the keyboard note stays (storage location is a
  *  real question users ask). */
 const SECTIONS = [
-	{ id: "keys", label: "Providers" },
-	{ id: "agent", label: "Agent" },
-	{ id: "appearance", label: "Appearance" },
-	{ id: "graph", label: "Graph" },
-	{ id: "keyboard", label: "Keyboard", hint: "Stored on this device" },
-	{ id: "general", label: "General" },
+	{ id: "agent", label: "Tutor", group: "Studying", desc: "How Socrates teaches you and checks what you know.", keywords: "language quiz checks warm-up tools research demo diagram pdf dictation prompts instructions memory compaction" },
+	{ id: "calendar", label: "Calendar & reminders", group: "Studying", desc: "Where your plan reads exams and classes, and when Socrates nudges you.", keywords: "google todoist connect reminders notifications schedule" },
+	{ id: "appearance", label: "Appearance", group: "App", desc: "How Socrates looks on this computer.", keywords: "theme dark light mode paper background font size headings colour color" },
+	{ id: "keyboard", label: "Keyboard", group: "App", desc: "Shortcuts for the things you do most.", keywords: "shortcuts keys bindings rebind" },
+	{ id: "keys", label: "Models & keys", group: "Setup", desc: "Which AI models Socrates uses, and the keys it reaches them with.", keywords: "api key provider anthropic openai gemini model thinking oauth todoist token" },
+	{ id: "graph", label: "Knowledge map", group: "Setup", desc: "The map of what you have learned, built from your sessions.", keywords: "graph extraction concepts" },
+	{ id: "general", label: "Data & updates", group: "Setup", desc: "Your sessions, map, flashcards and exams live on this computer.", keywords: "update backup restore export import data" },
 ] as const;
+const GROUPS = ["Studying", "App", "Setup"] as const;
+const SECTION_DESC = Object.fromEntries(SECTIONS.map((s) => [s.id, s.desc])) as Record<(typeof SECTIONS)[number]["id"], string>;
+const SECTION_ICONS: Record<(typeof SECTIONS)[number]["id"], React.ReactNode> = {
+	agent: <GraduationCapIcon className="size-4" />,
+	calendar: <CalendarIcon className="size-4" />,
+	appearance: <PaletteIcon className="size-4" />,
+	keyboard: <KeyboardIcon className="size-4" />,
+	keys: <KeyRoundIcon className="size-4" />,
+	graph: <NetworkIcon className="size-4" />,
+	general: <DatabaseIcon className="size-4" />,
+};
 type SectionId = (typeof SECTIONS)[number]["id"];
 
 /** `open(section?, row?)` — the optional ROW deep-links into the Keys
@@ -190,6 +206,12 @@ export function SettingsDialogBody({
 	useEffect(() => {
 		setActive(initialSection);
 	}, [initialSection]);
+	const [query, setQuery] = useState("");
+	const q = query.trim().toLowerCase();
+	const shown = q ? SECTIONS.filter((s) => `${s.label} ${s.keywords}`.toLowerCase().includes(q)) : SECTIONS;
+	// The keys row to unfold: the deep link, or a jump from another section.
+	const [row, setRow] = useState<string | null>(initialRow);
+	useEffect(() => setRow(initialRow), [initialRow]);
 
 	// Fetch once per dialog mount. 200 {settings: null} is FIRST BOOT
 	// (no record = factory everything), not a failure — the error state is
@@ -269,70 +291,72 @@ export function SettingsDialogBody({
 			aria-modal="true"
 			aria-label="Settings"
 			data-testid="settings-dialog"
-			className="settings-dialog-pop flex h-[620px] max-h-[85vh] w-[920px] max-w-[90vw] flex-col overflow-hidden rounded-md border border-border bg-card shadow-xl"
+			className="settings-dialog-pop flex h-[720px] max-h-[88vh] w-[1000px] max-w-[92vw] overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xl"
 			onClick={(e) => e.stopPropagation()}
 		>
-			{/* Header — the app's quiet CMU title language. */}
-			<header className="flex h-15 shrink-0 items-center gap-3 border-b border-border px-5">
-				<h2 className="font-title text-2xl tracking-tight">Settings</h2>
-				<Hint
-						// Esc closes the dialog (its own listener) — surface it.
-						label="Close"
-						binding="escape"
-						side="left"
-					>
-						<button
-					type="button"
-					aria-label="Close settings"
-					data-testid="settings-close"
-					className="ml-auto size-7 rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					onClick={onClose}
-				>
-					<svg
-						viewBox="0 0 16 16"
-						className="mx-auto size-3.5"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="1.5"
-					>
-						<path d="M4 4l8 8M12 4l-8 8" />
-					</svg>
-				</button>
-					</Hint>
-			</header>
+			{/* Left nav: grouped by what you are doing, with a search. */}
+			<nav
+				aria-label="Settings sections"
+				data-testid="settings-nav"
+				className="flex w-[220px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-border/70 bg-sidebar p-3"
+			>
+				<h2 className="px-2 pt-1 text-xl font-semibold tracking-tight">Settings</h2>
+				<label className="flex h-8 items-center gap-2 rounded-lg border border-border/70 bg-surface px-2.5 text-[13px] text-muted-foreground focus-within:border-foreground/40">
+					<SearchIcon className="size-3.5 shrink-0" />
+					<input
+						value={query}
+						onChange={(e) => setQuery(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && shown[0]) setActive(shown[0].id);
+						}}
+						placeholder="Search settings"
+						aria-label="Search settings"
+						data-testid="settings-search"
+						className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
+					/>
+				</label>
+				{GROUPS.map((group) => {
+					const items = shown.filter((s) => s.group === group);
+					if (!items.length) return null;
+					return (
+						<div key={group} className="flex flex-col gap-px">
+							<div className="px-2.5 pb-1 text-[12px] font-semibold text-muted-foreground">{group}</div>
+							{items.map((s) => (
+								<button
+									key={s.id}
+									type="button"
+									data-testid={`settings-nav-${s.id}`}
+									aria-current={active === s.id}
+									className={cn(
+										"flex h-8.5 items-center gap-2.5 rounded-[9px] px-2.5 text-left text-[14px] transition-colors",
+										active === s.id ? "bg-ink-soft font-semibold text-foreground" : "text-foreground/85 hover:bg-accent/60",
+									)}
+									onClick={() => setActive(s.id)}
+								>
+									<span className="text-muted-foreground">{SECTION_ICONS[s.id]}</span>
+									{s.label}
+								</button>
+							))}
+						</div>
+					);
+				})}
+				{shown.length === 0 && <p className="px-2.5 text-[13px] text-muted-foreground">Nothing matches.</p>}
+			</nav>
 
-			<div className="flex min-h-0 flex-1">
-				{/* Left nav — text-only, the session-list mono language,
-					    active = bg-accent. */}
-				<nav
-					aria-label="Settings sections"
-					data-testid="settings-nav"
-					className="flex w-44 shrink-0 flex-col gap-1 border-r border-border p-2"
-				>
-					{SECTIONS.map((s) => (
-						<button
-							key={s.id}
-							type="button"
-							data-testid={`settings-nav-${s.id}`}
-							aria-current={active === s.id}
-							className={`rounded-sm px-3 py-1.5 text-left font-ui text-sm transition-colors ${
-								active === s.id
-									? "bg-accent text-foreground"
-									: "text-muted-foreground hover:bg-accent hover:text-foreground"
-							}`}
-							onClick={() => setActive(s.id)}
-						>
-							{s.label}
-						</button>
-					))}
-				</nav>
-
-				{/* Content column — one section at a time, this scrolls — and
-				    LOCKS while any MenuShell is open (owner ruling: no
-				    scrolling with a dropdown down; MenuShell announces
-				    open/close, the count keeps overlap honest). The lock
-				    intercepts wheel/touch instead of hiding the scrollbar —
-				    nothing may shift when the lock engages. */}
+			<div className="relative flex min-w-0 flex-1 flex-col">
+				<Hint label="Close" binding="escape" side="left">
+					<button
+						type="button"
+						aria-label="Close settings"
+						data-testid="settings-close"
+						className="absolute top-5 right-5 z-10 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+						onClick={onClose}
+					>
+						<XIcon className="size-4" />
+					</button>
+				</Hint>
+				{/* Content column: one section at a time. It LOCKS while any
+				    MenuShell is open (wheel/touch intercepted, nothing shifts). */}
 				<div
 					ref={contentRef}
 					className="min-w-0 flex-1 overflow-y-auto"
@@ -358,12 +382,10 @@ export function SettingsDialogBody({
 					) : (
 						<div>
 							{active === "general" && (
-								<SettingsSection
-									title="General"
-									testid="section-general"
-								>
-									<SettingsRow
-										label="Auto-update"
+								<SettingsSection title="Data & updates" hint={SECTION_DESC.general} testid="section-general">
+									<SettingsGroup label="Updates">
+										<SettingsRow
+										label="Update automatically"
 										hint={AUTO_UPDATE_HINT}
 										testid="row-auto-update"
 									>
@@ -375,34 +397,47 @@ export function SettingsDialogBody({
 											}
 										/>
 									</SettingsRow>
-									<SettingsRow
-										label="Export your data"
-										hint="Sessions, map, flashcards, exams and settings as one JSON file (no API keys). A copy is also saved daily in the data folder's backups."
+									</SettingsGroup>
+									<SettingsGroup label="Backups" hint="A copy is saved every day in the data folder.">
+										<SettingsRow
+										label="Export everything"
+										hint="One file with your sessions, map, flashcards, exams and settings (no keys)."
 										testid="row-export-data"
 									>
 										<ExportButton />
 									</SettingsRow>
 									<SettingsRow
-										label="Restore your data"
-										hint="Put sessions, map, flashcards, exams and settings back from a daily snapshot or an export file. A copy of what you have now is kept first, so a restore can be undone."
+										label="Restore a copy"
+										hint="From a daily backup or an export file. What you have now is kept first, so a restore can be undone."
 										testid="row-restore-data"
 									>
 										<RestoreControls />
 									</SettingsRow>
+									</SettingsGroup>
 								</SettingsSection>
 							)}
 							{active === "keys" && (
-								<SettingsSection title="Providers" testid="section-keys">
-									<KeysSection initialRow={initialRow ?? undefined} />
-									<ModelVisibility />
+								<SettingsSection title="Models & keys" hint={SECTION_DESC.keys} testid="section-keys">
+									<KeysSection initialRow={row ?? undefined} />
+									<AgentSection
+										part="models"
+										agent={record.agent}
+										models={record.models}
+										graph={record.graph}
+										compaction={record.compaction}
+										onModelsChange={(next: ModelsSettings) => void write("models", next)}
+										onSectionChange={(next: AgentSettings) => void write("agent", next)}
+										onCompactionChange={(next: CompactionSettings) => void write("compaction", next)}
+									/>
+									<SettingsAdvanced testid="models-advanced">
+										<ModelVisibility />
+									</SettingsAdvanced>
 								</SettingsSection>
 							)}
 							{active === "agent" && (
-								<SettingsSection
-									title="Agent"
-									testid="section-agent"
-								>
+								<SettingsSection title="Tutor" hint={SECTION_DESC.agent} testid="section-agent">
 									<AgentSection
+										part="tutor"
 										agent={record.agent}
 										models={record.models}
 										graph={record.graph}
@@ -420,10 +455,7 @@ export function SettingsDialogBody({
 								</SettingsSection>
 							)}
 							{active === "appearance" && (
-								<SettingsSection
-									title="Appearance"
-									testid="section-appearance"
-								>
+								<SettingsSection title="Appearance" hint={SECTION_DESC.appearance} testid="section-appearance">
 									<AppearanceSection
 										appearance={record.appearance}
 										onSectionChange={(next: AppearanceSettings) =>
@@ -433,10 +465,7 @@ export function SettingsDialogBody({
 								</SettingsSection>
 							)}
 							{active === "graph" && (
-								<SettingsSection
-									title="Graph"
-									testid="section-graph"
-								>
+								<SettingsSection title="Knowledge map" hint={SECTION_DESC.graph} testid="section-graph">
 									<GraphSection
 										graph={record.graph}
 										onSectionChange={(next: GraphSettings) =>
@@ -445,17 +474,26 @@ export function SettingsDialogBody({
 									/>
 								</SettingsSection>
 							)}
+							{active === "calendar" && (
+								<SettingsSection title="Calendar & reminders" hint={SECTION_DESC.calendar} testid="section-calendar">
+									<CalendarSection
+										onOpenKeys={(keyId) => {
+											setRow(keyId);
+											setActive("keys");
+										}}
+									/>
+								</SettingsSection>
+							)}
 							{active === "keyboard" && (
-								<SettingsSection
-									title="Keyboard"
-									hint="Stored on this device"
-									testid="section-keyboard"
-								>
+								<SettingsSection title="Keyboard" hint={SECTION_DESC.keyboard} testid="section-keyboard">
 									<KeyboardSection />
 								</SettingsSection>
 							)}
 						</div>
 					)}
+				</div>
+				<div className="flex shrink-0 items-center gap-2 border-t border-border/60 px-8 py-2.5 text-[12px] text-muted-foreground">
+					Changes save as you make them.
 				</div>
 			</div>
 		</div>
@@ -486,7 +524,7 @@ function ExportButton() {
 				type="button"
 				disabled={state === "busy"}
 				onClick={() => void save()}
-				className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-muted disabled:opacity-60"
+				className="h-8 rounded-lg border border-border bg-surface px-3 text-[13px] hover:bg-accent disabled:opacity-60"
 			>
 				{state === "busy" ? "Exporting…" : "Export"}
 			</button>
@@ -563,7 +601,7 @@ function RestoreControls() {
 							value={picked}
 							disabled={busy}
 							onChange={(e) => setPicked(e.target.value)}
-							className="max-w-48 rounded-sm border border-border bg-surface px-2 py-1 text-xs"
+							className="h-8 max-w-48 rounded-lg border border-border bg-surface px-2 text-[13px]"
 						>
 							{snapshots.map((s) => (
 								<option key={s.name} value={s.name}>{snapshotLabel(s)}</option>
@@ -573,7 +611,7 @@ function RestoreControls() {
 							type="button"
 							disabled={busy || !picked}
 							onClick={() => void send({ snapshot: picked })}
-							className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-muted disabled:opacity-60"
+							className="h-8 rounded-lg border border-border bg-surface px-3 text-[13px] hover:bg-accent disabled:opacity-60"
 						>
 							Restore
 						</button>
@@ -583,7 +621,7 @@ function RestoreControls() {
 					type="button"
 					disabled={busy}
 					onClick={() => fileInput.current?.click()}
-					className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-muted disabled:opacity-60"
+					className="h-8 rounded-lg border border-border bg-surface px-3 text-[13px] hover:bg-accent disabled:opacity-60"
 				>
 					From a file…
 				</button>

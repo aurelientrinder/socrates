@@ -1,4 +1,4 @@
-import { getBriefing, googleCalendarStatus, readBriefingPrefs, savedBriefing, TASK_PROVIDERS } from "@/src/server";
+import { doneSteps, getBriefing, googleCalendarStatus, readBriefingPrefs, savedBriefing, TASK_PROVIDERS } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +9,11 @@ function integrations() {
 	};
 }
 
-/** Today's saved briefing (null before the first generation) + connection state. */
+/** Today's saved briefing (null before the first generation) + connection
+ *  state + which plan steps are already done. */
 export async function GET() {
-	return Response.json({ briefing: savedBriefing(), integrations: integrations(), prefs: readBriefingPrefs() });
+	const briefing = savedBriefing();
+	return Response.json({ briefing, integrations: integrations(), prefs: readBriefingPrefs(), done: doneSteps(briefing) });
 }
 
 /** Generate today's briefing if missing; { refresh: true } regenerates it. */

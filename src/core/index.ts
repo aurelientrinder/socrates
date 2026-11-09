@@ -66,6 +66,7 @@ export * from "./capture-window.ts";
 export * from "./notes-folder.ts";
 export * from "./course-calendar.ts";
 export * from "./course-lens.ts";
+export * from "./class-page.ts";
 export * from "./calendar-layout.ts";
 // Spaced-repetition review sessions: the queue marker + progress tally. Pure.
 export * from "./review.ts";

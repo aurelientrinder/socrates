@@ -35,6 +35,7 @@ import {
 } from "../src/core/study-plan.ts";
 import { TARGET_RETENTION, type TopicRetention } from "../src/core/retention.ts";
 import { StudyPlanCard } from "../components/study-plan-card.tsx";
+import { TodayShell } from "../components/today-view.tsx";
 
 const DAY = 24 * 60 * 60 * 1000;
 // A Monday, 09:00 local.
@@ -292,7 +293,7 @@ describe("planChanges", () => {
 });
 
 describe("StudyPlanCard", () => {
-	it("renders exams with readiness, the rest of the week, tough classes and changes", () => {
+	it("renders the rest of the week, tough classes and changes (exams live in Coming up)", () => {
 		const weak = topic({ key: "plan:ph:a", title: "Standing waves", chatId: "ph", retention: 0.55, stability: 1.5, lastReviewedAt: NOW - 3 * DAY });
 		const plan = planBriefing({
 			now: NOW,
@@ -304,14 +305,26 @@ describe("StudyPlanCard", () => {
 		});
 		plan.changes = ["New on your calendar: Physics exam (Sat 7 Nov)."];
 		const html = renderToStaticMarkup(<StudyPlanCard plan={plan} onStart={() => {}} />);
-		assert.match(html, /Study plan/);
-		assert.match(html, /Physics exam/);
-		assert.match(html, /On track/);
-		assert.match(html, /if you follow the plan/);
 		assert.match(html, /Rest of the week/);
+		assert.doesNotMatch(html, /On track/);
 		assert.match(html, /Class prep/);
 		assert.match(html, /Tough classes/);
 		assert.match(html, /New on your calendar/);
+		// Today's Coming up list carries each exam's standing and the plan's lift.
+		const today = renderToStaticMarkup(
+			<TodayShell
+				briefing={{ plan, note: "", noteSource: "fallback", sources: { calendar: { connected: true, count: 2 }, todo: { provider: "Todoist", connected: false, count: 0 } }, events: [], pushed: {} }}
+				integrations={{ google: { configured: true, connected: true, pending: false }, todo: [] }}
+				budgetMinutes={45}
+				sessions={[]}
+				busy={false}
+				pushing={null}
+				error={null}
+				handlers={{ onStart() {}, onQuick() {}, onPrimer() {}, onPush() {}, onRefresh() {}, onBudget() {}, onConnectGoogle() {}, onDisconnectGoogle() {}, onOpenKeys() {}, onLinkCourse() {} }}
+			/>,
+		);
+		assert.match(today, /data-testid="today-upcoming"[\s\S]*Physics exam[\s\S]*(On track|Tight|Ready)/);
+		assert.match(today, /if you follow the plan/);
 	});
 
 	it("renders nothing for a briefing saved before the plan existed", () => {

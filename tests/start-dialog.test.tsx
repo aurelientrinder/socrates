@@ -56,6 +56,20 @@ describe("StartDialogBody classes", () => {
 	});
 });
 
+describe("StartDialogBody honesty check", () => {
+	const body = (mode: StartMode, honesty: { points: number } | null) =>
+		renderToStaticMarkup(
+			<StartDialogBody mode={mode} topic="" due={3} notes={[]} minutes={25} busy={false} error={null} onMode={noop} onMinutes={noop} onTopic={noop} onStart={noop} onNote={noop} onClose={noop} warmup onWarmup={noop} honesty={honesty} />,
+		);
+
+	it("says the overconfidence gap beside the warm-up on Learn and Practice only", () => {
+		assert.match(body("learn", { points: 14 }), /data-testid="start-honesty"[\s\S]*14 points surer[\s\S]*warm-up below/);
+		assert.match(body("practice", { points: 14 }), /start-honesty/);
+		assert.doesNotMatch(body("review", { points: 14 }), /start-honesty/);
+		assert.doesNotMatch(body("learn", null), /start-honesty/);
+	});
+});
+
 describe("StartDialogBody", () => {
 	it("presses the chosen kind and badges Review with what is due", () => {
 		const html = render("learn");

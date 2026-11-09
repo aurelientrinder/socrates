@@ -12,7 +12,8 @@
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-/** A section block: pronounced mono heading + content. */
+/** A section page (settings redesign, 2026-11-08): a large title, one
+ *  plain line under it, then the groups. */
 export function SettingsSection({
 	title,
 	hint,
@@ -20,41 +21,66 @@ export function SettingsSection({
 	testid,
 }: {
 	title: string;
-	/** One quiet line under the header — only where it earns its place. */
+	/** One plain line under the title: what this page is about. */
 	hint?: string;
 	children: React.ReactNode;
 	testid?: string;
 }) {
 	return (
-		<section data-testid={testid} className="px-6 py-5">
-			<h2 className="text-sm text-foreground">{title}</h2>
-			{hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-			<div className="mt-4 flex flex-col gap-3">{children}</div>
+		<section data-testid={testid} className="px-8 pt-7 pb-8">
+			<h2 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
+			{hint && <p className="mt-0.5 text-[14px] text-muted-foreground">{hint}</p>}
+			<div className="mt-6 flex flex-col gap-6">{children}</div>
 		</section>
 	);
 }
 
-/** A labeled sub-group inside a section (owner, 2026-09-20: clear
- *  separation — Models / Tools / Prompts read as three blocks). */
+/** A titled card of rows: heading, optional plain line, then the rows
+ *  divided by hairlines. */
 export function SettingsGroup({
 	label,
+	hint,
 	children,
 	testid,
+	bare,
 }: {
-	label: string;
+	label?: string;
+	hint?: string;
 	children: React.ReactNode;
 	testid?: string;
+	/** No card around the children (free-form content like prompt editors). */
+	bare?: boolean;
 }) {
 	return (
-		<div data-testid={testid} className="mt-5 border-t border-border/60 pt-4 first:mt-0 first:border-t-0 first:pt-0">
-			<p className="mb-2 text-xs text-muted-foreground">{label}</p>
-			<div className="flex flex-col gap-2">{children}</div>
+		<div data-testid={testid} className="flex flex-col gap-2">
+			{(label || hint) && (
+				<div>
+					{label && <h3 className="text-[13px] font-semibold text-muted-foreground">{label}</h3>}
+					{hint && <p className="text-[12.5px] text-muted-foreground">{hint}</p>}
+				</div>
+			)}
+			<div className={bare ? "flex flex-col gap-2" : "divide-y divide-border/60 rounded-xl border border-border/70 bg-surface"}>{children}</div>
 		</div>
 	);
 }
 
-/** One label + one control. Label left (with optional muted hint), control
- *  right — the settings row shape. */
+/** Folded-away rows for people who want to tinker. */
+export function SettingsAdvanced({ children, testid }: { children: React.ReactNode; testid?: string }) {
+	return (
+		<details data-testid={testid} className="group/adv flex flex-col gap-4">
+			<summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-[13px] font-semibold text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
+				<svg viewBox="0 0 16 16" className="size-3.5 transition-transform group-open/adv:rotate-90" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+					<path d="M6 4l4 4-4 4" />
+				</svg>
+				Advanced
+			</summary>
+			<div className="mt-3 flex flex-col gap-6">{children}</div>
+		</details>
+	);
+}
+
+/** One label + one control. Label left (with an optional plain line),
+ *  control right. Lives inside a SettingsGroup card. */
 export function SettingsRow({
 	label,
 	hint,
@@ -66,17 +92,52 @@ export function SettingsRow({
 	hint?: string;
 	children: React.ReactNode;
 	testid?: string;
-	/** Dependency graying, graph-view style: the whole row dims when the
-	 *  control is inert (parent off, no file yet, …). */
+	/** Dependency graying: the whole row dims when the control is inert. */
 	dimmed?: boolean;
 }) {
 	return (
-		<div data-testid={testid} className={cn("flex items-center justify-between gap-4 py-1", dimmed && "opacity-40")}>
+		<div data-testid={testid} className={cn("flex items-center justify-between gap-4 px-4 py-3", dimmed && "opacity-40")}>
 			<span className="min-w-0">
-				<span className="block font-prose text-(length:--lh-prose-size)">{label}</span>
-				{hint && <span className="block text-xs text-muted-foreground/70">{hint}</span>}
+				<span className="block text-[14.5px] font-medium text-foreground">{label}</span>
+				{hint && <span className="block text-[13px] text-muted-foreground">{hint}</span>}
 			</span>
 			{children}
+		</div>
+	);
+}
+
+/** A segmented choice: exactly one option is on. */
+export function Segmented<T extends string>({
+	options,
+	value,
+	onChange,
+	ariaLabel,
+	testid,
+}: {
+	options: readonly { value: T; label: string }[];
+	value: T | null;
+	onChange: (next: T) => void;
+	ariaLabel: string;
+	testid?: string;
+}) {
+	return (
+		<div role="radiogroup" aria-label={ariaLabel} data-testid={testid} className="flex shrink-0 rounded-lg bg-accent/60 p-0.5 text-[13px]">
+			{options.map((o) => (
+				<button
+					key={o.value}
+					type="button"
+					role="radio"
+					aria-checked={o.value === value}
+					data-testid={testid ? `${testid}-${o.value}` : undefined}
+					onClick={() => onChange(o.value)}
+					className={cn(
+						"rounded-md px-2.5 py-1 transition-colors",
+						o.value === value ? "bg-surface font-semibold text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					{o.label}
+				</button>
+			))}
 		</div>
 	);
 }
@@ -113,10 +174,10 @@ export function Toggle({
 			data-testid={`toggle-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
 			onClick={() => onChange(!checked)}
 			className={cn(
-				"relative h-4.5 w-8 shrink-0 rounded-full border border-border transition-colors",
-				// Owner (2026-09-20): on is a gray track with a WHITE disc (a full-white
-				// track was too loud); off stays the muted track.
-				checked ? "bg-muted-foreground" : "bg-muted",
+				"relative h-5 w-9 shrink-0 rounded-full transition-colors",
+				// Ink switch (settings redesign): on = an ink track, off = a quiet
+				// outlined track.
+				checked ? "bg-foreground" : "bg-accent ring-1 ring-border ring-inset",
 				disabled && "cursor-not-allowed",
 			)}
 		>
@@ -125,8 +186,8 @@ export function Toggle({
 				// only the knob's face changes (the invert affordance).
 				<span
 					className={cn(
-						"absolute left-0 top-0.5 flex size-3 items-center justify-center rounded-full transition-transform",
-						checked ? "translate-x-4 text-foreground" : "translate-x-0.5 text-muted-foreground",
+						"absolute left-0 top-0.5 flex size-4 items-center justify-center rounded-full bg-background shadow-xs transition-transform",
+						checked ? "translate-x-4.5 text-foreground" : "translate-x-0.5 text-muted-foreground",
 					)}
 				>
 					{discIcon}
@@ -134,10 +195,8 @@ export function Toggle({
 			) : (
 				<span
 					className={cn(
-						"absolute left-0 top-0.5 size-3 rounded-full transition-transform",
-						// 2px inset from each inner edge, both states (owner round: the on
-						// disc used to touch the pill's right edge).
-						checked ? "translate-x-4 bg-foreground" : "translate-x-0.5 bg-muted-foreground",
+						"absolute left-0 top-0.5 size-4 rounded-full bg-background shadow-xs transition-transform",
+						checked ? "translate-x-4.5" : "translate-x-0.5",
 					)}
 				/>
 			)}
@@ -169,7 +228,7 @@ export function ThinSelect({
 			disabled={disabled}
 			onChange={(e) => onChange(e.target.value)}
 			className={cn(
-				"h-7 rounded-sm border border-border bg-background px-1.5 font-ui text-xs text-foreground outline-none",
+				"h-8 rounded-lg border border-border bg-surface px-2 font-ui text-[13px] text-foreground outline-none",
 				disabled && "cursor-not-allowed",
 			)}
 		>
@@ -228,7 +287,7 @@ export function CommitInput({
 					e.currentTarget.blur();
 				}
 			}}
-			className="h-7 w-40 rounded-sm border border-border bg-background px-2 font-ui text-xs text-foreground outline-none placeholder:text-muted-foreground/60"
+			className="h-8 w-40 rounded-lg border border-border bg-surface px-2.5 font-ui text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-foreground/40"
 		/>
 	);
 }

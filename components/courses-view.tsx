@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarIcon, CheckIcon, FileTextIcon, PlusIcon, XIcon } from "lucide-react";
@@ -446,7 +448,11 @@ function CourseCard({
 							</Button>
 						</form>
 					) : (
-						<h3 className="truncate text-[17px] font-semibold">{course.label}</h3>
+						<h3 className="truncate text-[17px] font-semibold">
+							<Link href={`/class/${encodeURIComponent(course.key)}`} data-testid="course-open" className="underline-offset-2 hover:underline">
+								{course.label}
+							</Link>
+						</h3>
 					)}
 					<p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
 						{course.next && <CalendarIcon className="size-3 shrink-0" />}

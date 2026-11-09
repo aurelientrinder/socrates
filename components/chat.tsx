@@ -53,7 +53,7 @@ import { PlanProgressLine, SessionTimerChip, useSessionTimer } from "@/component
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
 import { ArrowRightIcon, DumbbellIcon, FlagIcon, RepeatIcon, WaypointsIcon } from "lucide-react";
-import { SessionKindTile } from "@/components/sidebar";
+import { SessionClassKindTile } from "@/components/sidebar";
 import { sessionDisplay } from "@/components/session-display";
 import type { PlanBlockData } from "@/src/core";
 import { numberCitations } from "@/src/core";
@@ -1370,7 +1370,7 @@ export function Chat({
 						</>
 					) : (
 					<>
-						<SessionKindTile variant={sessionDisplay({ title: titleText, kind }).variant} className="ml-1 size-6" />
+						<SessionClassKindTile chatId={chatId} variant={sessionDisplay({ title: titleText, kind }).variant} className="ml-1 size-6" />
 						<Hint
 							// F2 renames (registry) — surfaced on the hover.
 							label="Rename session"

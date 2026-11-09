@@ -157,8 +157,8 @@ function KeyTableRow({
 	if (expanded && !envOwned) {
 		return (
 			<div data-testid={testid}>
-				<div className="flex items-center gap-2 rounded-sm px-1 py-1.5" data-testid={`${testid}-editor`}>
-					<span className="shrink-0 font-ui text-xs text-foreground">{label}</span>
+				<div className="flex items-center gap-2 px-4 py-2.5" data-testid={`${testid}-editor`}>
+					<span className="shrink-0 text-[14.5px] font-medium text-foreground">{label}</span>
 					<input
 						type="text"
 						value={value}
@@ -171,7 +171,7 @@ function KeyTableRow({
 						data-testid={`${testid}-input`}
 						disabled={busy}
 						autoFocus
-						className="h-7 min-w-0 flex-1 rounded-sm border border-border bg-background px-1.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-muted-foreground/50"
+						className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-surface px-2.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-muted-foreground/50"
 					/>
 					<button
 						type="button"
@@ -219,11 +219,11 @@ function KeyTableRow({
 				aria-expanded={expanded}
 				data-testid={`${testid}-row`}
 				onClick={() => !envOwned && onToggle()}
-				className={`flex w-full items-center justify-between gap-3 rounded-sm px-1 py-1.5 text-left ${
-					envOwned ? "cursor-default" : "cursor-pointer transition-colors hover:bg-accent/50"
+				className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left ${
+					envOwned ? "cursor-default" : "cursor-pointer transition-colors hover:bg-accent/40"
 				}`}
 			>
-				<span className="font-ui text-xs text-foreground">{label}</span>
+				<span className="text-[14.5px] font-medium text-foreground">{label}</span>
 				<span className="flex items-center gap-2">
 					{docsUrl && (
 						<a
@@ -231,18 +231,18 @@ function KeyTableRow({
 							target="_blank"
 							rel="noreferrer"
 							onClick={(e) => e.stopPropagation()}
-							className="text-[10px] text-muted-foreground/60 underline-offset-2 hover:text-foreground hover:underline"
+							className="text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
 						>
 							key ↗
 						</a>
 					)}
-					<span data-testid={`${testid}-status`} className="font-mono text-[11px] text-muted-foreground">
+					<span data-testid={`${testid}-status`} className="text-[13px] text-muted-foreground">
 						{keyStatusLine(status)}
 					</span>
 				</span>
 			</button>
 			{error && (
-				<p role="alert" data-testid={`${testid}-error`} className="pl-6 text-xs text-red-500">
+				<p role="alert" data-testid={`${testid}-error`} className="px-4 pb-2 text-xs text-red-500">
 					{error}
 				</p>
 			)}
@@ -291,7 +291,7 @@ function AddProviderRow({
 				aria-expanded={open}
 				data-testid="add-provider"
 				onClick={() => setOpen((v) => !v)}
-				className="flex w-full items-center justify-between gap-3 rounded-sm px-1 py-1.5 text-left font-ui text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+				className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-[13.5px] text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
 			>
 				<span>+ Add provider key</span>
 				{addable.length > 0 && <span className="font-mono text-[11px]">{addable.length}</span>}
@@ -400,7 +400,7 @@ export function KeysSection({
 	}
 
 	if (loading || statuses === null) {
-		return <p className="px-6 py-5 text-xs text-muted-foreground/70">Loading keys…</p>;
+		return <p className="text-[13px] text-muted-foreground">Loading keys…</p>;
 	}
 
 	const { providerRows, toolRows, unknownRows, addable } = classifyKeys(statuses, providers);
@@ -416,7 +416,7 @@ export function KeysSection({
 
 	return (
 		<>
-			<SettingsGroup label="Model API keys" testid="group-provider-keys">
+			<SettingsGroup label="Providers" hint="Your keys stay on this computer." testid="group-provider-keys">
 				{providerRows.map((status) => (
 					<KeyTableRow
 						key={status.id}
@@ -445,13 +445,13 @@ export function KeysSection({
 					/>
 				)}
 				{adding && (
-					<div className="flex items-center gap-2 rounded-sm px-1 py-1.5" data-testid={`key-${adding.id}-editor`}>
-						<span className="shrink-0 font-ui text-xs text-foreground">{adding.label}</span>
+					<div className="flex items-center gap-2 px-4 py-2.5" data-testid={`key-${adding.id}-editor`}>
+						<span className="shrink-0 text-[14.5px] font-medium text-foreground">{adding.label}</span>
 						<AddProviderEditor provider={adding} onSave={(v) => void saveNewProvider(adding, v)} onCancel={() => setAdding(null)} error={addError} />
 					</div>
 				)}
 				{unknownRows.length > 0 && <div data-testid="group-unknown-keys">
-					{unknownRows.map((status) => <div key={status.id} data-testid={`unknown-${status.id}`} className="flex items-center justify-between gap-3 px-1 py-1.5 opacity-40">
+					{unknownRows.map((status) => <div key={status.id} data-testid={`unknown-${status.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 opacity-40">
 						<span className="font-mono text-xs text-foreground">{status.id}</span>
 						<span className="font-mono text-[11px] text-muted-foreground">{status.masked}</span>
 					</div>)}
@@ -510,7 +510,7 @@ function AddProviderEditor({
 				aria-label={`${provider.label} key`}
 				data-testid={`key-${provider.id}-input`}
 				autoFocus
-				className="h-7 min-w-0 flex-1 rounded-sm border border-border bg-background px-1.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-muted-foreground/50"
+				className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-surface px-2.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-muted-foreground/50"
 			/>
 			<button
 				type="button"

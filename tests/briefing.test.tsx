@@ -276,14 +276,49 @@ describe("TodayShell", () => {
 		todo: [{ id: "todoist", label: "Todoist", configured: false }],
 	};
 
-	it("asks for the OAuth client and token before anything is connected", () => {
+	it("keeps setup out of Today: a first-run checklist, and one nudge to Settings only when something is broken", () => {
 		const html = renderToStaticMarkup(
 			<TodayShell briefing={null} integrations={disconnected} budgetMinutes={45} sessions={[]} busy={true} pushing={null} error={null} handlers={handlers} />,
 		);
-		assert.match(html, /today-connections/);
-		assert.match(html, /Add client ID/);
-		assert.match(html, /Add token/);
+		assert.doesNotMatch(html, /today-connections|Add client ID/);
 		assert.match(html, /Putting today/);
+		const first = renderToStaticMarkup(
+			<TodayShell briefing={null} integrations={disconnected} budgetMinutes={45} sessions={[]} busy={false} pushing={null} error={null} handlers={handlers} setup={{ calendar: true, notes: false, quiz: false }} />,
+		);
+		assert.match(first, /data-testid="today-setup"[\s\S]*1 of 3 done/);
+		const broken = renderToStaticMarkup(
+			<TodayShell
+				briefing={null}
+				integrations={{ ...disconnected, google: { configured: true, connected: true, needsReconnect: true, pending: false } }}
+				budgetMinutes={45}
+				sessions={[]}
+				busy={false}
+				pushing={null}
+				error={null}
+				handlers={handlers}
+			/>,
+		);
+		assert.match(broken, /today-setup-nudge[\s\S]*needs reconnecting/);
+	});
+
+	it("ticks off done steps and moves the start card to the next one", () => {
+		const a = topic({ key: "plan:la:a", title: "Eigenvalues", chatId: "la", stability: 3, lastReviewedAt: NOW - 3 * DAY });
+		const b = topic({ key: "plan:ph:b", title: "Standing waves", chatId: "ph", chatTitle: "Physics", stability: 3, lastReviewedAt: NOW - 3 * DAY });
+		const plan = planBriefing(
+			input({
+				sessions: [{ id: "la", title: "Linear algebra" }, { id: "ph", title: "Physics" }],
+				topics: [a, b],
+				events: [event({ id: "e1", title: "Linear Algebra Exam", start: NOW + 3 * DAY }), event({ id: "e2", title: "Physics exam", start: NOW + 4 * DAY })],
+			}),
+		);
+		assert.ok(plan.items.length >= 2);
+		const briefing: BriefingData = { plan, note: "", noteSource: "fallback", sources: { calendar: { connected: true, count: 2 }, todo: { provider: "Todoist", connected: false, count: 0 } }, events: [], pushed: {} };
+		const html = renderToStaticMarkup(
+			<TodayShell briefing={briefing} integrations={disconnected} budgetMinutes={45} sessions={[]} busy={false} pushing={null} error={null} handlers={handlers} doneIds={new Set([plan.items[0]!.id])} />,
+		);
+		assert.match(html, new RegExp(`1 of ${plan.items.length} done`));
+		assert.match(html, /Done · \d+ min/);
+		assert.ok(html.indexOf(plan.items[1]!.title) < html.indexOf("Done ·"), "the next step leads, the done one sits below");
 	});
 
 	it("renders items with push buttons when connected", () => {
@@ -366,7 +401,7 @@ describe("TodayShell", () => {
 			<TodayShell briefing={null} integrations={disconnected} budgetMinutes={30} sessions={[]} busy={false} pushing={null} error={null} handlers={handlers} />,
 		);
 		assert.equal(html.match(/aria-pressed="true"/g)?.length, 1);
-		assert.match(html, /aria-pressed="true"[^>]*>30 min</);
+		assert.match(html, /aria-pressed="true"[^>]*aria-label="30 minutes"[^>]*>30</);
 	});
 
 	it("shows a gentle streak in the week card, with five minutes to keep it", () => {

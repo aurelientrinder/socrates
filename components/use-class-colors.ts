@@ -32,3 +32,10 @@ export function useClassColors(): Map<string, number> {
 	const classes = useClasses();
 	return useMemo(() => new Map(classes.map((c) => [c.key, c.color])), [classes]);
 }
+
+/** session (chat) id → its class's color index, empty until loaded: the
+ *  sidebar tints each session's kind tile with it (Today refine, 2026-11-08). */
+export function useSessionClassColors(): Map<string, number> {
+	const classes = useClasses();
+	return useMemo(() => new Map(classes.flatMap((c) => c.sessions.map((id) => [id, c.color] as const))), [classes]);
+}

@@ -167,4 +167,14 @@ describe("SessionRow practice sessions (2026-10-04)", () => {
 		const html = render(item({ kind: "practice", pendingProblem: true }));
 		assert.match(html, /Practice · Problem waiting/);
 	});
+
+	it("a session in a class tints its kind tile with the class color; others keep the kind's tile", () => {
+		const tinted = renderToStaticMarkup(<SessionRow chat={item({ kind: "review", title: "Review · 3 topics" })} active={false} onOpen={() => {}} classColor={2} />);
+		assert.match(tinted, /data-class-color="2"[^>]*class="[^"]*cal-c2/);
+		assert.match(tinted, /background:var\(--tint\)/);
+		assert.doesNotMatch(tinted, /bg-review-soft text-review-ink flex|cal-c2[^"]*bg-review-soft/);
+		const plain = render(item({ kind: "review", title: "Review · 3 topics" }));
+		assert.doesNotMatch(plain, /data-class-color/);
+		assert.match(plain, /bg-review-soft/);
+	});
 });
