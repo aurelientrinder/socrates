@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import packageMetadata from "./package.json" with { type: "json" };
 
 /** The app's pages talk only to their own origin. Scripts stay 'unsafe-inline'
  *  (Next's own bootstrap is inline), so this is not XSS armor: it is what
@@ -24,6 +25,8 @@ const CONTENT_SECURITY_POLICY = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+	// The running version, shown under Settings > Data & updates > About.
+	env: { NEXT_PUBLIC_APP_VERSION: packageMetadata.version },
 	// Desktop target (Electron wrapper, 2026-09-17): standalone output = a
 	// self-contained .next/standalone/server.js the Electron shell spawns
 	// on 127.0.0.1. Harmless for plain web deploys (extra build output).

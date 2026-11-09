@@ -398,6 +398,13 @@ export function SettingsDialogBody({
 										/>
 									</SettingsRow>
 									</SettingsGroup>
+									<SettingsGroup label="About">
+										<SettingsRow label="Version" hint="The release of Socrates you are running." testid="row-app-version">
+											<span className="text-[14px] tabular-nums text-muted-foreground" data-testid="app-version">
+												{process.env.NEXT_PUBLIC_APP_VERSION ?? "unknown"}
+											</span>
+										</SettingsRow>
+									</SettingsGroup>
 									<SettingsGroup label="Backups" hint="A copy is saved every day in the data folder.">
 										<SettingsRow
 										label="Export everything"
