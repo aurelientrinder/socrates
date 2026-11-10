@@ -68,10 +68,9 @@ const nextConfig: NextConfig = {
 	// ⚠ EXCLUDE PATTERNS ARE LOAD-BEARING IN WAYS THE DOCS DON'T DESCRIBE
 	// (empirically established 2026-10-08): adding dir excludes like
 	// "dist/**/*" / "./dist/**/*" for repo-root output dirs STRIPPED THE
-	// server-external packages (pi-ai / pi-agent-core lost everything
-	// under their dist/ — the traced copy collapsed to a bare package.json
-	// and the packaged server died on ERR_MODULE_NOT_FOUND; openai/
-	// @anthropic-ai — pi-ai's deps — vanished from the trace entirely).
+	// server-external packages (the SDK lost everything under its dist/ —
+	// the traced copy collapsed to a bare package.json and the packaged
+	// server died on ERR_MODULE_NOT_FOUND).
 	// Anchored "./"-prefixed forms behave the same. **/data/**/* fixes
 	// suffix matching in Next's JavaScript collector, but NOT its native
 	// Turbopack tracer: that still prunes gcp-metadata and its private deps.
@@ -92,10 +91,9 @@ const nextConfig: NextConfig = {
 		],
 	},
 	// Empirically verified gaps (2026-09-17 standalone smoke): the tracer
-	// misses JSON loaded via `import ... with { type: "json" }` attributes —
-	// pi-ai's provider catalog (39 JSON files) vanished from the trace and
-	// the server 500s on module load. Include the whole data dirs of the
-	// runtime-loaded engine packages.
+	// misses JSON loaded via `import ... with { type: "json" }` attributes.
+	// Our own model catalog (src/llm/gemini-models.json) is bundled by Next,
+	// so no package data dirs need including any more.
 	// pdfjs-dist (sources v0 live smoke, 2026-09-19): its legacy build loads
 	// the node fake worker (pdf.worker.mjs) and our standard_fonts dir via
 	// runtime-resolved paths — invisible to the tracer. Bundling (without
@@ -118,24 +116,21 @@ const nextConfig: NextConfig = {
 			// Wave E stage 2: resvg rasterizes visual-maker SVGs natively; same
 			// per-platform-binary story as the canvas above (one per build).
 			"node_modules/@resvg/resvg-js-*/**/*",
-			"node_modules/@earendil-works/pi-ai/dist/providers/data/**/*",
-			"node_modules/@earendil-works/pi-agent-core/dist/**/*.json",
 			// Next 16.3.2 native Turbopack applies unanchored excludes while
 			// traversing modules; **/data/**/* still prunes gcp-metadata and
 			// its private runtime chain. Includes are applied after traversal.
 			// This is the verified GoogleAuth closure, not a general dep copy;
-			// the offline native Pi gate must catch future SDK closure changes.
+			// the offline provider-runtime gate must catch future SDK closure changes.
 			"node_modules/gcp-metadata/**/*",
 			"node_modules/json-bigint/**/*",
 			"node_modules/bignumber.js/**/*",
 		],
 	},
 	// Framework-free core lives in src/ (plain TS, imported by routes and CLI alike).
-	// The pi engine must stay external: its providers are runtime-loaded Node
-	// code (undici streams, catalog data) that breaks when bundled into routes.
+	// The Gemini SDK must stay external: it is runtime-loaded Node code
+	// (undici streams, google-auth-library) that breaks when bundled into routes.
 	serverExternalPackages: [
-		"@earendil-works/pi-ai",
-		"@earendil-works/pi-agent-core",
+		"@google/genai", // the Gemini SDK: runtime-loaded Node code (undici streams, google-auth-library)
 		"pdfjs-dist", // sources v0: bundling breaks its node fake-worker path
 		"@napi-rs/canvas", // native binding — bundling breaks the .node require
 		"@resvg/resvg-js", // native binding — same

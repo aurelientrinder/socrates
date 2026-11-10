@@ -15,7 +15,7 @@
 # server env at boot, so a "fresh" instance would silently federate the
 # real keys. LH_IGNORE_ENV_KEYS=1 (the keys seam, src/server/keys.ts)
 # deletes every managed key var from the process after Next's env load:
-# pi-ai reads provider keys from process.env NATIVELY at every request,
+# the Gemini client reads its key from process.env at every request,
 # so deletion hides keys from the whole app, model engines included.
 #
 #   LH_DATA_DIR     → .fresh-data/ (wiped each launch unless --keep)

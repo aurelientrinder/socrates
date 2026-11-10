@@ -1,6 +1,8 @@
 # The pi engine swap — design record
 
-Date: 2026-09-12. Status: PLANNED (facts verified, awaiting go).
+Date: 2026-09-12. Status: HISTORICAL. In 2026-11 pi-ai and pi-agent-core were removed:
+the app now uses Gemini only, through Google's official `@google/genai` SDK, with the
+agent loop vendored in `src/llm/vendor`. Read the rest as the record of the original swap.
 
 Decision (user, 2026-09-12): swap the server agent engine (Band B) and the
 UI-stream bridge (Band C) from the Vercel AI SDK to **@earendil-works/pi-ai**

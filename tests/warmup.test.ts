@@ -20,11 +20,11 @@ import fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { after, describe, it } from "node:test";
-import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai";
+import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } from "../src/llm/index.ts";
 
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-warmup-"));
 process.env.LH_DATA_DIR = TMP_DATA;
-process.env.OPENROUTER_API_KEY ??= "test-key-presence-gate";
+process.env.GEMINI_API_KEY ??= "test-key-presence-gate";
 
 const { chatStore } = await import("../src/store/chats.ts");
 const { warmupContextMessage, reviewStatus } = await import("../src/server/review.ts");
@@ -211,7 +211,7 @@ async function createSession(body: Record<string, unknown>): Promise<string> {
 		new Request("http://test/api/chats", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
 	);
 	const { id } = (await res.json()) as { id: string };
-	chatStore.saveSettings(id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
+	chatStore.saveSettings(id, { model: { provider: "google", id: "gemini-3.8-flash" } });
 	return id;
 }
 

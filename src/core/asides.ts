@@ -8,7 +8,7 @@
  *
  * Pure: no node deps, client-safe.
  */
-import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import type { ToolResultMessage } from "../llm/index.ts";
 import type { ChatAside } from "./contracts.ts";
 import type { LhMessage } from "./native-messages.ts";
 

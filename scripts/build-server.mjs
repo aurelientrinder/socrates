@@ -65,7 +65,7 @@ for (const secret of ["auth.json", ".env", ".env.local"]) {
 // runtime (the demo helper's dev-only require). Neither belongs in the
 // server: packaged helpers use process.execPath, the app's own binary.
 // Remove ONLY these standalone-root paths AFTER tracing — excluding a
-// generic dist/** earlier broke pi-ai / pi-agent-core's runtime dist/.
+// generic dist/** earlier broke the Gemini SDK's runtime dist/.
 // Never touch ROOT/dist or ROOT/node_modules/electron (the running app
 // and the build runtime); native canvas/resvg packages stay untouched.
 for (const extra of ["dist", path.join("node_modules", "electron")]) {

@@ -1,12 +1,12 @@
 /**
  * The model catalog's server surface (model-control wave, 2026-09-12;
- * federated since the model-slots wave, 2026-09-20): pi-ai's catalog for
+ * federated since the model-slots wave, 2026-09-20): the Gemini layer's catalog for
  * every KEYED provider, projected to client-safe DTOs for the picker (GET
  * /api/models), plus the validation gate for settings writes (PUT
  * /api/settings/* — the per-chat settings PUT is retired from the UI;
  * legacy records' per-chat overrides still resolve server-side).
  *
- * pi-ai owns ALL the data: the catalog (id/name/cost/context/modality/
+ * the Gemini layer owns ALL the data: the catalog (id/name/cost/context/modality/
  * thinkingLevelMap) and the per-model thinking truth
  * (getSupportedThinkingLevels / clampThinkingLevel). This module only
  * projects and validates — no second registry to drift out of sync.
@@ -17,9 +17,10 @@
  * set; nothing here changes.
  */
 
-import { clampThinkingLevel, getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { clampThinkingLevel, getSupportedThinkingLevels, type Api, type Model } from "../llm/index.ts";
+import type { ThinkingLevel } from "../llm/index.ts";
 import { piModels } from "../agent/models.ts";
+import { refreshDiscoveredModels } from "../llm/discovery.ts";
 function connectionModel(provider: string, id: string): Model<Api> | undefined { return piModels().getModel(provider, id); }
 function connectionProviderIds(): string[] { return piModels().getProviders().map((p) => p.id); }
 import { settingsStore, readSettings } from "../store/settings.ts";
@@ -119,7 +120,7 @@ export function catalogSlots(): SlotPins {
 }
 
 /** The providers surface (model slots wave, 2026-09-20): one row per
- *  plain-key model provider (core/auth-keys.ts's pi-ai-derived table),
+ *  plain-key model provider (core/auth-keys.ts's the Gemini layer-derived table),
  *  with keyPresent read env-wins through the keys seam, fresh per call —
  *  saving a key immediately federates the provider into the picker. */
 export function catalogProviders(): CatalogProvider[] {
@@ -304,4 +305,11 @@ export function clampChatLevel(settings: ChatSettings, strong: EffectiveSlot | n
 	const id = settings.model?.id ?? strong?.id;
 	if (!provider || !id) return settings;
 	return { ...settings, thinkingLevel: clampLevelFor(provider, id, settings.thinkingLevel) };
+}
+
+/** The picker payload after asking Google which models this key can use
+ *  (cached 10 minutes; offline or a bad key keeps the baked list). */
+export async function freshModelCatalog(): Promise<ModelCatalogResponse> {
+	await refreshDiscoveredModels();
+	return modelCatalog();
 }

@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
-import type { Usage } from "@earendil-works/pi-ai";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { Usage } from "../../llm/index.ts";
+import type { AgentTool } from "../../llm/index.ts";
 import { Type, type Static, type TSchema } from "typebox";
 import { toToolResult } from "../tool-execute.ts";
 import type { ModelRole } from "../../../config.ts";

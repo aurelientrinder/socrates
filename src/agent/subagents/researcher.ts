@@ -1,5 +1,5 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { Usage } from "@earendil-works/pi-ai";
+import type { AgentTool } from "../../llm/index.ts";
+import type { Usage } from "../../llm/index.ts";
 import { createWebTools } from "../tools/web.ts";
 import { createPdfReadTools } from "../tools/pdf-read.ts";
 import type { SearchProvider } from "../../core/search.ts";

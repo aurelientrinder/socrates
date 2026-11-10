@@ -26,7 +26,7 @@ import { createProberAgent, createTeacherAgent, type TeachingAgent } from "../sr
 import type { ProberToolContext } from "../src/agent/tools.ts";
 import { jobStore } from "../src/store/jobs.ts";
 import { chatStore } from "../src/store/chats.ts";
-import { createFauxCore } from "@earendil-works/pi-ai";
+import { createFauxCore } from "../src/llm/index.ts";
 import type { PiEngine } from "../src/agent/models.ts";
 
 /** A scripted pi engine — the agent builds need an injected engine since

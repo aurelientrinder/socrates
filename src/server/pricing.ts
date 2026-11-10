@@ -2,7 +2,7 @@
  * Catalog resolution is key-independent; no provider dispatch/auth is needed.
  * Never mutate saved native messages: calculateCost mutates its usage.cost.
  */
-import { calculateCost, type Usage } from "@earendil-works/pi-ai";
+import { calculateCost, type Usage } from "../llm/index.ts";
 import { piModels } from "../agent/models.ts";
 import type { CallUsage, ChatRecord, JobRecord, TurnUsage } from "../core/contracts.ts";
 import { sessionCost as foldSessionCost, turnCost as foldTurnCost, jobCost as foldJobCost } from "../core/prices.ts";

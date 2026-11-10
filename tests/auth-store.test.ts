@@ -33,8 +33,8 @@ describe("AuthStore adapter", () => {
 	});
 
 	it("set → read round-trip; trim is the CALLER's (server's) job, verbatim here", () => {
-		authStore.setAuthVar("OPENROUTER_API_KEY", "sk-or-v1-abc");
-		assert.equal(authStore.authVars().OPENROUTER_API_KEY, "sk-or-v1-abc");
+		authStore.setAuthVar("GEMINI_API_KEY", "sk-or-v1-abc");
+		assert.equal(authStore.authVars().GEMINI_API_KEY, "sk-or-v1-abc");
 	});
 
 	it("the file is mode 0600 (secrets), also after rewrites", () => {
@@ -47,11 +47,11 @@ describe("AuthStore adapter", () => {
 
 	it("set preserves unknown vars verbatim (forward-compat)", () => {
 		fs.writeFileSync(AUTH_FILE, JSON.stringify({ FUTURE_PLANS_TOKEN: "opaque-xyz", KEEP: "me" }));
-		authStore.setAuthVar("OPENROUTER_API_KEY", "sk-or-v1-new");
+		authStore.setAuthVar("GEMINI_API_KEY", "sk-or-v1-new");
 		const vars = authStore.authVars();
 		assert.equal(vars.FUTURE_PLANS_TOKEN, "opaque-xyz");
 		assert.equal(vars.KEEP, "me");
-		assert.equal(vars.OPENROUTER_API_KEY, "sk-or-v1-new");
+		assert.equal(vars.GEMINI_API_KEY, "sk-or-v1-new");
 	});
 
 	it("corrupt/non-object file = {} — never throws, looks like first boot", () => {
@@ -72,7 +72,7 @@ describe("AuthStore adapter", () => {
 	});
 
 	it("atomic writes: no tmp leftovers, valid JSON on disk every time", () => {
-		authStore.setAuthVar("OPENROUTER_API_KEY", "sk-or-v1-final");
+		authStore.setAuthVar("GEMINI_API_KEY", "sk-or-v1-final");
 		const files = fs.readdirSync(TMP).filter((f) => f.startsWith(".auth.json.tmp"));
 		assert.deepEqual(files, [], "no tmp file survives the rename");
 		JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8")); // must parse

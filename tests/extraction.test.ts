@@ -25,7 +25,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { after, describe, it } from "node:test";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall, type FauxResponseStep, type ToolCall, type Usage } from "@earendil-works/pi-ai";
+import { createFauxCore, fauxAssistantMessage, fauxToolCall, type FauxResponseStep, type ToolCall, type Usage } from "../src/llm/index.ts";
 import type { PiEngine } from "../src/agent/models.ts";
 import type { LhMessage } from "../src/core/native-messages.ts";
 import { newPlanBlockMessage } from "../src/core/native-messages.ts";
@@ -160,7 +160,7 @@ function assistant(id: string, items: unknown[]): LhMessage[] {
 			role: "assistant",
 			content,
 			api: "openai-completions",
-			provider: "openrouter",
+			provider: "google",
 			model: "test",
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			stopReason: "stop",

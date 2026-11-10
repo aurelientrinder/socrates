@@ -176,7 +176,7 @@ describe("agent section compose helpers — the replace-whole PUT body", () => {
 
 	it("composeSlotModel: empty+empty REMOVES the slot (absent = factory pin)", () => {
 		const after = composeSlotModel(
-			{ strong: { model: { provider: "openrouter", id: "x" } }, cheap: {} },
+			{ strong: { model: { provider: "google", id: "x" } }, cheap: {} },
 			"strong",
 			"",
 			"",
@@ -236,17 +236,17 @@ describe("classifyKeys — the Keys section's two-group projection", () => {
 	const providers: ProviderKeyInfo[] = [
 		{ id: "groq", envVar: "GROQ_API_KEY", label: "Groq" },
 		{ id: "deepseek", envVar: "DEEPSEEK_API_KEY", label: "DeepSeek" },
-		{ id: "openrouter", envVar: "OPENROUTER_API_KEY", label: "OpenRouter" },
+		{ id: "google", envVar: "GEMINI_API_KEY", label: "OpenRouter" },
 	];
 
 	it("OpenRouter is UN-pinned (wave-5 owner ruling): no row when absent, a row when stored", () => {
 		const none = classifyKeys([], providers);
 		assert.equal(none.providerRows.length, 0); // nothing synthesized
-		assert.ok(none.addable.some((p) => p.id === "openrouter")); // it's just an Add option
-		const stored = classifyKeys([synth("OPENROUTER_API_KEY", true)], providers);
+		assert.ok(none.addable.some((p) => p.id === "google")); // it's just an Add option
+		const stored = classifyKeys([synth("GEMINI_API_KEY", true)], providers);
 		assert.equal(stored.providerRows.length, 1);
-		assert.equal(stored.providerRows[0]!.id, "OPENROUTER_API_KEY");
-		assert.ok(!stored.addable.some((p) => p.id === "openrouter"));
+		assert.equal(stored.providerRows[0]!.id, "GEMINI_API_KEY");
+		assert.ok(!stored.addable.some((p) => p.id === "google"));
 	});
 
 	it("stored provider keys land in providerRows; the Add dropdown drops them", () => {

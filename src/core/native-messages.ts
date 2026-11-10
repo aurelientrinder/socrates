@@ -33,8 +33,8 @@
  * question gate holds steers; a POST would 409).
  */
 
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Message, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "../llm/index.ts";
+import type { AssistantMessage, Message, ToolResultMessage, UserMessage } from "../llm/index.ts";
 import { QUESTION_TOOLS } from "./pending.ts";
 import {
 	CONCLUDE_ACK_TEXT,
@@ -91,7 +91,7 @@ export interface LhMarkerMessage {
 	timestamp: number;
 }
 
-declare module "@earendil-works/pi-agent-core" {
+declare module "../llm/vendor/types.ts" {
 	interface CustomAgentMessages {
 		lhMarker: LhMarkerMessage;
 	}
@@ -318,7 +318,7 @@ export function concludedByDismissalPair(
 	const callId = `call_conc_${problemCallId}`;
 	const now = Date.now();
 	// The stamps are placeholders by design: history serialization reads
-	// ONLY the content blocks (verified in pi-ai's converters), and the
+	// ONLY the content blocks (verified in the Gemini layer's converters), and the
 	// app's money channel is the parallel turns log, never message
 	// objects — so "synthetic" never corrupts a wire view or a cost fold.
 	const syntheticStamps = {
@@ -561,7 +561,7 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 	// context.systemPrompt + context.tools around its projection.
 	const leading =
 		(messages[0] as { role?: string } | undefined)?.role === "system" ? (messages[0] as Message) : null;
-	// ORPHANED RESULTS (the toolu_0179 incident, 2026-10-26): pi-ai's
+	// ORPHANED RESULTS (the toolu_0179 incident, 2026-10-26): the Gemini layer's
 	// transformMessages drops every assistant message whose stopReason is
 	// "error" or "aborted" before the wire — but NOT the results that
 	// follow it. A question streamed by a turn that then errored/aborted
@@ -626,7 +626,7 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 		// provider rejects unanswered calls outright.
 		if (role === "assistant") {
 			const assistant = m as AssistantMessage;
-			// Never replayed (pi-ai drops it), so its calls answer nothing
+			// Never replayed (the Gemini layer drops it), so its calls answer nothing
 			// and get no synthesized results — those would be orphans too.
 			if (assistant.stopReason === "error" || assistant.stopReason === "aborted") {
 				openCalls = new Set();

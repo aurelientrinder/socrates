@@ -8,7 +8,7 @@
  * refused (409) when no question is open or a turn is running, and the
  * client falls back to its normal send / steer paths.
  */
-import type { Usage } from "@earendil-works/pi-ai";
+import type { Usage } from "../llm/index.ts";
 import { runSubagent } from "../agent/subagents/pi-run.ts";
 import { piEngineForSpec } from "../agent/models.ts";
 import {

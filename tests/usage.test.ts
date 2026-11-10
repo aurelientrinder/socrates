@@ -24,17 +24,21 @@ test("sumSteps: absent stays absent; unknown long-cache detail stays unknown", (
 });
 
 test("callCost prices normalized fresh input directly, without subtracting caches again", () => {
-	const cost = callCost(call({ inputTokens: 100_000, outputTokens: 20_000, cacheReadTokens: 10_000 }), "openrouter:z-ai/glm-5.3-flash");
+	const cost = callCost(call({ inputTokens: 100_000, outputTokens: 20_000, cacheReadTokens: 10_000 }), "google:gemini-3.8-flash");
 	assert.ok(cost !== null);
-	assert.ok(Math.abs(cost - (0.015 + 0.0003 + 0.01)) < 1e-9);
-	assert.equal(callCost(call({ inputTokens: 10_000, outputTokens: 1_000, cacheReadTokens: 70_000 }), "openrouter:openai/gpt-6.1-sol"), 0.037);
+	// gemini-3.8-flash: $0.75 in / $3.75 out / $0.075 cached per 1M tokens
+	assert.ok(Math.abs(cost - (0.075 + 0.075 + 0.00075)) < 1e-9);
+	const second = callCost(call({ inputTokens: 10_000, outputTokens: 1_000, cacheReadTokens: 70_000 }), "google:gemini-3.8-flash");
+	assert.ok(second !== null && Math.abs(second - 0.0165) < 1e-9);
 });
 
 test("cache writes: precise short/one-hour costs and honest unknown historical splits", () => {
 	const usage = call({ inputTokens: 1_000_000, cacheWriteTokens: 500_000, cacheWrite1hTokens: 0 });
-	assert.equal(callCost(usage, "anthropic:claude-haiku-4-5"), 1.625);
-	assert.equal(callCost({ ...usage, cacheWrite1hTokens: 200_000 }, "anthropic:claude-haiku-4-5"), 1.775);
-	assert.equal(callCost({ ...usage, cacheWrite1hTokens: undefined }, "anthropic:claude-haiku-4-5"), null);
+	// Gemini bills cache writes at $0 here, so only the input is charged; a
+	// one-hour split (2x input) shows up when a record carries it.
+	assert.ok(Math.abs(callCost(usage, "google:gemini-3.8-flash")! - 0.75) < 1e-9);
+	assert.ok(Math.abs(callCost({ ...usage, cacheWrite1hTokens: 200_000 }, "google:gemini-3.8-flash")! - 1.05) < 1e-9);
+	assert.equal(callCost({ ...usage, cacheWrite1hTokens: undefined }, "google:gemini-3.8-flash"), null);
 });
 
 test("unknown model, absent or invalid required usage is null, never fake zero", () => {
@@ -44,7 +48,7 @@ test("unknown model, absent or invalid required usage is null, never fake zero",
 });
 
 test("turn/session costs sum calls and count unpriced separately", () => {
-	const turn: TurnUsage = { id: "t1", messageId: "m1", at: "x", model: "openrouter:z-ai/glm-5.3-flash", steps: [call({ inputTokens: 10_000, outputTokens: 2_000 }), call({ inputTokens: 12_000, outputTokens: 1_000 })] };
+	const turn: TurnUsage = { id: "t1", messageId: "m1", at: "x", model: "google:gemini-3.8-flash", steps: [call({ inputTokens: 10_000, outputTokens: 2_000 }), call({ inputTokens: 12_000, outputTokens: 1_000 })] };
 	const totals = sessionCost({ turns: [turn, { ...turn, id: "t2", model: "not/a-model" }] });
 	assert.equal(totals.unpriced, 1);
 	assert.equal(totals.cost, turnCost(turn));
@@ -54,7 +58,7 @@ test("turn/session costs sum calls and count unpriced separately", () => {
 
 test("legacy flat-rate jobs remain priceable; missing usage stays absent", () => {
 	assert.equal(jobCost({}), null);
-	const job: Pick<JobRecord, "usage"> = { usage: { model: "openrouter:z-ai/glm-5.3-flash", inputTokens: 1_000_000, outputTokens: 100_000, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, steps: 4 } };
+	const job: Pick<JobRecord, "usage"> = { usage: { model: "google:gemini-3.8-flash", inputTokens: 1_000_000, outputTokens: 100_000, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, steps: 4 } };
 	assert.ok(jobCost(job)! > 0);
 });
 

@@ -1,4 +1,4 @@
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { AgentTool, AgentToolResult } from "../llm/index.ts";
 import type { Static, TSchema } from "typebox";
 import { CONCLUDE_ACK_TEXT } from "../core/contracts/chat.ts";
 
@@ -25,7 +25,7 @@ import { CONCLUDE_ACK_TEXT } from "../core/contracts/chat.ts";
  *   suspenders rule for mixed batches.
  *
  * Structural validation is NOT here: pi's loop validates arguments against
- * the tool's TypeBox parameters before execute ever runs (pi-ai's
+ * the tool's TypeBox parameters before execute ever runs (the Gemini layer's
  * validateToolArguments — the fast TypeBox path). Refinements that no
  * schema can carry (quizInputProblems, the live-tree nodeId check) run at
  * the top of the tool's own execute and throw ToolInputError.

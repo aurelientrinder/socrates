@@ -27,7 +27,7 @@ Object.assign(dom.window, { innerWidth: 1280, innerHeight: 800 });
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 
 const originalFetch = globalThis.fetch;
-const provider = { id: "openrouter", envVar: "OPENROUTER_API_KEY", label: "OpenRouter" };
+const provider = { id: "google", envVar: "GEMINI_API_KEY", label: "OpenRouter" };
 const model: ModelCatalogEntry = {
 	id: "fixture-text",
 	name: "Fixture text",
@@ -121,7 +121,7 @@ describe("setup polish interactions", () => {
 		await click(element('[data-testid="setup-key-provider"]'));
 		assert.equal(document.querySelector('[data-testid="setup-key-provider-menu"]'), null);
 		await click(element('[data-testid="setup-key-provider"]'));
-		await click(element('[data-testid="provider-option-openrouter"]'));
+		await click(element('[data-testid="provider-option-google"]'));
 		assert.equal(document.querySelector('[data-testid="setup-key-provider-menu"]'), null);
 		assert.ok(document.querySelector('[data-testid="setup-key-input"]'));
 		assert.equal(closed, 0);

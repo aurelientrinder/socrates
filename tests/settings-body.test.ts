@@ -39,13 +39,13 @@ describe("parseAgentSettingsBody", () => {
 	it("models: valid roles with model pair and/or thinkingLevel; unknown role is a 400 with the list", () => {
 		const r = parseAgentSettingsBody({
 			models: {
-				researcher: { model: { provider: "openrouter", id: "qwen/qwen3.8-flash" } },
+				researcher: { model: { provider: "google", id: "gemini-3.5-flash-lite" } },
 				auditor: { thinkingLevel: "high" },
 			},
 		});
 		assert.ok(r.ok);
 		assert.deepEqual(r.settings.models, {
-			researcher: { model: { provider: "openrouter", id: "qwen/qwen3.8-flash" } },
+			researcher: { model: { provider: "google", id: "gemini-3.5-flash-lite" } },
 			auditor: { thinkingLevel: "high" },
 		});
 		const bad = parseAgentSettingsBody({ models: { teacher: {} } });
@@ -235,13 +235,13 @@ describe("SETTINGS_SECTIONS (the route's section map)", () => {
 describe("parseModelsSettingsBody (model slots wave, 2026-09-20)", () => {
 	it("parses the three slot tiers — model required, level rides (BYOK, owner 2026-09-22)", () => {
 		const r = parseModelsSettingsBody({
-			strong: { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } },
+			strong: { model: { provider: "google", id: "gemini-3.8-flash" } },
 			cheap: { model: { provider: "zai", id: "glm-5.3-flash" }, thinkingLevel: "high" },
 			vision: { model: { provider: "zai", id: "glm-5.3-flash" }, thinkingLevel: "low" },
 		});
 		assert.ok(r.ok);
 		assert.deepEqual(r.settings, {
-			strong: { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } },
+			strong: { model: { provider: "google", id: "gemini-3.8-flash" } },
 			cheap: { model: { provider: "zai", id: "glm-5.3-flash" }, thinkingLevel: "high" },
 			vision: { model: { provider: "zai", id: "glm-5.3-flash" }, thinkingLevel: "low" },
 		});

@@ -68,7 +68,7 @@ import {
 	type ModelSlotName,
 	type ModelsSettings,
 } from "@/src/core";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ThinkingLevel } from "@/src/core";
 import { prettyModel } from "@/components/usage-format";
 import { cn } from "@/lib/utils";
 import { SettingsAdvanced, SettingsGroup, SettingsRow, Toggle, CommitInput } from "./controls.tsx";

@@ -7,7 +7,7 @@ import { projectView } from "../src/core/view.ts";
 import type { LhMessage } from "../src/core/native-messages.ts";
 
 function teacher(id: string, content: unknown[]): LhMessage {
-	return { id, role: "assistant", content, stopReason: "stop", timestamp: 0, provider: "openrouter", model: "test" } as LhMessage;
+	return { id, role: "assistant", content, stopReason: "stop", timestamp: 0, provider: "google", model: "test" } as LhMessage;
 }
 
 describe("proposition source-session links (owner, 2026-10-13)", () => {

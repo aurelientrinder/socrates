@@ -19,9 +19,8 @@ describe("standalone JavaScript tracing exclusions and native workaround policy"
 			for (const relative of ["data/canary.json", "nested/data/private.json", "auth.json", ".env", ".env.local"]) {
 				assert.equal(ignored(file(relative)), true, relative);
 			}
-			// The explicit includes remain necessary: this raw ignore still matches SDK data.
-			assert.equal(ignored(file("node_modules/@earendil-works/pi-ai/dist/providers/data/models.json")), true);
-			assert.ok(nextConfig.outputFileTracingIncludes!["*"]!.includes("node_modules/@earendil-works/pi-ai/dist/providers/data/**/*"));
+			// The raw ignore still matches any package's data dir, which is why the explicit includes exist.
+			assert.equal(ignored(file("node_modules/some-sdk/dist/data/models.json")), true);
 		});
 		it(`does not confuse dependency suffixes with data directories (${windows ? "Windows" : "POSIX"})`, () => {
 			for (const relative of ["node_modules/gcp-metadata/build/src/index.js", "node_modules/form-data/lib/form_data.js", "node_modules/@swc/helpers/_/_ts_metadata.js", "node_modules/@swc/helpers/_/_ts_metadata/index.js", "node_modules/somedata/runtime.js"]) {
@@ -46,8 +45,6 @@ describe("standalone JavaScript tracing exclusions and native workaround policy"
 			"node_modules/pdfjs-dist/standard_fonts/**/*",
 			"node_modules/@napi-rs/canvas-*/**/*",
 			"node_modules/@resvg/resvg-js-*/**/*",
-			"node_modules/@earendil-works/pi-ai/dist/providers/data/**/*",
-			"node_modules/@earendil-works/pi-agent-core/dist/**/*.json",
 			"node_modules/gcp-metadata/**/*",
 			"node_modules/json-bigint/**/*",
 			"node_modules/bignumber.js/**/*",

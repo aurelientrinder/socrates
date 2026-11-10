@@ -6,15 +6,14 @@
  * Clicking a writable row unfolds a paste field + Save (+ Delete for a
  * file-sourced value) beneath it; Esc or a second click folds it away.
  * The Add-provider control is the LAST ROW of the table and uses the
- * app's shared dropdown look (ProviderMenuList — fuzzy search over the
- * 33 pi-ai providers).
+ * app's shared dropdown look (ProviderMenuList).
  *
  * Owner rulings carried in:
  *  - Env-owned rows (a real environment variable owns the name — dev
  *    .env.local or launch env) render READ-ONLY + dimmed, no paste field:
  *    a paste box on a key the UI cannot make live would mislead.
- *  - OpenRouter is NOT special: one provider among 33, a row only when
- *    stored, otherwise it lives in the Add dropdown like everyone else.
+ *  - Gemini is the only model provider; a row appears once a key is
+ *    stored, otherwise it lives in the Add dropdown.
  *  - Providers groups API keys and the calendar & to-do tokens.
  *    Unknown variables stay masked/read-only at the end of Model API keys.
  *
@@ -30,8 +29,7 @@ import { ProviderMenuList } from "./model-menu.tsx";
 import { MenuShell } from "@/components/menu-shell";
 import { notifySettingsSaved } from "@/components/settings-signal";
 
-/** One pi-ai provider with plain API-key auth (the Platform seam —
- *  derived from pi-ai's own env-key table; no drift possible). */
+/** One model provider with plain API-key auth (Gemini, from core/auth-keys.ts). */
 export interface ProviderKeyInfo {
 	id: string;
 	envVar: string;
@@ -54,8 +52,7 @@ const TOOL_GROUPS: readonly { label: string; testid: string; ids: readonly strin
 ];
 
 /** The classification driving the table groups. Pure — exported for
- *  tests. OpenRouter is un-pinned (wave-5 owner ruling): no synthesis,
- *  no special row — it rides the same provider classification. */
+ *  tests. */
 export function classifyKeys(
 	statuses: readonly AuthKeyStatus[],
 	providers: readonly ProviderKeyInfo[] | undefined,

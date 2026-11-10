@@ -27,13 +27,13 @@ const status = (id: string, present: boolean, source: AuthKeyStatus["source"] = 
 });
 
 const PROVIDERS: ProviderKeyInfo[] = [
-	{ id: "openrouter", envVar: "OPENROUTER_API_KEY", label: "OpenRouter" },
+	{ id: "google", envVar: "GEMINI_API_KEY", label: "OpenRouter" },
 	{ id: "anthropic", envVar: "ANTHROPIC_API_KEY", label: "Anthropic" },
 ];
 
 describe("hasProviderKey — the zero-keys pill's truth", () => {
 	it("a present provider key (env or file) is a key", () => {
-		assert.equal(hasProviderKey([status("OPENROUTER_API_KEY", true, "env")], PROVIDERS), true);
+		assert.equal(hasProviderKey([status("GEMINI_API_KEY", true, "env")], PROVIDERS), true);
 		assert.equal(hasProviderKey([status("ANTHROPIC_API_KEY", true, "file")], PROVIDERS), true);
 	});
 
@@ -43,7 +43,7 @@ describe("hasProviderKey — the zero-keys pill's truth", () => {
 	});
 
 	it("absent provider keys = zero keys (the pill shows)", () => {
-		assert.equal(hasProviderKey([status("OPENROUTER_API_KEY", false)], PROVIDERS), false);
+		assert.equal(hasProviderKey([status("GEMINI_API_KEY", false)], PROVIDERS), false);
 		assert.equal(hasProviderKey([], PROVIDERS), false);
 	});
 });
@@ -144,21 +144,21 @@ const catalog = (strongProvider: string | null, ...keyedProviders: string[]): Mo
 describe("strongKeyless — the pre-send guard's truth (owner interlude, no-orphan-chats)", () => {
 	it("strong pinned to a provider whose key is gone: the guard FIRES", () => {
 		// keys exist generally (anthropic), but the strong slot pins openrouter
-		assert.equal(strongKeyless(catalog("openrouter", "anthropic")), true);
+		assert.equal(strongKeyless(catalog("google", "anthropic")), true);
 		// no keys at all with a strong pin: also keyless (guard case 1 fires too)
-		assert.equal(strongKeyless(catalog("openrouter")), true);
+		assert.equal(strongKeyless(catalog("google")), true);
 	});
 
 	it("strong provider's key present: the guard does NOT fire — the normal send path stays open", () => {
-		assert.equal(strongKeyless(catalog("openrouter", "openrouter", "anthropic")), false);
+		assert.equal(strongKeyless(catalog("google", "google", "anthropic")), false);
 		// belt check: a provider row never counts when keyPresent is false
-		const lying = catalog("openrouter", "openrouter", "anthropic");
+		const lying = catalog("google", "google", "anthropic");
 		lying.providers[0]!.keyPresent = false;
 		assert.equal(strongKeyless(lying), true);
 	});
 
 	it("no strong pin (the models guard owns that case) or catalog not loaded: false — the server gate remains the belt", () => {
-		assert.equal(strongKeyless(catalog(null, "openrouter")), false);
+		assert.equal(strongKeyless(catalog(null, "google")), false);
 		assert.equal(strongKeyless(undefined), false);
 	});
 });

@@ -30,10 +30,10 @@ import { after, describe, it } from "node:test";
 // vars (a developer shell may export REAL keys; tests use throwaway
 // values only, never real secrets).
 for (const varName of [
-	"OPENROUTER_API_KEY",
+	"GEMINI_API_KEY",
 	"TODOIST_API_TOKEN",
 	"OPENAI_API_KEY",
-	"ZAI_API_KEY",
+	"GEMINI_API_KEY",
 ]) {
 	delete process.env[varName];
 }
@@ -49,7 +49,7 @@ fs.writeFileSync(AUTH, JSON.stringify({ OPENAI_API_KEY: "sk-file-fresh-file-fres
 //  - an env-ONLY provider key (the engine-path specimen)
 //  - the SAME var the file holds (the collision specimen: under the
 //    switch the FILE value must win, and the env copy must be deleted)
-process.env.OPENROUTER_API_KEY = "sk-or-env-env-env";
+process.env.GEMINI_API_KEY = "sk-or-env-env-env";
 process.env.OPENAI_API_KEY = "sk-openai-env-env-env";
 
 // THE SWITCH — set before first import (exactly how the launcher boots).
@@ -71,7 +71,7 @@ describe("the fresh-user switch (boot under LH_IGNORE_ENV_KEYS=1)", () => {
 	});
 
 	it("THE ENGINE PATH: env-only keys are DELETED from the process — pi-ai's native per-request env resolution finds nothing", () => {
-		assert.equal(process.env.OPENROUTER_API_KEY, undefined, "deleted from process.env at boot");
+		assert.equal(process.env.GEMINI_API_KEY, undefined, "deleted from process.env at boot");
 	});
 
 	it("the env copy of a file-backed var is deleted; the FILE value is what fills the env (only auth.json counts)", () => {
@@ -80,15 +80,15 @@ describe("the fresh-user switch (boot under LH_IGNORE_ENV_KEYS=1)", () => {
 	});
 
 	it("keyValue: env keys invisible, file keys visible — and a post-boot env reintroduction stays invisible (belt-and-suspenders)", () => {
-		assert.equal(keyValue("OPENROUTER_API_KEY"), undefined, "env key invisible under the switch");
+		assert.equal(keyValue("GEMINI_API_KEY"), undefined, "env key invisible under the switch");
 		assert.equal(keyValue("OPENAI_API_KEY"), "sk-file-fresh-file-fresh", "file key visible");
 		// A stray consumer re-sets an env key AFTER boot: the seam still
 		// ignores it (the deletion is boot-time; the read guard is live).
-		process.env.OPENROUTER_API_KEY = "sk-or-reintroduced-late";
+		process.env.GEMINI_API_KEY = "sk-or-reintroduced-late";
 		try {
-			assert.equal(keyValue("OPENROUTER_API_KEY"), undefined, "reintroduced env key stays invisible to the seam");
+			assert.equal(keyValue("GEMINI_API_KEY"), undefined, "reintroduced env key stays invisible to the seam");
 		} finally {
-			delete process.env.OPENROUTER_API_KEY;
+			delete process.env.GEMINI_API_KEY;
 		}
 	});
 
@@ -97,12 +97,12 @@ describe("the fresh-user switch (boot under LH_IGNORE_ENV_KEYS=1)", () => {
 		// env first — today's behavior, byte-for-byte (the boot-snapshot
 		// half is pinned in tests/server-keys.test.ts, the visible case).
 		process.env.LH_IGNORE_ENV_KEYS = undefined;
-		process.env.OPENROUTER_API_KEY = "sk-or-env-wins";
+		process.env.GEMINI_API_KEY = "sk-or-env-wins";
 		try {
-			assert.equal(keyValue("OPENROUTER_API_KEY"), "sk-or-env-wins", "env wins without the switch");
+			assert.equal(keyValue("GEMINI_API_KEY"), "sk-or-env-wins", "env wins without the switch");
 			assert.equal(keyValue("OPENAI_API_KEY"), "sk-file-fresh-file-fresh", "file is the fallback without the switch");
 		} finally {
-			delete process.env.OPENROUTER_API_KEY;
+			delete process.env.GEMINI_API_KEY;
 			process.env.LH_IGNORE_ENV_KEYS = "1";
 		}
 	});
@@ -114,27 +114,27 @@ describe("the fresh-user switch (boot under LH_IGNORE_ENV_KEYS=1)", () => {
 		assert.equal(openai!.present, true);
 		assert.equal(openai!.source, "file", "realEnv is empty under the switch — nothing reports as env");
 		assert.equal(openai!.shadowedByEnv, false);
-		assert.equal(rows.some((r) => r.id === "OPENROUTER_API_KEY"), false, "the env-only key is gone everywhere — no row");
+		assert.equal(rows.some((r) => r.id === "GEMINI_API_KEY"), false, "the env-only key is gone everywhere — no row");
 		assert.equal(rows.some((r) => r.source === "env"), false, "no env-owned key under the switch");
 	});
 
 	it("a fresh user CAN add keys mid-session: save reflects file → env (engines see it, no restart)", () => {
-		const result = saveKey("ZAI_API_KEY", "zai-fresh-sim-key-1234567890");
+		const result = saveKey("GEMINI_API_KEY", "gemini-fresh-sim-key-1234567890");
 		assert.equal(result.ok, true);
-		assert.equal(authStore.authVars().ZAI_API_KEY, "zai-fresh-sim-key-1234567890", "persisted to the file");
-		assert.equal(process.env.ZAI_API_KEY, "zai-fresh-sim-key-1234567890", "reflected into env for pi-ai");
-		const row = keyStatuses().find((r) => r.id === "ZAI_API_KEY");
+		assert.equal(authStore.authVars().GEMINI_API_KEY, "gemini-fresh-sim-key-1234567890", "persisted to the file");
+		assert.equal(process.env.GEMINI_API_KEY, "gemini-fresh-sim-key-1234567890", "reflected into env for the SDK");
+		const row = keyStatuses().find((r) => r.id === "GEMINI_API_KEY");
 		assert.equal(row!.source, "file", "the status honestly reports the file as the source");
 		// and DELETE removes both (fill-gap semantics hold under the switch)
-		deleteKey("ZAI_API_KEY");
-		assert.equal(process.env.ZAI_API_KEY, undefined);
-		assert.equal(authStore.authVars().ZAI_API_KEY, undefined);
+		deleteKey("GEMINI_API_KEY");
+		assert.equal(process.env.GEMINI_API_KEY, undefined);
+		assert.equal(authStore.authVars().GEMINI_API_KEY, undefined);
 	});
 
 	it("re-running initAuthEnv is idempotent — deleted env keys never resurrect", () => {
-		process.env.OPENROUTER_API_KEY = "sk-or-zombie";
+		process.env.GEMINI_API_KEY = "sk-or-zombie";
 		initAuthEnv();
-		assert.equal(process.env.OPENROUTER_API_KEY, undefined, "a reintroduced env key is re-deleted");
+		assert.equal(process.env.GEMINI_API_KEY, undefined, "a reintroduced env key is re-deleted");
 		assert.equal(process.env.OPENAI_API_KEY, "sk-file-fresh-file-fresh", "the file reflection survives re-init");
 	});
 });

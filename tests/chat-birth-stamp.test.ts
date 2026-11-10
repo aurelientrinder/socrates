@@ -44,7 +44,7 @@ describe("POST /api/chats — the birth stamp", () => {
 			version: 1,
 			models: {
 				strong: {
-					model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" },
+					model: { provider: "google", id: "gemini-3.8-flash" },
 					thinkingLevel: "low",
 				},
 			},
@@ -55,7 +55,7 @@ describe("POST /api/chats — the birth stamp", () => {
 		const record = chatStore.getChat(id);
 		assert.ok(record);
 		assert.deepEqual(record.settings, {
-			model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" },
+			model: { provider: "google", id: "gemini-3.8-flash" },
 			thinkingLevel: "low",
 		});
 	});
@@ -74,20 +74,20 @@ describe("POST /api/chats — the birth stamp", () => {
 	it("an unset thinking level rides as-is — the session's level resolves (strong's, then the model's ladder)", async () => {
 		writeSettings({
 			version: 1,
-			models: { strong: { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } } },
+			models: { strong: { model: { provider: "google", id: "gemini-3.8-flash" } } },
 		});
 		const res = await post();
 		const { id } = (await res.json()) as { id: string };
 		const record = chatStore.getChat(id);
 		assert.ok(record);
 		assert.equal(record.settings?.thinkingLevel, undefined);
-		assert.deepEqual(record.settings, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
+		assert.deepEqual(record.settings, { model: { provider: "google", id: "gemini-3.8-flash" } });
 	});
 
 	it("changing the strong slot afterward NEVER touches existing sessions — the stamp is a copy, not a live view", async () => {
 		writeSettings({
 			version: 1,
-			models: { strong: { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" }, thinkingLevel: "low" } },
+			models: { strong: { model: { provider: "google", id: "gemini-3.8-flash" }, thinkingLevel: "low" } },
 		});
 		const first = (await (await post()).json()) as { id: string };
 		writeSettings({
@@ -102,7 +102,7 @@ describe("POST /api/chats — the birth stamp", () => {
 		const firstRecord = chatStore.getChat(first.id);
 		const secondRecord = chatStore.getChat(second.id);
 		assert.ok(firstRecord && secondRecord);
-		assert.equal(firstRecord.settings?.model?.id, "z-ai/glm-5.3-flash");
+		assert.equal(firstRecord.settings?.model?.id, "gemini-3.8-flash");
 		assert.equal(secondRecord.settings?.model?.id, "gpt-6-luna");
 	});
 });

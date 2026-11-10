@@ -24,8 +24,8 @@
  * notes import runs. A model that never refused is never slowed down.
  */
 
-import type { Api, AssistantMessage, AssistantMessageEvent, Model, StreamFunction, StreamOptions } from "@earendil-works/pi-ai";
-import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
+import type { Api, AssistantMessage, AssistantMessageEvent, Model, StreamFunction, StreamOptions } from "../llm/index.ts";
+import { AssistantMessageEventStream } from "../llm/index.ts";
 import { emit } from "../core/events.ts";
 import { markUnadmittedUsage } from "./unadmitted-usage.ts";
 

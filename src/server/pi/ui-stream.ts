@@ -1,4 +1,4 @@
-import type { Agent, AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
+import type { Agent, AgentEvent, AgentMessage } from "../../llm/index.ts";
 import type { SteerMessage } from "../../core/contracts.ts";
 import { noteSteerVisible } from "../jobs.ts";
 import { ToolCallIdUniquifier } from "./call-ids.ts";

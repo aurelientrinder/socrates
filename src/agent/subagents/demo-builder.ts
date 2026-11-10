@@ -1,6 +1,6 @@
 import { Type } from "typebox";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { Usage } from "@earendil-works/pi-ai";
+import type { AgentTool } from "../../llm/index.ts";
+import type { Usage } from "../../llm/index.ts";
 import { serverExecute } from "../tool-execute.ts";
 import type { PiEngine } from "../models.ts";
 import { runSubagent } from "./pi-run.ts";

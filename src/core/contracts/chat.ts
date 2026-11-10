@@ -5,7 +5,7 @@
  * is owned outright by its stream — cross-domain schema changes go through
  * master. Pure types + protocol docs + tiny pure helpers. See docs/vision.md.
  */
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ThinkingLevel } from "../../llm/index.ts";
 import type { LhMessage } from "../native-messages.ts";
 import type { Phase3 } from "../phases.ts";
 import type { PlanNodeStatus, PlanTree } from "./plan.ts";
@@ -89,7 +89,7 @@ export const CURRENT_CHAT_VERSION = 1;
  *  turn by construction. Background sub-agents are NEVER overridden
  *  (config-pinned: they're infrastructure, not conversation). */
 export interface ChatSettings {
-	/** pi-ai catalog coordinates: the provider that owns the model. Only
+	/** the Gemini layer catalog coordinates: the provider that owns the model. Only
 	 *  "openrouter" is configured today; the field exists so a second
 	 *  provider needs no schema change. */
 	model?: { provider: string; id: string };

@@ -20,7 +20,7 @@
  */
 
 import { Type, type Static } from "typebox";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "../../llm/index.ts";
 import { quizInputBase, quizInputProblems, type QuestionAnswerData } from "../../core/question-core.ts";
 import { reviewTopicProblems, reviewTopicsOf, REVIEW_TOOL, unmarkedRecallOf } from "../../core/review.ts";
 import {

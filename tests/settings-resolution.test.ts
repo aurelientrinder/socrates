@@ -53,7 +53,7 @@ describe("resolveSettings", () => {
 			version: 1,
 			general: { autoUpdate: false },
 			agent: {
-				models: { researcher: { model: { provider: "openrouter", id: "qwen/qwen3.8-flash" } } },
+				models: { researcher: { model: { provider: "google", id: "gemini-3.5-flash-lite" } } },
 				tools: { research: false },
 				prompts: { "system-prompt.md": true },
 			},
@@ -63,8 +63,8 @@ describe("resolveSettings", () => {
 		const eff = resolveSettings(record);
 		assert.equal(eff.general.autoUpdate, false);
 		assert.deepEqual(eff.agent.models.researcher, {
-			provider: "openrouter",
-			id: "qwen/qwen3.8-flash",
+			provider: "google",
+			id: "gemini-3.5-flash-lite",
 			// thinking NOT overridden and no cheap slot → UNSET (the engine
 			// build resolves it from DEFAULT_THINKING_ORDER, not a pin).
 			thinkingLevel: undefined,

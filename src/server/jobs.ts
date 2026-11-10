@@ -69,7 +69,7 @@ import { fireJobAbort, isJobLive } from "../agent/subagents/aborts.ts";
 import { stores, effectiveSettings } from "./stores.ts";
 import { resolveConversationSpec } from "../core/settings-resolution.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
-import type { Agent } from "@earendil-works/pi-agent-core";
+import type { Agent } from "../llm/index.ts";
 
 /** Fires one server-side teacher turn: (chatId, input) → HTTP-ish status.
  *  Wave C: the input is the IDLE WAKE — every queued marker as the turn's

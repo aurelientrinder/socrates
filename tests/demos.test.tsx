@@ -29,7 +29,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { after, describe, it } from "node:test";
 import { Value } from "typebox/value";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall, type FauxResponseStep, type ToolCall } from "@earendil-works/pi-ai";
+import { createFauxCore, fauxAssistantMessage, fauxToolCall, type FauxResponseStep, type ToolCall } from "../src/llm/index.ts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PATHS } from "../config.ts";
 import {
@@ -91,7 +91,7 @@ import { artifactRenderers } from "../components/artifacts/index.ts";
 // The key-presence turn gate (provider-key interlude, 2026-09-25): scripted
 // turns pin openrouter per chat — the gate reads env-first truth, so the
 // key must be present in the test process like any real setup.
-process.env.OPENROUTER_API_KEY ??= "test-key-presence-gate";
+process.env.GEMINI_API_KEY ??= "test-key-presence-gate";
 
 
 
@@ -819,7 +819,7 @@ describe("demo/visual job runners", () => {
 				role: "assistant",
 				content: [{ type: "toolCall", id: "call-d1", name: "demo", arguments: DEMO_INPUT as never }],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "stop",
@@ -887,7 +887,7 @@ describe("demo/visual job runners", () => {
 				role: "assistant",
 				content: [{ type: "toolCall", id: "call-v1", name: "visual", arguments: { brief: "b" } as never }],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "stop",
@@ -931,7 +931,7 @@ describe("demo/visual job runners", () => {
 		createdChats.push(chat.id);
 		// BYOK turn gate (owner, 2026-09-22): the scripted chat needs a
 		// conversation model — the per-chat pin, exactly like the setup flow.
-		chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
+		chatStore.saveSettings(chat.id, { model: { provider: "google", id: "gemini-3.8-flash" } });
 
 		// A teacher that calls demo on turn 1, then continues in the SAME turn.
 		const teacher = scriptedModel([

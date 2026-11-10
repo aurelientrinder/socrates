@@ -5,11 +5,11 @@
  * (which OWNS these shapes — the contract is defined here only so client
  * components never import from the server band).
  */
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ThinkingLevel } from "../../llm/index.ts";
 import type { BackgroundModelRole, ModelSlotName } from "../settings.ts";
 
 /** One picker row: everything the UI shows about a model, projected from
- *  pi-ai's catalog. Costs are USD per 1M tokens (the same catalog, the same
+ *  the Gemini layer's catalog. Costs are USD per 1M tokens (the same catalog, the same
  *  units as Pi's server-side pricing calculator). */
 export interface ModelCatalogEntry {
 	id: string;
@@ -69,7 +69,7 @@ export interface ModelCatalogResponse {
 	slots: SlotPins;
 	/** Providers with a PRESENT key, and which env var gates each — the
 	 *  model slots wave's federation surface (2026-09-20): the picker lists
-	 *  models from these providers' pi-ai catalogs only. Keyless providers
+	 *  models from these providers' the Gemini layer catalogs only. Keyless providers
 	 *  are simply absent (the Keys page is the discovery surface, same
 	 *  discipline as the search engines). */
 	providers: CatalogProvider[];

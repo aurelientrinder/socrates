@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { after, afterEach, describe, it } from "node:test";
-import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, type AssistantMessage, type FauxResponseStep } from "@earendil-works/pi-ai";
+import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, type AssistantMessage, type FauxResponseStep } from "../src/llm/index.ts";
 import {
 	accumulateJobUsage,
 	buildAbortSteer,
@@ -87,7 +87,7 @@ const createdChats: string[] = [];
 // The key-presence turn gate (provider-key interlude, 2026-09-25): scripted
 // turns pin openrouter per chat — the gate reads env-first truth, so the
 // key must be present in the test process like any real setup.
-process.env.OPENROUTER_API_KEY ??= "test-key-presence-gate";
+process.env.GEMINI_API_KEY ??= "test-key-presence-gate";
 const createdJobs: string[] = [];
 
 function trackChat(id: string) {
@@ -105,7 +105,7 @@ function nativeToolMessages(text: string, tool: string, toolCallId: string, inpu
 			role: "assistant",
 			content: [{ type: "toolCall", id: toolCallId, name: tool, arguments: input as never }],
 			api: "openai-completions",
-			provider: "openrouter",
+			provider: "google",
 			model: "test",
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			stopReason: "toolUse",
@@ -338,13 +338,13 @@ describe("steer helpers (contracts.ts)", () => {
 
 	it("accumulateJobUsage: sums per model call; fields NO call reported stay undefined (absent is not zero)", () => {
 		let total: JobUsage | undefined = undefined;
-		total = accumulateJobUsage(total, "z-ai/glm-5.3-flash", {
+		total = accumulateJobUsage(total, "gemini-3.8-flash", {
 			inputTokens: 10,
 			outputTokens: 5,
 			inputTokenDetails: { cacheReadTokens: 4 },
 		});
 		assert.deepEqual(total, {
-			model: "z-ai/glm-5.3-flash",
+			model: "gemini-3.8-flash",
 			inputTokens: 10,
 			outputTokens: 5,
 			cacheReadTokens: 4,
@@ -364,7 +364,7 @@ describe("steer helpers (contracts.ts)", () => {
 		}, "lastStep is the most recent call's accounting, not cumulative");
 		// a later call that reports nothing new keeps reported fields summing
 		// (unreported contributes 0) and bumps the billing step count.
-		total = accumulateJobUsage(total, "z-ai/glm-5.3-flash", { inputTokens: 20, outputTokens: 0 });
+		total = accumulateJobUsage(total, "gemini-3.8-flash", { inputTokens: 20, outputTokens: 0 });
 		assert.equal(total.inputTokens, 30);
 		assert.equal(total.outputTokens, 5);
 		assert.equal(total.cacheReadTokens, 4, "unreported after reported contributes 0");
@@ -492,7 +492,7 @@ describe("dispatch (async protocol §2)", () => {
 		trackChat(chat.id);
 		// BYOK turn gate (owner, 2026-09-22): the scripted chat needs a
 		// conversation model — the per-chat pin, exactly like the setup flow.
-		chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
+		chatStore.saveSettings(chat.id, { model: { provider: "google", id: "gemini-3.8-flash" } });
 
 		const delivery = fakeDeliver();
 		const search = stubSearch();
@@ -910,7 +910,7 @@ describe("wake pipeline (src/server/jobs.ts)", () => {
 				role: "assistant",
 				content: [{ type: "toolCall", id: "quiz-call", name: "quiz", arguments: { question: "q", choices: ["a", "b"] } as never }],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "toolUse",
@@ -966,7 +966,7 @@ describe("wake pipeline (src/server/jobs.ts)", () => {
 				role: "assistant",
 				content: [{ type: "toolCall", id: "quiz-call", name: "quiz", arguments: { question: "q" } as never }],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "toolUse",
@@ -1144,7 +1144,7 @@ describe("Wave C: live steering handoff + settlement reconciliation", () => {
 				role: "assistant",
 				content: [{ type: "toolCall", id: "quiz-call", name: "quiz", arguments: { question: "q", choices: ["a", "b"] } as never }],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "toolUse",
@@ -1239,7 +1239,7 @@ describe("wake pipeline: a parked pump re-reads the queue", () => {
 			role: "assistant",
 			content: [{ type: "toolCall", id, name: "quiz", arguments: { question: "q", choices: ["a", "b"] } }],
 			api: "openai-completions",
-			provider: "openrouter",
+			provider: "google",
 			model: "test",
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			stopReason: "toolUse",
@@ -1314,7 +1314,7 @@ describe("persistTurn (native history, Wave B)", () => {
 				role: "assistant",
 				content: [{ type: "text", text: "hi" }],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "stop",
@@ -1345,7 +1345,7 @@ describe("persistTurn (native history, Wave B)", () => {
 				role: "assistant",
 				content: [{ type: "text", text: "wake turn" }],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "stop",
@@ -1368,7 +1368,7 @@ describe("persistTurn (native history, Wave B)", () => {
 				role: "assistant",
 				content: [{ type: "toolCall", id: "q1", name: "quiz", arguments: { question: "q?" } as never }],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "toolUse",
@@ -1538,7 +1538,7 @@ describe("abort (src/server/jobs.ts abortJob)", () => {
 					{ type: "toolCall", id: toolCallId, name: "research", arguments: RESEARCH_INPUT as never },
 				],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "toolUse",
