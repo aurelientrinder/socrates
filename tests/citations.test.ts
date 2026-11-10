@@ -40,6 +40,7 @@ describe("note citations", () => {
 });
 
 import { repairLiteralNewlines } from "../src/core/literal-newlines.ts";
+import { stripToolNarration } from "../src/core/tool-narration.ts";
 
 describe("literal newline repair", () => {
 	it("turns backslash-n in prose into a line break but leaves math and code alone", () => {
@@ -59,5 +60,19 @@ describe("review fixes", () => {
 	it("moves a display span's backslash-n line breaks outside the math", () => {
 		assert.equal(repairLiteralNewlines("vaut :\\n$$\\nFAD = 1\\n$$\\nfin"), "vaut :\n$$\nFAD = 1\n$$\nfin");
 		assert.equal(repairLiteralNewlines("$$\\nabla f$$"), "$$\\nabla f$$");
+	});
+});
+
+describe("tool narration strip", () => {
+	it("hides a leaked tool call sentence, finished or half-streamed", () => {
+		assert.equal(stripToolNarration('Lequel risque ? Let\'s call `quiz` (`type: "predict"`).'), "Lequel risque ?");
+		assert.equal(stripToolNarration("Alors. Let's call `quiz`."), "Alors.");
+		assert.equal(stripToolNarration("Texte. Let's call `qui"), "Texte.");
+		assert.equal(stripToolNarration('Appelons `quiz` (`type: "check"`).'), "");
+	});
+	it("leaves ordinary prose and code advice alone", () => {
+		const keep = "In JS, call `find` on the array (it returns the first match).";
+		assert.equal(stripToolNarration(keep), keep);
+		assert.equal(stripToolNarration("plain"), "plain");
 	});
 });
