@@ -34,7 +34,7 @@ import {
   type PluginConfig,
 } from "streamdown";
 import { mdComponents } from "@/components/md-blocks";
-import { numberCitations, repairLiteralNewlines, transformMathDelimiters } from "@/src/core";
+import { numberCitations, repairLiteralNewlines, stripToolNarration, transformMathDelimiters } from "@/src/core";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: LhViewMessage["role"];
@@ -367,7 +367,9 @@ export const MessageResponse = memo(
       typeof children === "string"
         ? repairLiteralNewlines(
             transformMathDelimiters(
-              children.includes("[[src_") ? numberCitations([children])[0]! : children
+              stripToolNarration(
+                children.includes("[[src_") ? numberCitations([children])[0]! : children
+              )
             )
           )
         : children;
