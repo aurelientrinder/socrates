@@ -111,3 +111,4 @@ export * from "./session-markdown.ts";
 export * from "./reminders.ts";
 export * from "./citations.ts";
 export * from "./literal-newlines.ts";
+export * from "./tool-narration.ts";
