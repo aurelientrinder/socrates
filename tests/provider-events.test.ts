@@ -71,14 +71,14 @@ test("env on: observer writes pinned-shape JSONL lines", (t) => {
 
 	const observe = providerEventObserver("chat_y", "teacher");
 	assert.ok(observe, "enabled → observer exists");
-	observe!({ type: "raw", delta: "hello" }, { provider: "openrouter", id: "z-ai/glm-5.3-flash" });
+	observe!({ type: "raw", delta: "hello" }, { provider: "google", id: "gemini-3.8-flash" });
 	providerEventNote("chat_y", "teacher", "run end");
 
 	const lines = readLines(dir, "chat_y");
 	assert.equal(lines.length, 2);
 	assert.deepEqual(
 		{ ...lines[0], t: 0 },
-		{ t: 0, ctx: "teacher", provider: "openrouter", model: "z-ai/glm-5.3-flash", event: { type: "raw", delta: "hello" } },
+		{ t: 0, ctx: "teacher", provider: "google", model: "gemini-3.8-flash", event: { type: "raw", delta: "hello" } },
 		"event line: {t, ctx, provider, model, event}",
 	);
 	assert.match(String(lines[1]!.note), /run end/);

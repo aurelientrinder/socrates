@@ -1,5 +1,5 @@
-import { Agent, type AgentEvent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
+import { Agent, type AgentEvent, type AgentMessage, type AgentTool } from "../../llm/index.ts";
+import type { AssistantMessage, ToolResultMessage, Usage } from "../../llm/index.ts";
 import { randomUUID } from "node:crypto";
 import { APP_IDENTITY, piEngineFor, type PiEngine } from "../models.ts";
 import { usageWasAdmitted } from "../unadmitted-usage.ts";

@@ -13,6 +13,8 @@
  * question call's real tool result (fork 1, owner 2026-09-26).
  */
 
+import { setDiscoveredModels } from "../src/llm/catalog.ts";
+import { getModel } from "../src/llm/index.ts";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -24,7 +26,7 @@ import {
 	fauxThinking,
 	fauxToolCall,
 	type FauxResponseStep,
-} from "@earendil-works/pi-ai";
+} from "../src/llm/index.ts";
 import { createTeacherAgent } from "../src/agent/teacher-agent.ts";
 import { createTeacherTools } from "../src/agent/tools.ts";
 import { handleChatInput, handleChatRequest } from "../src/server/chat-handler.ts";
@@ -51,7 +53,7 @@ import { PATHS } from "../config.ts";
 // The key-presence turn gate (provider-key interlude, 2026-09-25): scripted
 // turns pin openrouter per chat — the gate reads env-first truth, so the
 // key must be present in the test process like any real setup.
-process.env.OPENROUTER_API_KEY ??= "test-key-presence-gate";
+process.env.GEMINI_API_KEY ??= "test-key-presence-gate";
 
 const QUIZ_INPUT = {
 	question: "Which planet is closest to the sun?",
@@ -244,7 +246,7 @@ function dismissPost(chatId: string, toolCallId: string, kind: "quiz" | "ask" | 
  *  production (the injected faux engine still runs the loop). */
 function createConfiguredChat(title: string) {
 	const chat = chatStore.createChat(title);
-	chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
+	chatStore.saveSettings(chat.id, { model: { provider: "google", id: "gemini-3.8-flash" } });
 	// nodeId is required on teach quizzes (owner ruling 2026-09-26) — the
 	// scripted lessons quiz against this seeded tree.
 	chatStore.saveTree(chat.id, {
@@ -351,18 +353,24 @@ describe("teacher chat flow (scripted model)", () => {
 		assert.equal(danglingQuestionOf(saved2.messages), null);
 	});
 
+	// The Gemini catalog has no text-only model, so register one for this test.
+	const TEXT_ONLY = "gemini-test-text-only";
+	setDiscoveredModels([{ ...getModel("google", "gemini-3.8-flash")!, id: TEXT_ONLY, name: "Text only (test)", input: ["text"] }]);
 	for (const [label, modelId, sees] of [
-		["a text-only model gets no image block, the thinking says so", "~deepseek/deepseek-pro-latest", false],
-		["a vision model gets the page as an image block, never stored twice", "anthropic/claude-fable-5", true],
+		["a text-only model gets no image block, the thinking says so", TEXT_ONLY, false],
+		["a vision model gets the page as an image block, never stored twice", "gemini-3.8-flash", true],
 	] as const) {
 		it(`a handwritten page on the answer reaches the handler: ${label}`, async () => {
 			const { engine } = scriptedTeacher(defaultLesson);
 			const chat = createConfiguredChat("Test: handwritten page");
 			createdChats.push(chat.id);
-			chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: modelId } });
+			chatStore.saveSettings(chat.id, { model: { provider: "google", id: modelId } });
 			await drainTurn(post(chat.id, { type: "text", text: "teach me the solar system" }), agentFactory(engine));
-			const savedKey = process.env.GEMINI_API_KEY;
-			delete process.env.GEMINI_API_KEY;
+			// The Gemini key now drives both the model and handwriting transcription:
+			// keep the key (the gate needs it) but close the network so the
+			// transcription call fails fast and the "handwritten page" note stands.
+			const realFetch = globalThis.fetch;
+			globalThis.fetch = async () => { throw new Error("CLOSED: no network in tests"); };
 			try {
 				const answer = {
 					...gradedAnswer(QUIZ_INPUT, ["Mercury"]),
@@ -370,7 +378,7 @@ describe("teacher chat flow (scripted model)", () => {
 				};
 				await drainTurn(post(chat.id, { type: "answer", toolCallId: "call-1", answer }), agentFactory(engine));
 			} finally {
-				if (savedKey !== undefined) process.env.GEMINI_API_KEY = savedKey;
+				globalThis.fetch = realFetch;
 			}
 			const result = chatStore.getChat(chat.id)!.messages[2] as { role?: string; content: Array<{ type: string }>; details?: { thinking?: string; sketch?: { data?: string; thumb?: string } } };
 			assert.equal(result.role, "toolResult");
@@ -593,7 +601,7 @@ describe("teacher chat flow (scripted model)", () => {
 		const baseMessage = {
 			role: "assistant",
 			api: "openai-completions",
-			provider: "openrouter",
+			provider: "google",
 			model: "test",
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			timestamp: 1,
@@ -864,9 +872,9 @@ describe("chat store", () => {
 		const chat = chatStore.createChat("Settings test");
 		createdChats.push(chat.id);
 		const before = chatStore.getChat(chat.id)!.updatedAt;
-		chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" }, thinkingLevel: "high" });
+		chatStore.saveSettings(chat.id, { model: { provider: "google", id: "gemini-3.8-flash" }, thinkingLevel: "high" });
 		const saved = chatStore.getChat(chat.id)!;
-		assert.deepEqual(saved.settings, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" }, thinkingLevel: "high" });
+		assert.deepEqual(saved.settings, { model: { provider: "google", id: "gemini-3.8-flash" }, thinkingLevel: "high" });
 		assert.equal(saved.updatedAt, before, "a picker write is not conversation activity");
 		// replace-whole: a settings-less write clears the override (an empty
 		// object persists — every field absent = config defaults)
@@ -1006,44 +1014,44 @@ describe("the key-presence turn gate (provider-key interlude, 2026-09-25)", () =
 	it("a pinned provider whose key is gone refuses with 503 provider_key_missing — nothing lingers", async () => {
 		const chat = chatStore.createChat("Test: keyless provider");
 		createdChats.push(chat.id);
-		const saved = process.env.TOGETHER_API_KEY;
-		delete process.env.TOGETHER_API_KEY;
+		const saved = process.env.GEMINI_API_KEY;
+		delete process.env.GEMINI_API_KEY;
 		try {
 			// The chat's own model override pins the provider — the same
 			// chain the strong slot rides. The gate fires BEFORE the engine
 			// build, so the fake model id never hits the catalog.
-			chatStore.saveSettings(chat.id, { model: { provider: "together", id: "no-such-model" } });
+			chatStore.saveSettings(chat.id, { model: { provider: "google", id: "no-such-model" } });
 			const res = await handleChatRequest(post(chat.id, { type: "text", text: "teach me something" }), agentFactory(scriptedTeacher(defaultLesson).engine));
 
 			assert.equal(res.status, 503, "the key-presence gate refuses before beginTurn");
 			const body = (await res.json()) as { error: string; code: string; provider: string; slots: string[] };
 			assert.equal(body.code, "provider_key_missing");
-			assert.equal(body.provider, "together", "the envelope names whose key is gone");
+			assert.equal(body.provider, "google", "the envelope names whose key is gone");
 			assert.deepEqual(body.slots, ["strong"], "the conversation tier is the affected slot");
-			assert.equal(body.error, "No Together key is set — add one in Settings → Keys", "the human line names the provider");
+			assert.equal(body.error, "No Google Gemini key is set — add one in Settings → Keys", "the human line names the provider");
 			assert.equal(isTurnRunning(chat.id), false, "the refusal never registers a live turn");
 			assert.equal(chatStore.getChat(chat.id)!.messages.length, 0, "no write-ahead persist before the gate");
 		} finally {
-			if (saved !== undefined) process.env.TOGETHER_API_KEY = saved;
+			if (saved !== undefined) process.env.GEMINI_API_KEY = saved;
 		}
 	});
 
 	it("an env-present key passes the gate (gate by what would run)", async () => {
 		const chat = chatStore.createChat("Test: env-keyed provider");
 		createdChats.push(chat.id);
-		const saved = process.env.OPENAI_API_KEY;
-		process.env.OPENAI_API_KEY = "test-key-presence-gate";
+		const saved = process.env.GEMINI_API_KEY;
+		process.env.GEMINI_API_KEY = "test-key-presence-gate";
 		try {
 			// A REAL catalog model: the engine build AFTER the gate must
 			// resolve — the injected agent replaces the loop, not the build.
-			chatStore.saveSettings(chat.id, { model: { provider: "openai", id: "gpt-4" } });
+			chatStore.saveSettings(chat.id, { model: { provider: "google", id: "gemini-3.8-flash" } });
 			const res = await handleChatRequest(post(chat.id, { type: "text", text: "teach me something" }), agentFactory(scriptedTeacher(defaultLesson).engine));
 
 			assert.equal(res.status, 200, "the env-shadowed key counts as present — the turn runs");
 			await drainRunning(chat.id);
 		} finally {
-			if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
-			else delete process.env.OPENAI_API_KEY;
+			if (saved !== undefined) process.env.GEMINI_API_KEY = saved;
+			else delete process.env.GEMINI_API_KEY;
 		}
 	});
 });
@@ -1361,7 +1369,7 @@ describe("the silent dismissal (A2)", () => {
 					{ type: "toolCall", id: "call-b", name: "quiz", arguments: { question: "B?" } as never },
 				],
 				api: "openai-completions",
-				provider: "openrouter",
+				provider: "google",
 				model: "test",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				stopReason: "toolUse",

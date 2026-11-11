@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AssistantMessage, Message, ToolResultMessage, Usage, Tool } from "@earendil-works/pi-ai";
-import { normalizeContext } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Message, ToolResultMessage, Usage, Tool } from "../../llm/index.ts";
+import { normalizeContext } from "../../llm/index.ts";
 import { Type } from "typebox";
 import { piEngineFor, type PiEngine, type ThinkingLevel } from "../models.ts";
 import { providerEventObserver, type ProviderEventObserver } from "../provider-events.ts";
@@ -74,7 +74,7 @@ export interface PdfReaderOptions {
 
 export interface PdfReaderInput extends PdfToolInput {}
 
-/** The wire declarations (pi-ai Tool, TypeBox parameters). This loop owns
+/** The wire declarations (the Gemini layer Tool, TypeBox parameters). This loop owns
  *  execution itself — pdf_info/pdf_extract run via the plain pdfInfoText/
  *  pdfExtractText bodies below, pdf_search/pdf_render dispatch inline in
  *  the loop (search hits must join the citation set; renders feed the

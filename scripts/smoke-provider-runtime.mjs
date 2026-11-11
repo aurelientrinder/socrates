@@ -1,7 +1,7 @@
 /**
- * OFFLINE native Pi Google initialization gate (no generation or provider calls).
- * Unlike /api/models, this traverses Pi's lazy adapter and constructs GoogleGenAI.
- * The real onPayload hook throws a unique sentinel BEFORE generateContentStream.
+ * OFFLINE Gemini SDK initialization gate (no generation or provider calls).
+ * Loads the packaged @google/genai from the standalone payload and constructs
+ * GoogleGenAI with a dummy key; the network is closed throughout.
  * All file modules must resolve inside the payload, including nested dependencies.
  *
  * node scripts/smoke-provider-runtime.mjs [--standalone <dir>] [--runtime <Node/Electron>]
@@ -12,7 +12,6 @@ import * as fs from "node:fs";
 import { createRequire, registerHooks, syncBuiltinESMExports } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { formatProbeError, probeEnv } from "./smoke-demo-runtime.mjs";
 
@@ -28,7 +27,7 @@ export function verifyProviderRuntime(standalone, runtime = process.execPath) {
 		if (result.status !== 0 || result.error) {
 			throw new Error(`provider runtime probe failed (${result.error?.message ?? result.status}):\n${result.stdout ?? ""}${result.stderr ?? ""}`);
 		}
-		assert.match(result.stdout, /native Pi Google initialization passed/, "probe exited without success marker");
+		assert.match(result.stdout, /Gemini SDK initialization passed/, "probe exited without success marker");
 		process.stdout.write(result.stdout);
 	} finally { fs.rmSync(home, { recursive: true, force: true }); }
 }
@@ -76,40 +75,23 @@ async function probe(standalone) {
 		},
 	});
 	try {
-		// Pi is an explicit server external. Import its shipped public entry and
-		// factories, never the checkout's module or a direct/fake Google adapter.
-		const entry = pathToFileURL(path.join(root, "node_modules/@earendil-works/pi-ai/dist/index.js"));
-		const { createModels } = await import(entry.href);
-		const models = createModels();
-		for (const [name, factory] of [["google", "googleProvider"], ["opencode", "opencodeProvider"], ["opencode-go", "opencodeGoProvider"]]) {
-			const provider = (await import(new URL(`providers/${name}.js`, entry).href))[factory]();
-			models.setProvider(provider);
-			const model = provider.getModels().find((candidate) => candidate.api === "google-generative-ai");
-			assert.ok(model, `${name}: missing Google-backed catalog model`);
-			const sentinel = `LH_OFFLINE_ON_PAYLOAD_${randomUUID()}`;
-			let reached = 0;
-			const result = await models.streamSimple(model, { messages: [{ role: "user", content: "Offline initialization only", timestamp: 0 }] }, {
-				apiKey: "dummy-offline-provider-gate-not-a-key",
-				onPayload(payload, selected) {
-					assert.equal(selected.api, "google-generative-ai");
-					assert.ok(payload && typeof payload === "object");
-					reached++;
-					throw new Error(sentinel);
-				},
-			}).result();
-			assert.equal(reached, 1, `${name}: did not reach onPayload: ${result.errorMessage}`);
-			assert.equal(result.stopReason, "error");
-			assert.equal(result.errorMessage, sentinel, `${name}: unexpected initialization error`);
-			noNetwork();
-			console.log(`[smoke-provider-runtime] ${name}: native lazy Google adapter reached onPayload; generation stopped`);
-		}
+		// The SDK is an explicit server external: import the payload's copy,
+		// never the checkout's module.
+		const sdkRoot = path.join(root, "node_modules/@google/genai");
+		const manifest = JSON.parse(fs.readFileSync(path.join(sdkRoot, "package.json"), "utf8"));
+		const entry = pathToFileURL(path.join(sdkRoot, manifest.exports?.["."]?.node?.import ?? manifest.exports?.["."]?.import ?? manifest.module ?? manifest.main));
+		const { GoogleGenAI } = await import(entry.href);
+		const client = new GoogleGenAI({ apiKey: "dummy-offline-provider-gate-not-a-key" });
+		assert.equal(typeof client.models.generateContentStream, "function", "SDK client missing generateContentStream");
+		assert.equal(typeof client.models.list, "function", "SDK client missing models.list");
+		noNetwork();
 		// Resolution/evaluation, not folder-exists checks. This also covers the
 		// previously missing transitive edge and permits legitimate nested deps.
 		for (const name of ["@google/genai", "google-auth-library", "gcp-metadata", "json-bigint", "bignumber.js"]) {
 			assert.ok([...loaded].some((file) => file.includes(`${path.sep}node_modules${path.sep}${name.replaceAll("/", path.sep)}${path.sep}`)),
 				`Google runtime chain was not loaded: ${name}`);
 		}
-		console.log(`[smoke-provider-runtime] native Pi Google initialization passed; ${loaded.size} modules confined to ${root}; zero network attempts`);
+		console.log(`[smoke-provider-runtime] Gemini SDK initialization passed; ${loaded.size} modules confined to ${root}; zero network attempts`);
 	} finally { hooks.deregister(); }
 }
 

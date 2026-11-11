@@ -36,7 +36,7 @@ import { probeDoneInputSchema, type ProbeDoneInput } from "./contracts/probe.ts"
 import { recallReviewInputObject, recallMarkInputObject, type RecallReviewInput, type RecallMarkInput } from "./recall-review.ts";
 
 /** The pi-boundary parse step, mirrored here (live-smoke fix, 2026-09-26):
- *  pi-ai's validateToolArguments runs TypeBox's Value.Convert on the model's
+ *  the Gemini layer's validateToolArguments runs TypeBox's Value.Convert on the model's
  *  raw arguments before Value.Check — a correctAnswer sent as the NUMBER 17
  *  (what the live smoke's model actually emitted) converts to "17" at the
  *  boundary, so the tool poses the quiz fine. But the persisted record keeps

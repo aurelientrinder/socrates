@@ -50,11 +50,11 @@ describe("isModelsRefusal — the job-record matcher", () => {
 
 describe("providerKeyMissing — the envelope factory (provider-key interlude, 2026-09-25)", () => {
 	it("names the provider from the curated label and carries the exact machine code", () => {
-		const envelope = providerKeyMissing("openrouter", ["strong"]);
+		const envelope = providerKeyMissing("google", ["strong"]);
 		assert.deepEqual(envelope, {
-			error: "No OpenRouter key is set — add one in Settings → Keys",
+			error: "No Google Gemini key is set — add one in Settings → Keys",
 			code: PROVIDER_KEY_MISSING_CODE,
-			provider: "openrouter",
+			provider: "google",
 			slots: ["strong"],
 		});
 		assert.equal(envelope.code, "provider_key_missing");
@@ -68,7 +68,7 @@ describe("providerKeyMissing — the envelope factory (provider-key interlude, 2
 
 describe("parseProviderKeyRefusal — the send refusal detector's twin (zero-keys wave)", () => {
 	it("reads the envelope's own code + invariant tail — the wording can never drift client-side", () => {
-		const REFUSED = JSON.stringify(providerKeyMissing("openrouter", ["strong"]));
+		const REFUSED = JSON.stringify(providerKeyMissing("google", ["strong"]));
 		assert.equal(parseProviderKeyRefusal(REFUSED), true);
 		assert.equal(parseProviderKeyRefusal(JSON.stringify(providerKeyMissing("anthropic", ["strong", "vision"]))), true);
 	});
@@ -129,9 +129,9 @@ describe("prefillFromSlots — the SetupDialog prefill (BYOK wave)", () => {
 	});
 
 	it("provider collisions never cross-pollute (same id, different provider)", () => {
-		const both = [entry("shared-id", "openai"), entry("shared-id", "openrouter")];
-		const pre = prefillFromSlots(both, { strong: { model: { provider: "openrouter", id: "shared-id" } }, cheap: null, vision: null });
-		assert.equal(pre.strong?.provider, "openrouter");
+		const both = [entry("shared-id", "openai"), entry("shared-id", "google")];
+		const pre = prefillFromSlots(both, { strong: { model: { provider: "google", id: "shared-id" } }, cheap: null, vision: null });
+		assert.equal(pre.strong?.provider, "google");
 	});
 
 	it("absent slots payload (older shape) prefills nothing", () => {

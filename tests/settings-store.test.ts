@@ -57,7 +57,7 @@ describe("the settings store", () => {
 			SETTINGS_FILE,
 			JSON.stringify({
 				version: 1,
-				chat: { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" }, thinkingLevel: "low" },
+				chat: { model: { provider: "google", id: "gemini-3.8-flash" }, thinkingLevel: "low" },
 				graph: { enabled: true },
 			}),
 			"utf-8",

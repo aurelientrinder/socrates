@@ -63,7 +63,7 @@ test("activityFeed: running jobs across ALL chats, running-only, title-joined, o
 test("activityFeed: contextLimit is the server's live-catalog join (owner amendment, 2026-09-23)", () => {
 	// keyed-provider federation — the same env-key pattern as the
 	// model-catalog tests; file-local (each test file is its own process)
-	process.env.OPENROUTER_API_KEY ??= "test-key-openrouter-catalog";
+	process.env.GEMINI_API_KEY ??= "test-key-openrouter-catalog";
 	const chat = chatStore.createChat("limit join chat");
 	const createdJobs: string[] = [];
 	const usageFor = (model: string) => ({
@@ -80,15 +80,15 @@ test("activityFeed: contextLimit is the server's live-catalog join (owner amendm
 		const unknown = jobStore.createJob({ kind: "research", chatId: chat.id, toolCallId: "tc_unknown" });
 		const bare = jobStore.createJob({ kind: "research", chatId: chat.id, toolCallId: "tc_bare" });
 		createdJobs.push(known.id, unknown.id, bare.id);
-		jobStore.updateJob(known.id, { usage: usageFor("openrouter:z-ai/glm-5.3-flash") });
+		jobStore.updateJob(known.id, { usage: usageFor("google:gemini-3.8-flash") });
 		jobStore.updateJob(unknown.id, { usage: usageFor("nope/unknown") });
 
 		const feed = activityFeed();
 		const knownJob = feed.jobs.find((j) => j.id === known.id)!;
-		// pi 1.0.2's catalog: glm-5.3-flash contextWindow 1_048_575 (was
-		// 1_048_576 at 0.87.1 — upstream models.dev refresh).
-		assert.equal(knownJob.contextLimit, 1_048_575, "pi's catalog, joined server-side onto the feed");
-		assert.ok(knownJob.costUsd !== null && Math.abs(knownJob.costUsd - 0.0002) < 1e-12, "Pi's price is projected on the server");
+		// the Gemini catalog: gemini-3.8-flash contextWindow 1_048_576
+		assert.equal(knownJob.contextLimit, 1_048_576, "the Gemini catalog, joined server-side onto the feed");
+		// 1000 in × $0.75 + 100 out × $3.75 per 1M
+		assert.ok(knownJob.costUsd !== null && Math.abs(knownJob.costUsd - 0.001125) < 1e-12, "the catalog price is projected on the server");
 		const unknownJob = feed.jobs.find((j) => j.id === unknown.id)!;
 		assert.equal(unknownJob.contextLimit, null, "missing from the live catalog → null, never a guessed window");
 		assert.equal(unknownJob.costUsd, null);

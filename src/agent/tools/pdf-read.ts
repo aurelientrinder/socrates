@@ -2,7 +2,7 @@ import { publicFetch } from "./net-guard.ts";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Type } from "typebox";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "../../llm/index.ts";
 import { serverExecute } from "../tool-execute.ts";
 import { pdfExtract, pdfInfo, pdfProbe, pdfSearch } from "../subagents/pdf-ops.ts";
 

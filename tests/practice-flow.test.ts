@@ -24,7 +24,7 @@ import {
 	type FauxResponseFactory,
 	type FauxResponseStep,
 	type TranscriptContext,
-} from "@earendil-works/pi-ai";
+} from "../src/llm/index.ts";
 import type { PiEngine } from "../src/agent/models.ts";
 import { createPracticeAgent } from "../src/agent/teacher-agent.ts";
 import { handleChatRequest } from "../src/server/chat-handler.ts";
@@ -34,10 +34,10 @@ import { activeProblemOf, needsContinuation } from "../src/core/index.ts";
 import { PATHS } from "../config.ts";
 import { CONCLUDE_ACK_TEXT } from "../src/core/contracts/chat.ts";
 import type { LhMessage } from "../src/core/native-messages.ts";
-import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import type { ToolResultMessage } from "../src/llm/index.ts";
 
 // The BYOK key-presence gate reads env-first (chat-flow.test.ts's idiom).
-process.env.OPENROUTER_API_KEY ??= "test-key-presence-gate";
+process.env.GEMINI_API_KEY ??= "test-key-presence-gate";
 
 /** A valid problem pose — the slim schema: statement, mode, target,
  *  modelSolution (the commitment, which is also the reveal). */
@@ -70,7 +70,7 @@ after(() => {
 
 function createPracticeChat(title: string) {
 	const chat = chatStore.createChat(title, "practice");
-	chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
+	chatStore.saveSettings(chat.id, { model: { provider: "google", id: "gemini-3.8-flash" } });
 	createdChats.push(chat.id);
 	return chat;
 }

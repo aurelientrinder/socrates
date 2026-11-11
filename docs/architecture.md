@@ -186,7 +186,7 @@ flowchart LR
 
     subgraph DRIVEN["DRIVEN ADAPTERS — outbound"]
         FS["fs stores — src/store (data/)"]
-        LLM["LLM engines — pi-ai/OpenRouter via piEngineFor"]
+        LLM["LLM engines — Gemini via the official @google/genai SDK (src/llm)"]
         HEAD["headless Chrome — demo verify · SVG render"]
         STT["Gemini dictation — batch transcription route"]
         WEB["web tools — Gemini search grounding + Readability/Jina (researcher)"]
@@ -508,7 +508,7 @@ The bus itself is a `globalThis`-backed listener set (the Next per-entry-module 
 
 ## 11. Testing
 
-All deterministic, no network: engines are injected (pi-ai's **faux provider** — `createFauxCore`/`setResponses` — wrapped as the `PiEngine` production uses), `globalThis.fetch` is stubbed where transport matters, and pure logic gets in-memory port implementations. Suites either mirror production wiring with the real fs adapters (backup-and-clear of the ledgers they touch) or swap in-memory ports deliberately ("this suite never touches data/graph"). Four strata:
+All deterministic, no network: engines are injected (the in-repo **faux provider** — `createFauxCore`/`setResponses` — wrapped as the `PiEngine` production uses), `globalThis.fetch` is stubbed where transport matters, and pure logic gets in-memory port implementations. Suites either mirror production wiring with the real fs adapters (backup-and-clear of the ledgers they touch) or swap in-memory ports deliberately ("this suite never touches data/graph"). Four strata:
 
 1. **Pure core units** — merger via real adapters, derivation, coverage, question grading, plan tree, phases, clusters, layout, tool-parts, prices, fuzzy search.
 2. **Server flows** — `handleChatRequest` driven end-to-end with scripted faux engines: persistence, liveness, steer claiming, the wake pipeline (409 retry, quiz deferral, idempotency), crash recovery, the data-dir seam (including a fresh child process).

@@ -103,7 +103,7 @@ function assistant(id: string, calls: NativeCall[]): LhMessage[] {
 			role: "assistant",
 			content,
 			api: "openai-completions",
-			provider: "openrouter",
+			provider: "google",
 			model: "test",
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			stopReason: "stop",

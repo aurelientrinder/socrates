@@ -22,11 +22,11 @@ import { after, describe, it } from "node:test";
 // (a developer shell may export REAL keys; tests use throwaway values only,
 // never real secrets). The strip affects only this disposable child process.
 for (const varName of [
-	"OPENROUTER_API_KEY",
+	"GOOGLE_OAUTH_CLIENT_SECRET",
+	"GEMINI_API_KEY",
 	"TODOIST_API_TOKEN",
 	"GOOGLE_SEARCH_API_KEY",
 	"GOOGLE_CSE_ID",
-	"OPENAI_API_KEY",
 	"FUTURE_PLANS_TOKEN",
 ]) {
 	delete process.env[varName];
@@ -41,12 +41,12 @@ process.env.LH_AUTH_FILE = AUTH;
 fs.writeFileSync(
 	AUTH,
 	JSON.stringify({
-		OPENROUTER_API_KEY: "sk-or-v1-filefilefile",
+		GOOGLE_OAUTH_CLIENT_SECRET: "sk-or-v1-filefilefile",
 		FUTURE_PLANS_TOKEN: "opaque-plans-token",
 	}),
 );
 // Real env (set BEFORE the module's first import → boot snapshots it):
-process.env.OPENROUTER_API_KEY = "sk-or-v1-envvalue99";
+process.env.GOOGLE_OAUTH_CLIENT_SECRET = "sk-or-v1-envvalue99";
 
 // Import AFTER env setup — module init runs the boot fill-gap + snapshot.
 const { deleteKey, initAuthEnv, keyStatuses, keyValue, resolveKeyStatuses, saveKey, isWritableAuthKey } = await import(
@@ -57,19 +57,19 @@ const { authStore } = await import("../src/store/auth.ts");
 const ENV_OWNED = "sk-or-v1-envvalue99";
 
 after(() => {
-	delete process.env.OPENROUTER_API_KEY;
+	delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
 	delete process.env.TODOIST_API_TOKEN;
-	delete process.env.OPENAI_API_KEY;
+	delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
 	fs.rmSync(TMP, { recursive: true, force: true });
 });
 
 describe("boot fill-gap + precedence", () => {
 	it("env-owned var: env wins, shadow reported, file copy kept", () => {
-		const row = keyStatuses().find((s) => s.id === "OPENROUTER_API_KEY")!;
+		const row = keyStatuses().find((s) => s.id === "GOOGLE_OAUTH_CLIENT_SECRET")!;
 		assert.equal(row.source, "env");
 		assert.ok(row.shadowedByEnv, "file value differs from the env value");
 		assert.equal(row.masked, `…${ENV_OWNED.slice(-4)} (${ENV_OWNED.length} chars)`);
-		assert.equal(authStore.authVars().OPENROUTER_API_KEY, "sk-or-v1-filefilefile", "file copy untouched");
+		assert.equal(authStore.authVars().GOOGLE_OAUTH_CLIENT_SECRET, "sk-or-v1-filefilefile", "file copy untouched");
 	});
 
 	it("unknown file var: fill-gapped into env, surfaced as a generic row", () => {
@@ -89,7 +89,7 @@ describe("boot fill-gap + precedence", () => {
 	});
 
 	it("keyValue resolves env-first", () => {
-		assert.equal(keyValue("OPENROUTER_API_KEY"), ENV_OWNED);
+		assert.equal(keyValue("GOOGLE_OAUTH_CLIENT_SECRET"), ENV_OWNED);
 		assert.equal(keyValue("FUTURE_PLANS_TOKEN"), "opaque-plans-token");
 		assert.equal(keyValue("TODOIST_API_TOKEN"), undefined);
 	});
@@ -107,10 +107,10 @@ describe("saveKey / deleteKey (immediate effect, no restart)", () => {
 	});
 
 	it("save to an env-owned var: file updated, env NOT overwritten, shadow reported", () => {
-		const r = saveKey("OPENROUTER_API_KEY", "sk-or-v1-newvalue12345");
+		const r = saveKey("GOOGLE_OAUTH_CLIENT_SECRET", "sk-or-v1-newvalue12345");
 		assert.ok(r.ok);
-		assert.equal(process.env.OPENROUTER_API_KEY, ENV_OWNED, "real env untouched");
-		assert.equal(authStore.authVars().OPENROUTER_API_KEY, "sk-or-v1-newvalue12345", "file updated for later");
+		assert.equal(process.env.GOOGLE_OAUTH_CLIENT_SECRET, ENV_OWNED, "real env untouched");
+		assert.equal(authStore.authVars().GOOGLE_OAUTH_CLIENT_SECRET, "sk-or-v1-newvalue12345", "file updated for later");
 		assert.ok(r.status.shadowedByEnv);
 	});
 
@@ -137,11 +137,11 @@ describe("saveKey / deleteKey (immediate effect, no restart)", () => {
 	});
 
 	it("delete of an env-owned var: file copy gone, env remains (env wins)", () => {
-		const row = deleteKey("OPENROUTER_API_KEY");
+		const row = deleteKey("GOOGLE_OAUTH_CLIENT_SECRET");
 		assert.equal(row.source, "env");
 		assert.ok(row.present, "still live from the real env");
 		assert.ok(!row.shadowedByEnv, "nothing left in the file to shadow");
-		assert.equal(process.env.OPENROUTER_API_KEY, ENV_OWNED);
+		assert.equal(process.env.GOOGLE_OAUTH_CLIENT_SECRET, ENV_OWNED);
 	});
 
 	it("re-running initAuthEnv is idempotent — deleted vars never resurrect", () => {
@@ -152,43 +152,38 @@ describe("saveKey / deleteKey (immediate effect, no restart)", () => {
 	describe("model-provider keys (provider-keys interlude)", () => {
 		it("absent provider keys do NOT spam status rows — the dropdown is discovery", () => {
 			const rows = keyStatuses().map((s) => s.id);
-			assert.ok(!rows.includes("OPENAI_API_KEY"), "never saved → no row");
-			assert.ok(!rows.includes("ZAI_API_KEY"));
+			assert.ok(!rows.includes("GEMINI_API_KEY"), "never saved → no row");
 		});
 
 		it("save via provider env var: generic guard, reflected immediately", () => {
-			const value = "sk-throwaway-openai-0123456789"; // never a real secret
-			const r = saveKey("OPENAI_API_KEY", value);
+			const value = "throwaway-gemini-key-0123456789"; // never a real secret
+			const r = saveKey("GEMINI_API_KEY", value);
 			assert.ok(r.ok);
-			assert.equal(process.env.OPENAI_API_KEY, value, "env updated immediately");
-			assert.equal(authStore.authVars().OPENAI_API_KEY, value, "file updated");
-			const row = keyStatuses().find((s) => s.id === "OPENAI_API_KEY")!;
+			assert.equal(process.env.GEMINI_API_KEY, value, "env updated immediately");
+			assert.equal(authStore.authVars().GEMINI_API_KEY, value, "file updated");
+			const row = keyStatuses().find((s) => s.id === "GEMINI_API_KEY")!;
 			assert.ok(row.present);
 			assert.equal(row.source, "file", "fill-gap reflection — origin is the store");
 		});
 
 		it("provider truncations/whitespace are 400s (paste hygiene only)", () => {
-			assert.ok(!saveKey("OPENAI_API_KEY", "short").ok);
-			assert.ok(!saveKey("OPENAI_API_KEY", "has whitespace now").ok);
+			assert.ok(!saveKey("GEMINI_API_KEY", "short").ok);
+			assert.ok(!saveKey("GEMINI_API_KEY", "has whitespace now").ok);
 			// no family check anymore — any ≥12-char token passes
-			assert.ok(saveKey("OPENROUTER_API_KEY", "not-sk-or-but-12chars").ok);
+			assert.ok(saveKey("GEMINI_API_KEY", "not-sk-or-but-12chars").ok);
 		});
 
 		it("isWritableAuthKey: curated ∪ provider env vars; unknown stays unwritable", () => {
 			assert.ok(isWritableAuthKey("TODOIST_API_TOKEN"));
-			assert.ok(isWritableAuthKey("OPENROUTER_API_KEY"));
-			assert.ok(isWritableAuthKey("OPENAI_API_KEY"));
+			assert.ok(isWritableAuthKey("GEMINI_API_KEY"));
 			assert.ok(!isWritableAuthKey("FUTURE_PLANS_TOKEN"));
 			assert.ok(!isWritableAuthKey("ANTHROPIC_AUTH_TOKEN"), "anthropic alternates stay env-only");
 		});
 
 		it("delete of a provider key: env + file both cleared", () => {
-			deleteKey("OPENAI_API_KEY");
-			assert.equal(process.env.OPENAI_API_KEY, undefined);
-			assert.ok(!("OPENAI_API_KEY" in authStore.authVars()));
-			// cleanup the openrouter save from the guard test too
-			deleteKey("OPENROUTER_API_KEY");
-			assert.ok(!("OPENROUTER_API_KEY" in authStore.authVars()));
+			deleteKey("GEMINI_API_KEY");
+			assert.equal(process.env.GEMINI_API_KEY, undefined);
+			assert.ok(!("GEMINI_API_KEY" in authStore.authVars()));
 		});
 	});
 });

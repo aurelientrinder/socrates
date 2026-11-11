@@ -1,4 +1,4 @@
-import type { Usage } from "@earendil-works/pi-ai";
+import type { Usage } from "../llm/index.ts";
 import {
 	createPracticeAgent,
 	createReviewAgent,
@@ -199,7 +199,7 @@ export async function handleChatInput(
 	// THE KEY-PRESENCE GATE (provider-key interlude, owner, 2026-09-25): a
 	// pinned model is not enough — its PROVIDER's key must be present, or
 	// the turn dies mid-stream masked to a generic error. Truth is env-first
-	// (providerKeyPresent reads what pi-ai would read at request time), so
+	// (providerKeyPresent reads what the Gemini layer would read at request time), so
 	// an env-shadowed key passes. Same placement discipline as the models
 	// gate: BEFORE beginTurn (no liveness effects) and the write-ahead
 	// persist (nothing durable changes); wake-pipeline turns ride the same

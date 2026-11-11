@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import { createWebTools } from "../src/agent/tools/web.ts";
 import { jobTools } from "../src/agent/tools/jobs.ts";
 import { runResearcherAgent } from "../src/agent/subagents/researcher.ts";
-import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai";
+import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } from "../src/llm/index.ts";
 import type { JobStore } from "../src/core/ports.ts";
 import type { JobRecord } from "../src/core/contracts.ts";
 import type { SearchHit, SearchProvider } from "../src/core/search.ts";

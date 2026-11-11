@@ -1,7 +1,7 @@
 /**
  * provider-events — the raw-wire recorder (owner, 2026-10-04).
  *
- * pi-ai 1.0's onProviderStreamEvent observer fires for each PARSED
+ * the Gemini layer's onProviderStreamEvent observer fires for each PARSED
  * provider stream event BEFORE pi normalizes it — the exact layer where
  * our provider-quirk incident class lives and where nothing else in the
  * app can see: GLM-flash truncating tool-call arguments mid-JSON

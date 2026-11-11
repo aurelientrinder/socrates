@@ -29,7 +29,7 @@
  * makes every env key invisible APP-WIDE — the exact new-user simulation
  * (a fresh empty data dir + the switch = zero keys, zero federated
  * providers, setup stage 1). Under the switch real env vars are DELETED
- * from the process (not merely ignored by this seam): pi-ai resolves
+ * from the process (not merely ignored by this seam): the Gemini layer resolves
  * provider keys from process.env NATIVELY at every request
  * (auth/context.js's defaultProviderAuthContext reads live env), so
  * deletion is the one mechanism that hides keys from every consumer —
@@ -77,7 +77,7 @@ export function isWritableAuthKey(id: string): boolean {
 	return isKnownAuthKey(id) || isProviderEnvVar(id);
 }
 
-/** The settings page's provider dropdown: every pi-ai provider that takes
+/** The settings page's provider dropdown: every the Gemini layer provider that takes
  *  a plain key ({id, envVar, label} — no-drift-pinned, see the table's doc
  *  in core/auth-keys.ts and tests/auth-provider-keys.test.ts). Sorted by
  *  id for a stable payload. */
@@ -195,7 +195,7 @@ export function keyValue(id: string): string | undefined {
 
 /** The key-presence truth for one model provider (provider-key interlude,
  * 2026-09-25): would this provider's key be present at request time?
- * Reads through keyValue — the SAME env-first lookup pi-ai performs
+ * Reads through keyValue — the SAME env-first lookup the Gemini layer performs
  * natively at every request — so an env-shadowed key counts as present
  * (gate by what would run). Providers absent from AUTH_PROVIDER_KEYS take
  * no key at all: nothing to gate, present by definition. */

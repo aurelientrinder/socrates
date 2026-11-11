@@ -60,7 +60,7 @@ describe("sanitizeUserSettings", () => {
 			general: { autoUpdate: false },
 			agent: {
 				models: {
-					researcher: { model: { provider: "openrouter", id: "qwen/qwen3.8-flash" }, thinkingLevel: "high" },
+					researcher: { model: { provider: "google", id: "gemini-3.5-flash-lite" }, thinkingLevel: "high" },
 					visualMaker: { thinkingLevel: "max" },
 				},
 				tools: { research: false, quiz: true },
@@ -162,7 +162,7 @@ describe("sanitizeUserSettings", () => {
 			agent: {
 				models: {
 					teacher: { thinkingLevel: "low" }, // NOT a background role — drops
-					researcher: { model: { provider: "openrouter", id: "x/y" } },
+					researcher: { model: { provider: "google", id: "x/y" } },
 					extractor: { model: { provider: 3, id: "x/y" }, thinkingLevel: "high" }, // bad model, keeps thinking
 					auditor: { thinkingLevel: "banana" }, // invalid level → empty override drops
 				},
@@ -171,7 +171,7 @@ describe("sanitizeUserSettings", () => {
 		assert.ok(out);
 		const models = out.agent?.models ?? {};
 		assert.equal("teacher" in models, false);
-		assert.deepEqual(models.researcher, { model: { provider: "openrouter", id: "x/y" } });
+		assert.deepEqual(models.researcher, { model: { provider: "google", id: "x/y" } });
 		assert.deepEqual(models.extractor, { thinkingLevel: "high" });
 		assert.equal("auditor" in models, false);
 	});

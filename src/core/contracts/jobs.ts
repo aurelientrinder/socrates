@@ -76,7 +76,7 @@ export interface UsageStepLike {
 	outputTokenDetails?: { reasoningTokens?: number } | undefined;
 }
 
-/** pi-ai's Usage shape (input/output/cacheRead/cacheWrite/reasoning?) →
+/** the Gemini layer's Usage shape (input/output/cacheRead/cacheWrite/reasoning?) →
  * UsageStepLike. Structural — no pi import here; the engine band maps at
  * its boundaries. */
 export function piUsageToStep(usage: {

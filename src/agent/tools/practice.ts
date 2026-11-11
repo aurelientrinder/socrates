@@ -15,7 +15,7 @@
  */
 
 import { Type, type Static } from "typebox";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "../../llm/index.ts";
 import { resolveTargetId } from "../../core/chains.ts";
 import { readTool } from "./read.ts";
 import { lsTool } from "./ls.ts";

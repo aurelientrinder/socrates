@@ -211,7 +211,7 @@ export function ThinkingMenuList({
 /** The provider-picker dropdown body (keys wave-5 polish, 2026-09-21:
  *  the owner wanted the Add-provider control to match the app's dropdown
  *  language) — the same fuzzy-search + arrow-walk + Enter machine over
- *  the pi-ai provider table. Rows read: provider label, its env var in
+ *  the the Gemini layer provider table. Rows read: provider label, its env var in
  *  quiet mono on the right. */
 export function ProviderMenuList({
 	providers,

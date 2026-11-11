@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AssistantMessage, Message, Tool, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
-import { normalizeContext } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Message, Tool, ToolResultMessage, Usage } from "../../llm/index.ts";
+import { normalizeContext } from "../../llm/index.ts";
 import { Type } from "typebox";
 import { piEngineFor, type PiEngine, type ThinkingLevel } from "../models.ts";
 import { providerEventObserver, type ProviderEventObserver } from "../provider-events.ts";
@@ -93,7 +93,7 @@ Your FINAL message: 1-2 sentences of notes for the teacher (what the figure show
 NEVER the SVG source itself. If you genuinely cannot make a correct picture of the brief, say exactly
 that in your final message and why.`;
 
-/** The wire declarations (pi-ai Tool, TypeBox parameters): this loop owns
+/** The wire declarations (the Gemini layer Tool, TypeBox parameters): this loop owns
  *  execution itself — write/edit dispatch inline below, render feeds the
  *  image-in-the-loop message — so the declarations carry no execute. */
 export function createVisualTools(): Record<string, Tool> {

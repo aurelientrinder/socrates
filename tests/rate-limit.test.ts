@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { createFauxCore, fauxAssistantMessage, normalizeContext } from "@earendil-works/pi-ai";
+import { createFauxCore, fauxAssistantMessage, normalizeContext } from "../src/llm/index.ts";
 import { isDailyQuota, learnRequestLimit, pacedStream, parseRequestLimit, parseRetryDelayMs, rateLimitDelayMs, rateLimitedUntil, requestBudget, requestSlotDelayMs, waitForRequestSlot } from "../src/agent/rate-limit.ts";
 import { runSubagent } from "../src/agent/subagents/pi-run.ts";
 

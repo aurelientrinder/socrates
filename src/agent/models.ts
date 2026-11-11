@@ -1,37 +1,36 @@
 import {
 	clampThinkingLevel,
-	createModels,
+	getModel as catalogModel,
 	getSupportedThinkingLevels,
+	listModels,
+	streamSimpleGemini,
 	type Api,
 	type Model,
-	type Models,
 	type StreamFunction,
-} from "@earendil-works/pi-ai";
-import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+	type ThinkingLevel,
+} from "../llm/index.ts";
+import { fillGeminiThoughtSignatures, GEMINI_SKIP_SIGNATURE } from "../llm/gemini.ts";
+import { GOOGLE_PROVIDER } from "../llm/catalog.ts";
 import { type ModelRole } from "../../config.ts";
 import { DEFAULT_THINKING_ORDER } from "../core/settings.ts";
 import packageMetadata from "../../package.json" with { type: "json" };
 import { pacedStream } from "./rate-limit.ts";
 
-/** App identity is immutable and shared by Models and every native Agent.
- * Agent's default Pi attribution otherwise overrides the Models identity. */
+/** App identity (user agent + attribution), shared by every native Agent. */
 export const APP_IDENTITY = Object.freeze({
 	userAgent: Object.freeze({ custom: `learnharness/${packageMetadata.version}` }),
 	attribution: Object.freeze({ name: packageMetadata.name, url: packageMetadata.homepage }),
 });
 
 /**
- * The one engine factory every agent's model comes from (the pi-ai swap,
- * docs/pi-engine-swap.md). BYOK ALL THE WAY DOWN (owner, 2026-09-22):
- * there are no factory pins — every engine resolves from a RESOLVED SPEC
- * (the settings chain's output) and the one builder here wires it to
- * pi-ai's federated catalogs.
+ * The one engine factory every agent's model comes from. BYOK ALL THE WAY
+ * DOWN (owner, 2026-09-22): there are no factory pins — every engine
+ * resolves from a RESOLVED SPEC (the settings chain's output) and the one
+ * builder here wires it to the Gemini catalog (src/llm/catalog.ts) and the
+ * official Gemini SDK stream (src/llm/gemini.ts).
  *
  * An "engine" is the model + the stream function the agent loop runs on —
- * the two things a test fake replaces. Production engines resolve the model
- * from pi-ai's static catalogs and stream through the same Models
- * collection.
+ * the two things a test fake replaces.
  */
 
 export interface PiEngine {
@@ -43,28 +42,17 @@ export interface PiEngine {
 }
 
 export type { ThinkingLevel };
+export { fillGeminiThoughtSignatures, GEMINI_SKIP_SIGNATURE };
 
-let collection: ReturnType<typeof createModels> | undefined;
-
-/** The process-wide pi-ai Models collection — EVERY builtin provider's
- *  catalog (model slots wave, 2026-09-20): engines and the picker resolve
- *  against all of pi-ai's per-provider catalogs, so a settings slot can pin
- *  any native model id. Auth is resolved per request by pi-ai itself from
- *  the environment (the keys seam reflects file-saved keys into env), and
- *  a provider with no key simply fails its stream with "not configured" —
- *  honest, late, and unreachable through the picker, which gates on
- *  keyPresent. */
+/** The model catalog handle (Gemini only). Kept as a small facade so the
+ *  picker, validation and engine builder share one lookup surface. */
 export function piModels() {
-	if (!collection) {
-		collection = createModels({ identity: APP_IDENTITY });
-		for (const provider of builtinProviders()) collection.setProvider(provider);
-	}
-	return collection;
-}
-
-/** OpenRouter API key (BYOK); tests never read this — they inject engines. */
-export function openRouterApiKey(): string | undefined {
-	return process.env.OPENROUTER_API_KEY || undefined;
+	return {
+		getProviders: () => [{ id: GOOGLE_PROVIDER, name: "Google" }],
+		getModels: (provider: string) => (provider === GOOGLE_PROVIDER ? listModels() : []),
+		getModel: (provider: string, id: string) => catalogModel(provider, id),
+		streamSimple: streamSimpleGemini,
+	};
 }
 
 /** A fully-resolved model pin — the shape every engine now comes from:
@@ -89,38 +77,12 @@ function defaultThinkingLevel(model: Model<Api>): ThinkingLevel {
 	return supported[0] ?? "off";
 }
 
-/** Google's documented dummy signature: it satisfies the "functionCall
- *  parts need a thought_signature" check for calls that have no real one. */
-export const GEMINI_SKIP_SIGNATURE = "skip_thought_signature_validator";
-
-/** Gemini 3 thinking models reject any replayed functionCall part that has
- *  no thoughtSignature (HTTP 400). pi-ai only echoes real signatures for
- *  history from the SAME provider+model, so a chat that switched models
- *  (or holds calls from a non-Gemini model, or a pre-signature record)
- *  fails on its first tool call. Fill the gap with Google's documented
- *  dummy value; real signatures are left untouched. Pure; mutates the
- *  payload in place and returns it. */
-export function fillGeminiThoughtSignatures(payload: unknown): unknown {
-	const contents = (payload as { contents?: unknown } | null)?.contents;
-	if (!Array.isArray(contents)) return payload;
-	for (const turn of contents) {
-		const parts = (turn as { role?: string; parts?: unknown } | null)?.parts;
-		if (!Array.isArray(parts) || (turn as { role?: string }).role !== "model") continue;
-		for (const part of parts) {
-			const p = part as { functionCall?: unknown; thoughtSignature?: string };
-			if (p?.functionCall && !p.thoughtSignature) p.thoughtSignature = GEMINI_SKIP_SIGNATURE;
-		}
-	}
-	return payload;
-}
-
 /** The production engine for a RESOLVED spec (model slots wave,
  *  2026-09-20): provider-aware catalog lookup + thinking clamp. The API
- *  key is resolved by pi-ai itself from the environment per request (the
- *  keys seam reflects file-saved keys into env), so the engine never
- *  hardcodes OpenRouter's. */
+ *  key is resolved per request from the environment (the keys seam
+ *  reflects file-saved keys into env). */
 export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (() => boolean) = true): PiEngine {
-	const models: Models = piModels();
+	const models = piModels();
 	const model = models.getModel(spec.provider, spec.id);
 	if (!model) {
 		throw new Error(`${spec.provider} catalog has no model ${spec.id}`);
@@ -134,24 +96,21 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 	return {
 		model,
 		level,
-		// bound streamSimple: the agent loop forwards state.thinkingLevel as
-		// `reasoning` (undefined = off on pi-ai's scale); the clamp above keeps
-		// the pin honest even when config or settings drift off the map.
+		// The agent loop forwards state.thinkingLevel as `reasoning`
+		// (undefined = off); the clamp above keeps the pin honest even when
+		// config or settings drift off the map.
 		// API-key providers go through the request pacer (rate-limit.ts):
 		// free tiers cap requests per minute, and a paced request beats a
 		// refused one.
 		streamFn: (requestModel, context, options) => {
 			const purpose = typeof background === "function" ? background : () => background;
-			const stream = pacedStream(`${spec.provider}/${spec.id}`, purpose, models.streamSimple.bind(models));
-			const isGoogle = requestModel.api === "google-generative-ai" || requestModel.api === "google-vertex";
+			const stream = pacedStream(`${spec.provider}/${spec.id}`, purpose, models.streamSimple);
 			const userOnPayload = options?.onPayload;
 			return stream(requestModel, context, {
 				...options,
 				reasoning: level === "off" ? undefined : level,
-				...(isGoogle && {
-					onPayload: async (payload: unknown, m: typeof requestModel) =>
-						fillGeminiThoughtSignatures((await userOnPayload?.(payload, m)) ?? payload),
-				}),
+				onPayload: async (payload: unknown, m: typeof requestModel) =>
+					fillGeminiThoughtSignatures((await userOnPayload?.(payload, m)) ?? payload),
 			});
 		},
 	};

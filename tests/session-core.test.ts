@@ -96,7 +96,7 @@ function assistantMsg(id: string, text: string): LhMessage {
 		stopReason: "stop",
 		usage: { input: 0, output: 0, total: 0, cacheReads: 0, cacheWrites: 0 },
 		timestamp: 0,
-		provider: "openrouter",
+		provider: "google",
 		model: "test",
 	} as unknown as LhMessage;
 }
@@ -112,7 +112,7 @@ function partial(blocks: unknown[], stopReason?: string): Record<string, unknown
 			content: blocks,
 			...(stopReason ? { stopReason } : {}),
 			usage: { input: 0, output: 0, total: 0, cacheReads: 0, cacheWrites: 0 },
-			provider: "openrouter",
+			provider: "google",
 			model: "test",
 		},
 		assistantMessageEvent: { type: "text", textDelta: "" },
@@ -333,7 +333,7 @@ describe("send (one input event, verbatim consumption)", () => {
 			],
 			stopReason: "toolUse",
 			usage: { input: 0, output: 0, total: 0, cacheReads: 0, cacheWrites: 0 },
-			provider: "openrouter",
+			provider: "google",
 			model: "test",
 			timestamp: 0,
 		} as unknown as LhMessage;
@@ -1081,7 +1081,7 @@ function assistantWithCall(id: string, callId: string, name = "research"): LhMes
 		content: [{ type: "toolCall", id: callId, name, arguments: { topic: "x" } }],
 		stopReason: "toolUse",
 		usage: { input: 0, output: 0, total: 0, cacheReads: 0, cacheWrites: 0 },
-		provider: "openrouter",
+		provider: "google",
 		model: "test",
 		timestamp: 0,
 	} as unknown as LhMessage;

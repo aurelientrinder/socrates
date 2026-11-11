@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { AgentEvent } from "@earendil-works/pi-agent-core";
+import type { AgentEvent } from "../src/llm/index.ts";
 import { ToolCallIdUniquifier, collectToolCallIds } from "../src/server/pi/call-ids.ts";
 
 /**

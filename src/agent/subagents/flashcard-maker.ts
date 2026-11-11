@@ -15,7 +15,7 @@
  */
 
 import { Type } from "typebox";
-import type { Usage } from "@earendil-works/pi-ai";
+import type { Usage } from "../../llm/index.ts";
 import type { PiEngine } from "../models.ts";
 import { runSubmitAgent } from "./submit-agent.ts";
 import { chunkText, locateQuote, tidyCardText, type NotesPage } from "../../core/flashcards.ts";

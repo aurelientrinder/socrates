@@ -21,7 +21,7 @@ function turn(over: Partial<TurnUsage> = {}): TurnUsage {
 		id: "t1",
 		messageId: "m1",
 		at: "2026-09-09T12:00:00Z",
-		model: "openrouter:z-ai/glm-5.3-flash",
+		model: "google:gemini-3.8-flash",
 		steps: [step(10_000, 1_000)],
 		...over,
 	};
@@ -58,9 +58,9 @@ describe("stats bar", () => {
 		// catalog join lands with the UI chunk), so the meter renders
 		// USAGE-ONLY (owner amendment: never a fallback window).
 		assert.match(html, /data-testid="stats-context">11k</);
-		// pi catalog price 0.15/0.5 per 1M (drifted in pi-ai 0.87.1):
-		// each turn 10k×0.15 + 1k×0.5 = $0.002 → two = $0.0040
-		assert.match(html, /data-testid="stats-cost">\$0\.0040</);
+		// catalog price 0.75/3.75 per 1M: each turn 10k×0.75 + 1k×3.75 =
+		// $0.01125 → two = $0.0225
+		assert.match(html, /data-testid="stats-cost">\$0\.0225</);
 		// model button label: SSR (record fetch not run yet) reads "—" —
 		// the strong slot arrives client-side via GET /api/settings; the
 		// turn log below still folds the ACTUAL models billed
@@ -90,19 +90,19 @@ describe("stats bar", () => {
 	});
 
 	it("prettyModel strips vendor + date suffix, keeps dashes", () => {
-		assert.equal(prettyModel("z-ai/glm-5.3-flash"), "glm-5.3-flash"); // dashes kept (owner round 5)
-		assert.equal(prettyModel("qwen/qwen3.8-max-0902"), "qwen3.8-max");
+		assert.equal(prettyModel("gemini-3.8-flash"), "gemini-3.8-flash"); // dashes kept (owner round 5)
+		assert.equal(prettyModel("gemini-3.5-flash-0902"), "gemini-3.5-flash");
 	});
 
 	it("provider-qualified stamps (usage contract, model-slots wave)", () => {
 		// qualified: the provider rides as a quiet suffix — federation makes
 		// the same model via two providers different bookkeeping
-		assert.equal(prettyModel("openrouter:z-ai/glm-5.3-flash", true), "glm-5.3-flash · openrouter");
+		assert.equal(prettyModel("google:gemini-3.8-flash", true), "gemini-3.8-flash · google");
 		assert.equal(prettyModel("openai:gpt-5.2", true), "gpt-5.2 · openai");
 		// unqualified on a qualified stamp: provider silently dropped (old shape)
-		assert.equal(prettyModel("openrouter:z-ai/glm-5.3-flash"), "glm-5.3-flash");
+		assert.equal(prettyModel("google:gemini-3.8-flash"), "gemini-3.8-flash");
 		// qualified on a bare id: no suffix invented
-		assert.equal(prettyModel("z-ai/glm-5.3-flash", true), "glm-5.3-flash");
+		assert.equal(prettyModel("gemini-3.8-flash", true), "gemini-3.8-flash");
 	});
 });
 
@@ -124,14 +124,14 @@ describe("catalogLimits (the stats-bar live-limits join, pure)", () => {
 	});
 	const catalog: Pick<ModelCatalogResponse, "models"> = {
 		models: [
-			entry({ id: "z-ai/glm-5.3-flash", provider: "openrouter", contextWindow: 1_048_576 }),
+			entry({ id: "gemini-3.8-flash", provider: "google", contextWindow: 1_048_576 }),
 			entry({ id: "gpt-x", provider: "openai", contextWindow: 400_000 }),
 		],
 	};
 
 	it("builds provider:id → contextWindow over every catalog model", () => {
 		const limits = catalogLimits(catalog);
-		assert.equal(limits.get("openrouter:z-ai/glm-5.3-flash"), 1_048_576);
+		assert.equal(limits.get("google:gemini-3.8-flash"), 1_048_576);
 		assert.equal(limits.get("openai:gpt-x"), 400_000);
 		assert.equal(limits.size, 2);
 	});
@@ -143,10 +143,10 @@ describe("catalogLimits (the stats-bar live-limits join, pure)", () => {
 
 	it("same provider+model on different providers keys apart", () => {
 		const twin: Pick<ModelCatalogResponse, "models"> = {
-			models: [...catalog.models, entry({ id: "z-ai/glm-5.3-flash", provider: "zai", contextWindow: 200_000 })],
+			models: [...catalog.models, entry({ id: "gemini-3.8-flash", provider: "zai", contextWindow: 200_000 })],
 		};
 		const limits = catalogLimits(twin);
-		assert.equal(limits.get("openrouter:z-ai/glm-5.3-flash"), 1_048_576);
-		assert.equal(limits.get("zai:z-ai/glm-5.3-flash"), 200_000);
+		assert.equal(limits.get("google:gemini-3.8-flash"), 1_048_576);
+		assert.equal(limits.get("zai:gemini-3.8-flash"), 200_000);
 	});
 });

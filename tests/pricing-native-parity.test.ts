@@ -1,7 +1,7 @@
 /** Catalog/calculator parity replaces the old generated-table drift test. */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateCost, type Usage } from "@earendil-works/pi-ai";
+import { calculateCost, type Usage } from "../src/llm/index.ts";
 import { piModels } from "../src/agent/models.ts";
 import { callCost, jobCost } from "../src/server/pricing.ts";
 import { accumulateJobUsage, piUsageToStep } from "../src/core/contracts/jobs.ts";
@@ -11,7 +11,7 @@ const nativeUsage = (input: number): Usage => ({ input, output: 1_000, cacheRead
 const saved = (u: Usage) => ({ inputTokens: u.input, outputTokens: u.output, cacheReadTokens: u.cacheRead, cacheWriteTokens: u.cacheWrite, cacheWrite1hTokens: u.cacheWrite1h, reasoningTokens: 500 });
 
 test("all catalog models price through Pi, including every tier boundary; saved usage is never mutated", () => {
-	assert.ok(models.length > 100);
+	assert.ok(models.length >= 10);
 	for (const model of models) {
 		const sizes = [1_000, ...(model.cost.tiers ?? []).flatMap((t) => [Math.max(0, t.inputTokensAbove - 12_000), Math.max(0, t.inputTokensAbove - 12_000 + 1)])];
 		for (const input of sizes) {

@@ -17,7 +17,7 @@ import { callCost } from "../src/server/pricing.ts";
 const graphCostSummary = (input: CostSummaryInput) => foldGraphCostSummary(input, callCost);
 
 /** A model with full published pricing (from the generated registry). */
-const PRICED = "openrouter:z-ai/glm-5.3-flash";
+const PRICED = "google:gemini-3.8-flash";
 assert.notEqual(callCost({ inputTokens: 1, outputTokens: 1 }, PRICED), null);
 
 const step = (input: number, output: number): CallUsage => ({

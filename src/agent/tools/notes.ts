@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "../../llm/index.ts";
 import { serverExecute } from "../tool-execute.ts";
 import { parsePageSpec } from "../subagents/pdf-ops.ts";
 import type { NoteMeta } from "../../core/contracts.ts";
