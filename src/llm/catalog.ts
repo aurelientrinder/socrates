@@ -14,19 +14,36 @@ export const GOOGLE_API = "google-generative-ai";
 export const GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 const bakedModels = baked as unknown as Model<Api>[];
-/** Models learned at runtime from `models.list` (id → model). */
-const discovered = new Map<string, Model<Api>>();
+const DISCOVERED_KEY = Symbol.for("lh.discoveredModels");
+
+/** Models learned at runtime from `models.list` (id → model), shared via globalThis across route bundles. */
+function discoveredMap(): Map<string, Model<Api>> {
+	const g = globalThis as Record<symbol, Map<string, Model<Api>> | undefined>;
+	if (!g[DISCOVERED_KEY]) g[DISCOVERED_KEY] = new Map();
+	return g[DISCOVERED_KEY];
+}
 
 export function setDiscoveredModels(models: Model<Api>[]): void {
-	discovered.clear();
-	for (const m of models) discovered.set(m.id, m);
+	const map = discoveredMap();
+	map.clear();
+	for (const m of models) {
+		if (!map.has(m.id)) map.set(m.id, m);
+	}
+}
+
+export function listBakedModels(): Model<Api>[] {
+	return [...bakedModels];
+}
+
+export function listDiscoveredModels(): Model<Api>[] {
+	return [...discoveredMap().values()];
 }
 
 /** Every known model: the baked list, with live-discovered ones layered on. */
 export function listModels(): Model<Api>[] {
 	const byId = new Map<string, Model<Api>>();
 	for (const m of bakedModels) byId.set(m.id, m);
-	for (const m of discovered.values()) if (!byId.has(m.id)) byId.set(m.id, m);
+	for (const m of discoveredMap().values()) if (!byId.has(m.id)) byId.set(m.id, m);
 	return [...byId.values()];
 }
 

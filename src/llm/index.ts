@@ -30,5 +30,14 @@ export { normalizeContext } from "./vendor/transcript.js";
 export { validateToolArguments } from "./vendor/validation.js";
 export { createFauxCore, fauxAssistantMessage, fauxText, fauxThinking, fauxToolCall } from "./vendor/faux.js";
 export type { FauxResponseFactory, FauxResponseStep } from "./vendor/faux.js";
-export { calculateCost, clampThinkingLevel, getModel, getSupportedThinkingLevels, listModels } from "./catalog.ts";
+export {
+	calculateCost,
+	clampThinkingLevel,
+	getModel,
+	getSupportedThinkingLevels,
+	listBakedModels,
+	listDiscoveredModels,
+	listModels,
+	setDiscoveredModels,
+} from "./catalog.ts";
 export { streamGemini, streamSimpleGemini, transformMessages } from "./gemini.ts";

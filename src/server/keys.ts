@@ -52,6 +52,8 @@ import {
 	validateKeyShape,
 } from "../core/auth-keys.ts";
 import { authStore } from "../store/auth.ts";
+import { setDiscoveredModels } from "../llm/catalog.ts";
+import { refreshDiscoveredModels } from "../llm/discovery.ts";
 
 // The once-per-process boot record — globalThis anchor (HMR re-imports the
 // module; the snapshot must not re-run and misread fill-gapped vars as real
@@ -220,6 +222,9 @@ export function saveKey(id: string, value: string): { ok: true; status: AuthKeyS
 		process.env[id] = trimmed;
 		record.fillGap.add(id);
 	}
+	if (id === "GEMINI_API_KEY" && process.env.NODE_ENV !== "test") {
+		void refreshDiscoveredModels(true);
+	}
 	// validateKeyShape guarantees catalog membership, so the row exists.
 	return { ok: true, status: keyStatuses().find((s) => s.id === id)! };
 }
@@ -235,6 +240,9 @@ export function deleteKey(id: string): AuthKeyStatus {
 	if (record.fillGap.has(id) && !record.realEnv.has(id)) {
 		delete process.env[id];
 		record.fillGap.delete(id);
+	}
+	if (id === "GEMINI_API_KEY" && !keyValue("GEMINI_API_KEY") && !process.env.GOOGLE_API_KEY) {
+		setDiscoveredModels([]);
 	}
 	return keyStatuses().find((s) => s.id === id)!;
 }

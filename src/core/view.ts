@@ -34,9 +34,10 @@
 
 import type { AssistantMessage, ToolResultMessage } from "../llm/index.ts";
 import type { LhMarkerMessage, LhMessage } from "./native-messages.ts";
-import { modelSolutionForConclude, PRACTICE_CONCLUDE_TOOL, problemInputForConclude } from "./native-messages.ts";
+import { modelSolutionForConclude, PRACTICE_CONCLUDE_TOOL, PRACTICE_PROBLEM_TOOL, problemInputForConclude } from "./native-messages.ts";
 import { activeCompactionOf, type CompactionDetails } from "./compaction.ts";
 import { QUESTION_TOOLS } from "./pending.ts";
+import { extractDiagrams } from "./diagram.ts";
 import type { SubagentArtifactData, SubagentResultMeta } from "./contracts/jobs.ts";
 import type { PlanBlockData } from "./contracts/chat.ts";
 
@@ -204,6 +205,7 @@ export function projectView(messages: readonly LhMessage[], live?: LiveTurnState
 			const reasoning: LhViewPart[] = [];
 			let textN = 0;
 			let reasoningN = 0;
+			let diagN = 0;
 			// LIVE IS POSITIVE EVIDENCE (owner, 2026-10-05): a call renders
 			// live ONLY when its own message is streaming THIS turn — session
 			// busyness alone can never resurrect a settled call (the practice
@@ -211,13 +213,43 @@ export function projectView(messages: readonly LhMessage[], live?: LiveTurnState
 			// back to a spinner mid-transcript; live cards belong at the
 			// bottom, and this gate is what puts them there by construction).
 			const streamingMessage = live?.streamingIds.has(m.id) === true;
+			let pendingDiagram: string | undefined;
+			const flushUnattachedDiagram = () => {
+				if (!pendingDiagram || streamingMessage) return;
+				rest.push({ type: "data-diagram", id: `${m.id}-d${diagN++}`, data: { svg: pendingDiagram } });
+				pendingDiagram = undefined;
+			};
 			for (const block of assistant.content) {
 				if (block.type === "text") {
-					rest.push({ type: "text", id: `${m.id}-t${textN++}`, text: block.text, state: "done" });
+					const ex = extractDiagrams(block.text);
+					if (ex.complete.length === 0 && ex.streaming === null) {
+						if (block.text.trim().length > 0) flushUnattachedDiagram();
+						rest.push({ type: "text", id: `${m.id}-t${textN++}`, text: block.text, state: "done" });
+					} else {
+						if (ex.cleanText.length > 0) {
+							flushUnattachedDiagram();
+							rest.push({ type: "text", id: `${m.id}-t${textN++}`, text: ex.cleanText, state: "done" });
+						}
+						if (ex.complete.length > 0) {
+							flushUnattachedDiagram();
+							for (let di = 0; di < ex.complete.length - 1; di++) {
+								if (!streamingMessage) {
+									rest.push({ type: "data-diagram", id: `${m.id}-d${diagN++}`, data: { svg: ex.complete[di]! } });
+								}
+							}
+							pendingDiagram = ex.complete[ex.complete.length - 1];
+						}
+					}
 				} else if (block.type === "thinking") {
 					reasoning.push({ type: "reasoning", id: `${m.id}-r${reasoningN++}`, text: block.thinking, state: "done" });
 				} else if (block.type === "toolCall") {
 					const part = toolPartOf(block, live, streamingMessage);
+					if (isPlaceholderResultTool(block.name) && pendingDiagram) {
+						part.diagram = pendingDiagram;
+						pendingDiagram = undefined;
+					} else {
+						flushUnattachedDiagram();
+					}
 					// The conclusion's reveal join (owner round, 2026-10-05): the
 					// hero of a conclude card is the modelSolution committed at POSE
 					// time — a record fold, enriched here so the card renders pure.
@@ -228,6 +260,7 @@ export function projectView(messages: readonly LhMessage[], live?: LiveTurnState
 					rest.push(part);
 				}
 			}
+			flushUnattachedDiagram();
 			const parts: LhViewPart[] = [...reasoning, ...rest];
 			if (parts.length === 0) {
 				// An arrived-but-silent STREAMING message (owner, optimistic
@@ -475,3 +508,37 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 		}
 	}
 }
+
+/** Return the active streaming (or freshly completed pre-tool) `<diagram>`
+ *  in the current turn so DockOverlay can open and draw it in real time before
+ *  the question/problem tool call finishes validating. Returns null when idle. */
+export function activeStreamingDiagram(
+	messages: readonly LhMessage[],
+	busy: boolean,
+): { svg: string; streaming: boolean } | null {
+	if (!busy || messages.length === 0) return null;
+	let start = messages.length;
+	while (start > 0) {
+		const prev = messages[start - 1]!;
+		if ((prev as { role?: string }).role !== "assistant") break;
+		start--;
+	}
+	if (start === messages.length) return null;
+
+	let lastComplete: string | null = null;
+	for (let i = start; i < messages.length; i++) {
+		const m = messages[i] as AssistantMessage;
+		if (!Array.isArray(m.content)) continue;
+		for (const block of m.content) {
+			if (block.type === "text") {
+				const ex = extractDiagrams(block.text);
+				if (ex.complete.length > 0) lastComplete = ex.complete[ex.complete.length - 1]!;
+				if (ex.streaming !== null) {
+					return { svg: ex.streaming, streaming: true };
+				}
+			}
+		}
+	}
+	return lastComplete !== null ? { svg: lastComplete, streaming: false } : null;
+}
+

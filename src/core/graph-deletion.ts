@@ -233,6 +233,110 @@ export function deleteChatTraces(graphStore: GraphStore, chatId: string, mode: C
 	return stats;
 }
 
+/**
+ * Remove traces belonging to specific discarded messages of a single chat
+ * (when rewinding via Regenerate). Preserves surviving messages' contributions,
+ * other chats, and imported notes sources. Synchronous and idempotent.
+ */
+export function deleteMessageTraces(
+	graphStore: GraphStore,
+	chatId: string,
+	discardedMessageIds: ReadonlySet<string>,
+	discardedCoverageFps: ReadonlySet<string>,
+): ChatDeletionStats {
+	if (discardedMessageIds.size === 0 && discardedCoverageFps.size === 0) {
+		return { ...EMPTY_STATS };
+	}
+	const allCoverage = graphStore.readCoverage();
+	const coverage = allCoverage.filter(
+		(row) => !(row.chatId === chatId && discardedCoverageFps.has(row.fp)),
+	);
+	const stats: ChatDeletionStats = {
+		...EMPTY_STATS,
+		coverageRemoved: allCoverage.length - coverage.length,
+	};
+
+	const isDiscardedPoint = (pt: { chatId: string; messageId?: string }): boolean =>
+		pt.chatId === chatId && typeof pt.messageId === "string" && discardedMessageIds.has(pt.messageId);
+
+	const nodeLines = graphStore.readNodes();
+	const chainLines = graphStore.readChains();
+	const graphTouched =
+		discardedMessageIds.size > 0 &&
+		(nodeLines.some((line) => line.provenance.some(isDiscardedPoint)) ||
+			chainLines.some((line) => line.provenance.some(isDiscardedPoint)));
+
+	if (!graphTouched) {
+		if (stats.coverageRemoved > 0) {
+			graphStore.rewriteLedgers({ coverage });
+		}
+		return stats;
+	}
+
+	const touchedNodes = new Set<string>();
+	for (const line of nodeLines) {
+		if (line.provenance.some(isDiscardedPoint)) touchedNodes.add(line.id);
+	}
+
+	const live = new Set<string>();
+	for (const line of nodeLines) {
+		if (line.provenance.some((pt) => !isDiscardedPoint(pt))) {
+			live.add(line.id);
+		}
+	}
+
+	const outNodes: GraphNode[] = [];
+	const seenIds = new Set<string>();
+	for (const line of nodeLines) {
+		if (touchedNodes.has(line.id) && !live.has(line.id)) continue;
+		const first = !seenIds.has(line.id);
+		seenIds.add(line.id);
+		const points = line.provenance.filter((pt) => !isDiscardedPoint(pt));
+		if (points.length === line.provenance.length) {
+			outNodes.push(line);
+			continue;
+		}
+		if (points.length > 0) {
+			outNodes.push({ ...line, provenance: points });
+			continue;
+		}
+		if (first) {
+			outNodes.push({ ...line, provenance: [], aliases: [] });
+		}
+	}
+
+	const deadNodes = new Set([...touchedNodes].filter((id) => !live.has(id)));
+	const outChains: GraphChain[] = [];
+	for (const line of chainLines) {
+		if (deadNodes.has(line.conclusion) || line.premises.some((premise) => deadNodes.has(premise))) continue;
+		const points = line.provenance.filter((pt) => !isDiscardedPoint(pt));
+		if (line.provenance.length > 0 && points.length === 0) continue;
+		outChains.push(points.length === line.provenance.length ? line : { ...line, provenance: points });
+	}
+
+	stats.nodesRemoved = deadNodes.size;
+	stats.chainsRemoved = chainLines.length - outChains.length;
+
+	graphStore.rewriteLedgers({
+		nodes: outNodes,
+		chains: outChains,
+		...(stats.coverageRemoved > 0 ? { coverage } : {}),
+	});
+
+	const deadChainIds = new Set(
+		chainLines.filter((line) => !outChains.includes(line)).map((line) => line.id),
+	);
+	const positions = graphStore.readPositions();
+	const prunedPositions = Object.fromEntries(
+		Object.entries(positions).filter(([id]) => !deadNodes.has(id) && !deadChainIds.has(id)),
+	);
+	if (Object.keys(prunedPositions).length !== Object.keys(positions).length) {
+		graphStore.writePositions(prunedPositions);
+	}
+
+	return stats;
+}
+
 // ─── single-node deletion (node interlude, owner-locked full-death) ───────────
 
 /**

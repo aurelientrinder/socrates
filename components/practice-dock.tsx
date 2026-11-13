@@ -5,6 +5,7 @@ import { ChevronRightIcon, XIcon } from "lucide-react";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { joinDictation, useDictationTarget } from "@/components/dictation";
+import { DiagramFigure } from "@/components/diagram-figure";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { cn } from "@/lib/utils";
 import { repairMathForDisplay } from "@/src/core";
@@ -36,6 +37,8 @@ export interface PracticeDockProps {
 	/** The pose's arguments — only the statement is the learner's (the
 	 *  mode badge would edge toward announcing the target; dropped). */
 	input: { statement: string };
+	/** Optional SVG diagram emitted immediately before this problem pose. */
+	diagram?: string;
 	/** Collapse state, owned by the DockOverlay. */
 	expanded: boolean;
 	onExpand: () => void;
@@ -52,7 +55,7 @@ export interface PracticeDockProps {
 	compactionRunning?: boolean;
 }
 
-export function PracticeDock({ problemCallId, input, expanded, onExpand, onCollapse, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
+export function PracticeDock({ problemCallId, input, diagram, expanded, onExpand, onCollapse, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
 	const [thinking, setThinking] = useState("");
 	// Ref MIRRORS the field ("nothing gets lost", the question-dock
 	// discipline): a submit resuming after `await finishDictation()` reads
@@ -124,6 +127,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onColla
 				<div className="lh-prose text-[15px]">
 					<MessageResponse>{typeof input.statement === "string" ? repairMathForDisplay(input.statement) : input.statement}</MessageResponse>
 				</div>
+				{diagram && <DiagramFigure svg={diagram} className="mt-3" />}
 			</div>
 
 			{/* The learner's half: Enter SENDS (owner round 2, 2026-10-05);

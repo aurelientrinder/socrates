@@ -7,6 +7,7 @@ import { GlyphMark } from "@/components/ui/glyph-mark";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { cn } from "@/lib/utils";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { DiagramFigure } from "@/components/diagram-figure";
 import type { QuestionAnswerData } from "@/src/core";
 import { normalizeQuizType, parseAskInput, parseQuizInput, repairMathForDisplay } from "@/src/core";
 
@@ -24,11 +25,13 @@ export function AnsweredCard({
 	answer,
 	input,
 	label,
+	diagram,
 }: {
 	answer: QuestionAnswerData;
 	input?: unknown;
 	/** Overrides the tool's name in the header (a session's warm-up). */
 	label?: string;
+	diagram?: string;
 }) {
 	const [whyOpen, setWhyOpen] = useState(true); // open by default (owner, 2026-10-27)
 	if (answer.dismissed) {
@@ -123,6 +126,7 @@ export function AnsweredCard({
 					<MessageResponse>{parsedDetails}</MessageResponse>
 				</div>
 			)}
+			{diagram && <DiagramFigure svg={diagram} className="mb-3" />}
 
 			{((answer.options?.length ?? 0) > 0 || answer.other) && (
 				<div className="flex flex-col gap-1.5 text-sm">

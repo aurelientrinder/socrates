@@ -44,8 +44,8 @@ export interface ChatStore {
 	/** Persist the full native message list (the record IS the agent
 	 * state — Wave B, owner-approved 2026-09-26). */
 	saveMessages(id: string, messages: LhMessage[]): void;
-	/** Persist the session plan tree (plan tools call this in execute). */
-	saveTree(id: string, tree: PlanTree): void;
+	/** Persist the session plan tree (or clear when undefined during rewind). */
+	saveTree(id: string, tree: PlanTree | undefined): void;
 	/** Append one usage entry to the record's turn log (the money channel,
 	 * 2026-09): idempotent per turn id — each request carries its own, so
 	 * a turn persisted twice appends once while continuation turns (which
@@ -55,6 +55,8 @@ export interface ChatStore {
 	 *  record's asides log — idempotent per aside id. Silent, like the other
 	 *  content writers: no updatedAt bump, no event. */
 	appendAside(id: string, aside: ChatAside): void;
+	/** Replace the record's asides log (rewind pruning). */
+	saveAsides(id: string, asides: ChatAside[]): void;
 	/** Append one extraction-run usage entry — idempotent per startedAt. */
 	appendExtractionUsage(id: string, entry: ExtractionRunUsage): void;
 	/** Persist the per-chat model/thinking settings (the model control).
@@ -73,7 +75,7 @@ export interface ChatStore {
 
 // ─── GraphStore — the append-only evidence ledgers (data/graph) ──────────────
 // Chains are the stored truth (owner, 2026-09-30): nodes + reasoning
-// chains; edges are a DERIVED view (core/graph.ts) and never touch this
+// chains; edges are a derived view (core/graph.ts) and never touch this
 // seam. Reads return the raw append-order lines; merging chain assertions
 // by (premises, conclusion) is DERIVED in core/graph.ts — the store never
 // decides. The extraction pipeline is the sole writer; this read surface
@@ -157,6 +159,8 @@ export interface JobStore {
 	listJobs(chatId: string): JobRecord[];
 	/** The job fulfilling a given tool part, if any (spawn-hook dedup). */
 	findJobByToolCallId(chatId: string, toolCallId: string): JobRecord | null;
+	/** Delete one job record (rewind cleanup). */
+	deleteJob(id: string): boolean;
 	/** Delete every job record for a chat — running or finished (session-
 	 *  deletion wave 6). Returns how many files were removed. The deletion
 	 *  route refuses while jobs are still running, so by the time this

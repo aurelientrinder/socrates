@@ -36,6 +36,8 @@ export interface PendingToolCall {
 	tool: string;
 	/** Tool input (quiz/ask args) — lets the composer pick note vs answer mode. */
 	input: unknown;
+	/** Optional SVG diagram emitted immediately before this question call. */
+	diagram?: string;
 }
 
 /** Tools that render in the question dock and gate the composer. The
@@ -121,7 +123,12 @@ function findPending(messages: UIMessage[], names: readonly string[]): PendingTo
 			if (isToolUIPart(part) && part.state === "input-available") {
 				const tool = part.type.slice("tool-".length);
 				if (names.includes(tool)) {
-					return { toolCallId: part.toolCallId as string, tool, input: part.input };
+					return {
+						toolCallId: part.toolCallId as string,
+						tool,
+						input: part.input,
+						...(typeof part.diagram === "string" ? { diagram: part.diagram } : {}),
+					};
 				}
 			}
 		}

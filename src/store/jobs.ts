@@ -90,6 +90,18 @@ function findJobByToolCallId(chatId: string, toolCallId: string): JobRecord | nu
 	return listJobs(chatId).find((j) => j.toolCallId === toolCallId) ?? null;
 }
 
+function deleteJob(id: string): boolean {
+	const existing = getJob(id);
+	if (!existing) return false;
+	try {
+		fs.unlinkSync(jobFile(id));
+		emit("jobs-changed", { chatId: existing.chatId });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 /** Delete every job record file for a chat (session-deletion wave 6) —
  *  running or finished, they are the chat's records and die with it.
  *  Returns how many files were removed. The deletion route refuses while
@@ -116,5 +128,6 @@ export const jobStore: JobStore = {
 	updateJob,
 	listJobs,
 	findJobByToolCallId,
+	deleteJob,
 	deleteJobsForChat,
 };

@@ -22,17 +22,21 @@
 import { createHash } from "node:crypto";
 
 import type { CoverageEntry } from "./contracts/graph.ts";
+import { stripDiagrams } from "./diagram.ts";
 import type { LhMessage } from "./native-messages.ts";
 
 export type { CoverageEntry };
 
 /** The user-facing text of a native message (string or text blocks). */
 function textOf(content: unknown): string[] {
-	if (typeof content === "string") return content.trim() ? [content] : [];
+	if (typeof content === "string") {
+		const cleaned = stripDiagrams(content);
+		return cleaned.trim() ? [cleaned] : [];
+	}
 	if (!Array.isArray(content)) return [];
 	return content
 		.filter((c): c is { type: "text"; text: string } => (c as { type?: string }).type === "text")
-		.map((c) => c.text)
+		.map((c) => stripDiagrams(c.text))
 		.filter((t) => t.trim().length > 0);
 }
 
