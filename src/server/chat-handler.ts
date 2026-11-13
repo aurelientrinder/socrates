@@ -10,11 +10,12 @@ import {
 import { piEngineForSpec, type PiEngine } from "../agent/models.ts";
 import { reconstructRequestCause } from "../core/native-messages.ts";
 import { createJobRunner } from "../agent/subagents/runner.ts";
-import { createExtractionPipeline } from "../agent/subagents/extraction.ts";
+import { abortExtraction, createExtractionPipeline, extractionStatuses } from "../agent/subagents/extraction.ts";
 import type { ModelRole } from "../../config.ts";
 import {
 	deliverJobResult,
 	noteSteerVisible,
+	purgeRewindState,
 	reconcileUserSteers,
 	registerLiveAgent,
 	setJobRespawn,
@@ -38,14 +39,27 @@ import {
 } from "../core/settings-resolution.ts";
 import { modelsNotConfigured, providerKeyMissing as providerKeyMissingEnvelope, type ProviderKeyMissing } from "../core/settings.ts";
 import { beginTurn, endTurn } from "./turn-liveness.ts";
-import { applyParkedDismissal } from "./dismissal-park.ts";
+import { applyParkedDismissal, takeParkedDismissal } from "./dismissal-park.ts";
 import { registerTurn, unregisterTurn } from "./turn-runs.ts";
 import { persistTurn, triggerExtraction } from "./turn-service.ts";
-import { hasProbeDone, danglingQuestionOf, retryBase } from "../core/native-messages.ts";
+import {
+	hasProbeDone,
+	danglingQuestionOf,
+	regenerateSplit,
+	retryBase,
+	type LhMessage,
+} from "../core/native-messages.ts";
+import { deleteMessageTraces } from "../core/graph-deletion.ts";
+import { coverageSlots } from "../core/coverage.ts";
 import { warmupActive } from "../core/review.ts";
 import { composeInstructions } from "../agent/teacher-agent.ts";
-import { ensureCompacted, kickCompaction, effectiveThresholdTokens } from "./compaction.ts";
-import { catalogContextLimits } from "./model-catalog.ts";
+import { awaitCompaction, ensureCompacted, kickCompaction, effectiveThresholdTokens } from "./compaction.ts";
+import {
+	catalogContextLimits,
+	clampChatLevel,
+	hydrateServerModelCatalog,
+	validateChatSettingsLive,
+} from "./model-catalog.ts";
 import { emit } from "../core/events.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 import { asAgentMessages } from "../core/native-messages.ts";
@@ -56,7 +70,7 @@ import {
 	type TurnInput,
 } from "../core/input-events.ts";
 import { steerDelivered } from "../core/contracts.ts";
-import type {CallUsage, SteerMessage} from "../core/contracts.ts";
+import type { CallUsage, ChatSettings, PlanToolResult, PlanTree, SteerMessage } from "../core/contracts.ts";
 
 /**
  * One chat turn over the server-owned native record. Framework-free (plain
@@ -165,6 +179,21 @@ export async function handleChatRequest(
 	return handleChatInput(chatId, input, buildAgent);
 }
 
+const EXTRACTION_WIND_DOWN_TIMEOUT_MS = 10_000;
+const EXTRACTION_WIND_DOWN_POLL_MS = 50;
+
+function restoredTreeOf(surviving: readonly LhMessage[]): PlanTree | undefined {
+	for (let i = surviving.length - 1; i >= 0; i--) {
+		const m = surviving[i];
+		if ((m as { role?: string }).role !== "toolResult") continue;
+		const r = m as { toolName?: string; isError?: boolean; details?: unknown };
+		if (r.toolName !== "plan_init" || r.isError) continue;
+		const details = r.details as PlanToolResult | undefined;
+		if (details?.ok === true && details.tree) return details.tree;
+	}
+	return undefined;
+}
+
 /**
  * The turn composition: one input event → native record appends → one
  * agent turn as a background object. Also the wake pipeline's entry
@@ -175,10 +204,28 @@ export async function handleChatInput(
 	input: TurnInput,
 	buildAgent?: (opts: AgentBuildOptions & { teaching: boolean; warmingUp?: boolean }) => TeachingAgent,
 ): Promise<Response> {
-	let record = stores.chatStore.getChat(chatId);
-	if (!record) {
+	const initialRecord = stores.chatStore.getChat(chatId);
+	if (!initialRecord) {
 		return Response.json({ error: "Unknown chat" }, { status: 404 });
 	}
+	let record = initialRecord;
+
+	const effective = effectiveSettings();
+
+	// If retry or regenerate carries updated picker settings, validate and clamp
+	// against the live catalog before resolving the conversation model.
+	let validatedSettings: ChatSettings | undefined;
+	if ((input.type === "retry" || input.type === "regenerate") && input.settings !== undefined) {
+		const verdict = await validateChatSettingsLive(input.settings);
+		if (!verdict.ok) {
+			return Response.json(
+				{ error: verdict.error, ...(verdict.supported ? { supported: verdict.supported } : {}) },
+				{ status: 400 },
+			);
+		}
+		validatedSettings = clampChatLevel(input.settings, effective.models.strong);
+	}
+	const effectiveRecordSettings = validatedSettings ?? record.settings;
 
 	// THE UNIVERSAL TURN GATE (BYOK, owner, 2026-09-22): a turn needs the
 	// CONVERSATION chain — the chat's own model override over the strong
@@ -188,8 +235,7 @@ export async function handleChatInput(
 	// Placement is deliberate: BEFORE beginTurn (no liveness effects), the
 	// write-ahead persist (nothing durable changes), and every downstream
 	// resolution (jobs/extraction gate per-need on their own tiers).
-	const effective = effectiveSettings();
-	const conversation = resolveConversationSpec(record.settings, effective.models.strong);
+	const conversation = resolveConversationSpec(effectiveRecordSettings, effective.models.strong);
 	if (!conversation) {
 		const envelope = modelsNotConfigured(["strong"]);
 		console.info(`[chat ${chatId}] turn refused — ${JSON.stringify(envelope)}`);
@@ -222,25 +268,54 @@ export async function handleChatInput(
 	// because compaction appends the marker.
 	const callPurpose = { background: input.type === "steers" || (input.type === "continue" && reconstructRequestCause(record.messages) !== "foreground") };
 	let conversationEngine: PiEngine;
-	try { conversationEngine = piEngineForSpec(conversation, () => callPurpose.background); }
-	catch { return Response.json({ error: "The selected model is unavailable." }, { status: 503 }); }
+	try {
+		conversationEngine = piEngineForSpec(conversation, () => callPurpose.background);
+	} catch {
+		if (conversation.provider === "google" && providerKeyPresent("google")) {
+			await hydrateServerModelCatalog(true);
+			try {
+				conversationEngine = piEngineForSpec(conversation, () => callPurpose.background);
+			} catch {
+				return Response.json({ error: "The selected model is unavailable." }, { status: 503 });
+			}
+		} else {
+			return Response.json({ error: "The selected model is unavailable." }, { status: 503 });
+		}
+	}
 	const modelIdForCompaction = `${conversationEngine.model.provider}:${conversationEngine.model.id}`;
-	await ensureCompacted(
-		{
-			chatStore: stores.chatStore,
-			engine: piEngineForSpec(conversation, true),
-			modelId: modelIdForCompaction,
-			kind: record.kind === "practice" || record.kind === "review" ? record.kind : hasProbeDone(record.messages) ? "teach" : "probe",
-			thresholdTokens: effectiveThresholdTokens(
-				effective.compaction?.thresholdTokens,
-				catalogContextLimits().get(modelIdForCompaction),
-			),
-			systemPromptTokens: Math.ceil(composeInstructions(record.kind === "practice" || record.kind === "review" ? record.kind : "teacher").length / 4),
-		},
-		chatId,
-	);
-	const compactedRecord = stores.chatStore.getChat(chatId);
-	if (compactedRecord) record = compactedRecord;
+	const runCompactionGate = async () => {
+		const fresh = stores.chatStore.getChat(chatId) ?? record;
+		await ensureCompacted(
+			{
+				chatStore: stores.chatStore,
+				engine: piEngineForSpec(conversation, true),
+				modelId: modelIdForCompaction,
+				kind: fresh.kind === "practice" || fresh.kind === "review" ? fresh.kind : hasProbeDone(fresh.messages) ? "teach" : "probe",
+				thresholdTokens: effectiveThresholdTokens(
+					effective.compaction?.thresholdTokens,
+					catalogContextLimits().get(modelIdForCompaction),
+				),
+				systemPromptTokens: Math.ceil(composeInstructions(fresh.kind === "practice" || fresh.kind === "review" ? fresh.kind : "teacher").length / 4),
+			},
+			chatId,
+		);
+		const after = stores.chatStore.getChat(chatId);
+		if (after) record = after;
+	};
+
+	let regenerateSplitResult: { surviving: LhMessage[]; discarded: LhMessage[] } | null = null;
+	if (input.type === "regenerate") {
+		await awaitCompaction(chatId);
+		const fresh = stores.chatStore.getChat(chatId);
+		if (!fresh) return Response.json({ error: "Unknown chat" }, { status: 404 });
+		record = fresh;
+		regenerateSplitResult = regenerateSplit(record.messages, input.messageId);
+		if (!regenerateSplitResult) {
+			return Response.json({ error: "That reply can no longer be regenerated." }, { status: 400 });
+		}
+	} else {
+		await runCompactionGate();
+	}
 
 	// RETRY (2026-11-01): the turn re-runs from the learner's last message.
 	// The tutor's reply after it is dropped here and the shorter record is
@@ -268,7 +343,7 @@ export async function handleChatInput(
 			answer: await answerForModel(input.answer, { acceptsImages: conversationEngine.model.input.includes("image") }),
 		};
 	}
-	let appends;
+	let appends: LhMessage[];
 	try {
 		appends =
 			input.type === "steers"
@@ -306,24 +381,88 @@ export async function handleChatInput(
 		return Response.json({ error: "A turn is already running for this session" }, { status: 409 });
 	}
 
-	// Write-ahead persistence: the input's native appends go on disk BEFORE
-	// the turn starts - the learner's answer is durable the instant the
-	// request arrives, and any remount, second tab, or server crash reads
-	// truth instead of the pre-answer record. (Wave C: the wake's markers
-	// ride this same write-ahead - the pump de-queued them at fire, so this
-	// is the ONLY copy ever appended.)
-	const merged = [...record.messages, ...appends];
-	const persistBaseCount = merged.length;
+	let merged: LhMessage[];
+	let persistBaseCount: number;
 	try {
-		stores.chatStore.saveMessages(chatId, merged);
-		// Dock fix (owner ruling 2026-09-26): persisted markers are visible
-		// in the record — flip their jobs now (the wake's steers ride this
-		// write-ahead; the delivering turn may run for minutes).
-		for (const appended of appends) {
-			if ((appended as { role?: string }).role === "custom") noteSteerVisible(appended as SteerMessage);
+		if (input.type === "regenerate" && regenerateSplitResult) {
+			// Wind down any in-flight extraction for this chat BEFORE cutting
+			// messages/ledgers, so an active run cannot merge stale findings back.
+			if (extractionStatuses().some((run) => run.chatId === chatId)) {
+				abortExtraction(chatId);
+				const deadline = Date.now() + EXTRACTION_WIND_DOWN_TIMEOUT_MS;
+				while (extractionStatuses().some((run) => run.chatId === chatId)) {
+					if (Date.now() > deadline) {
+						endTurn(chatId);
+						return Response.json(
+							{
+								error: "The session's extraction is still winding down — try again in a moment",
+								code: "extraction_winding_down",
+							},
+							{ status: 503 },
+						);
+					}
+					await new Promise((resolve) => setTimeout(resolve, EXTRACTION_WIND_DOWN_POLL_MS));
+				}
+			}
+
+			// Re-compute split if chat changed while winding down extraction, or reuse cleanly.
+			const { surviving, discarded } = regenerateSplitResult;
+			const discardedIds = new Set(discarded.map((m) => m.id));
+			const survivingFps = new Set(coverageSlots(surviving).map((s) => s.fp));
+			const discardedFps = new Set(
+				coverageSlots(discarded)
+					.map((s) => s.fp)
+					.filter((fp) => !survivingFps.has(fp)),
+			);
+
+			// Synchronous rewind cleanup block (zero awaits between mutations):
+			deleteMessageTraces(stores.graphStore, chatId, discardedIds, discardedFps);
+			if (validatedSettings !== undefined) {
+				stores.chatStore.saveSettings(chatId, validatedSettings);
+			}
+			stores.chatStore.saveTree(chatId, restoredTreeOf(surviving));
+			const survivingCallIds = new Set(collectToolCallIds(surviving));
+			stores.chatStore.saveAsides(
+				chatId,
+				(record.asides ?? []).filter((a) => survivingCallIds.has(a.questionCallId)),
+			);
+			purgeRewindState(chatId, survivingCallIds, hasProbeDone(surviving));
+			takeParkedDismissal(chatId);
+			stores.chatStore.saveMessages(chatId, surviving);
+			emit("record-changed", { chatId });
+
+			await runCompactionGate();
+			const afterCut = stores.chatStore.getChat(chatId);
+			merged = afterCut?.messages ?? surviving;
+			if (afterCut) record = afterCut;
+			persistBaseCount = merged.length;
+		} else {
+			// Write-ahead persistence: the input's native appends go on disk BEFORE
+			// the turn starts - the learner's answer is durable the instant the
+			// request arrives, and any remount, second tab, or server crash reads
+			// truth instead of the pre-answer record. (Wave C: the wake's markers
+			// ride this same write-ahead - the pump de-queued them at fire, so this
+			// is the ONLY copy ever appended.)
+			if (input.type === "retry" && validatedSettings !== undefined) {
+				stores.chatStore.saveSettings(chatId, validatedSettings);
+			}
+			merged = [...record.messages, ...appends];
+			persistBaseCount = merged.length;
+			try {
+				stores.chatStore.saveMessages(chatId, merged);
+				// Dock fix (owner ruling 2026-09-26): persisted markers are visible
+				// in the record — flip their jobs now (the wake's steers ride this
+				// write-ahead; the delivering turn may run for minutes).
+				for (const appended of appends) {
+					if ((appended as { role?: string }).role === "custom") noteSteerVisible(appended as SteerMessage);
+				}
+			} catch (err) {
+				console.error(`[chat ${chatId}] write-ahead persist failed:`, err);
+			}
 		}
 	} catch (err) {
-		console.error(`[chat ${chatId}] write-ahead persist failed:`, err);
+		endTurn(chatId);
+		throw err;
 	}
 
 	// MONEY CHANNEL (wave 4): one collector per request, fed by the agent's

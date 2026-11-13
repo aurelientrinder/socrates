@@ -328,6 +328,42 @@ export function settleSteers(chatId: string, persisted: { id?: string }[]): void
 	}
 }
 
+/** Purge background jobs, queued steers, and parked user steers invalidated
+ *  when rewinding a chat's messages via Regenerate. Synchronous by design. */
+export function purgeRewindState(
+	chatId: string,
+	survivingToolCallIds: ReadonlySet<string>,
+	probeConcluded: boolean,
+): void {
+	const purgedJobIds = new Set<string>();
+	for (const job of stores.jobStore.listJobs(chatId)) {
+		if (!survivingToolCallIds.has(job.toolCallId)) {
+			purgedJobIds.add(job.id);
+			fireJobAbort(job.id);
+			stores.jobStore.deleteJob(job.id);
+		}
+	}
+
+	const queue = state().queues.get(chatId);
+	if (queue && queue.length > 0) {
+		const kept: QueuedSteer[] = [];
+		for (const entry of queue) {
+			const jid = jobIdOf(entry.steer);
+			const jobInvalid = jid !== null && (purgedJobIds.has(jid) || !stores.jobStore.getJob(jid));
+			const handoffInvalid = entry.steer.customType === "probe-handoff" && !probeConcluded;
+			if (jobInvalid || handoffInvalid) {
+				entry.resolve();
+			} else {
+				kept.push(entry);
+			}
+		}
+		if (kept.length === 0) state().queues.delete(chatId);
+		else state().queues.set(chatId, kept);
+	}
+
+	state().userSteers.delete(chatId);
+}
+
 /** Result of an abort attempt — the endpoint maps these to HTTP. */
 export interface AbortOutcome {
 	ok: boolean;

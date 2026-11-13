@@ -6,13 +6,44 @@
  * Costs for discovered-only models are unknown, so they price at zero.
  */
 import { GoogleGenAI } from "@google/genai";
-import { GOOGLE_API, GOOGLE_BASE_URL, GOOGLE_PROVIDER, listModels, setDiscoveredModels } from "./catalog.ts";
+import {
+	GOOGLE_API,
+	GOOGLE_BASE_URL,
+	GOOGLE_PROVIDER,
+	listBakedModels,
+	listDiscoveredModels,
+	setDiscoveredModels,
+} from "./catalog.ts";
 import { geminiApiKey } from "./gemini.ts";
 import type { Api, Model } from "./types.ts";
 
 const TTL_MS = 10 * 60 * 1000;
-let lastKey: string | undefined;
-let lastAt = 0;
+const ERROR_RETRY_MS = 5_000;
+const DISCOVERY_STATE_KEY = Symbol.for("lh.discoveryCache");
+
+interface DiscoveryCacheState {
+	lastKey?: string;
+	lastAt: number;
+	lastErrorAt: number;
+	inFlight?: Promise<void>;
+	inFlightKey?: string;
+}
+
+function cacheState(): DiscoveryCacheState {
+	const g = globalThis as Record<symbol, DiscoveryCacheState | undefined>;
+	if (!g[DISCOVERY_STATE_KEY]) g[DISCOVERY_STATE_KEY] = { lastAt: 0, lastErrorAt: 0 };
+	return g[DISCOVERY_STATE_KEY];
+}
+
+/** Test-only reset for discovery cache state. */
+export function resetDiscoveryCache(): void {
+	const s = cacheState();
+	s.lastKey = undefined;
+	s.lastAt = 0;
+	s.lastErrorAt = 0;
+	s.inFlight = undefined;
+	s.inFlightKey = undefined;
+}
 
 const EXCLUDE = /(image|live|tts|audio|embedding|embed|aqa|imagen|veo|computer-use|robotics|customtools|deep-research|native-audio|nano-banana)/i;
 
@@ -47,30 +78,77 @@ export function modelFromListing(entry: {
 	};
 }
 
-/** Refresh the discovered set from Google (cached 10 min per key; failures keep the baked list). */
-export async function refreshDiscoveredModels(force = false): Promise<void> {
+export type RemoteListingFn = (apiKey: string) => AsyncIterable<unknown> | Promise<AsyncIterable<unknown>>;
+
+async function defaultListRemote(apiKey: string): Promise<AsyncIterable<unknown>> {
+	const client = new GoogleGenAI({ apiKey });
+	return client.models.list({ config: { pageSize: 100, queryBase: true } });
+}
+
+/** Refresh the discovered set from Google (cached 10 min per key; failures keep existing/baked models and allow quick retry). */
+export async function refreshDiscoveredModels(
+	force = false,
+	listRemote: RemoteListingFn = defaultListRemote,
+): Promise<void> {
+	const state = cacheState();
 	const apiKey = geminiApiKey();
 	if (!apiKey) {
 		setDiscoveredModels([]);
-		lastKey = undefined;
+		state.lastKey = undefined;
+		state.lastAt = 0;
+		state.lastErrorAt = 0;
 		return;
 	}
-	if (!force && lastKey === apiKey && Date.now() - lastAt < TTL_MS) return;
-	try {
-		const client = new GoogleGenAI({ apiKey });
-		const known = new Set(listModels().map((m) => m.id));
-		const found: Model<Api>[] = [];
-		const pager = await client.models.list({ config: { pageSize: 100, queryBase: true } });
-		for await (const entry of pager) {
-			const model = modelFromListing(entry as never);
-			if (model && !known.has(model.id)) found.push(model);
-		}
-		setDiscoveredModels(found);
-		lastKey = apiKey;
-		lastAt = Date.now();
-	} catch {
-		// Offline or a bad key: the baked catalog still works.
-		lastAt = Date.now();
-		lastKey = apiKey;
+	if (state.lastKey && state.lastKey !== apiKey) {
+		setDiscoveredModels([]);
+		state.lastAt = 0;
+		state.lastErrorAt = 0;
 	}
+	const now = Date.now();
+	if (!force && state.lastKey === apiKey) {
+		if (state.lastAt > 0 && now - state.lastAt < TTL_MS) return;
+		if (state.lastErrorAt > 0 && now - state.lastErrorAt < ERROR_RETRY_MS) return;
+	}
+	if (state.inFlight && state.inFlightKey === apiKey) {
+		return state.inFlight;
+	}
+
+	let run!: Promise<void>;
+	run = (async () => {
+		try {
+			const bakedIds = new Set(listBakedModels().map((m) => m.id));
+			const foundById = new Map<string, Model<Api>>();
+			let entriesSeen = 0;
+			const pager = await listRemote(apiKey);
+			for await (const entry of pager) {
+				entriesSeen++;
+				const model = modelFromListing(entry as never);
+				if (model && !bakedIds.has(model.id) && !foundById.has(model.id)) {
+					foundById.set(model.id, model);
+				}
+			}
+			// Guard against an anomalous empty stream from a proxy/startup glitch wiping valid discovered models.
+			if (entriesSeen > 0 || listDiscoveredModels().length === 0 || force) {
+				if (entriesSeen > 0 || listDiscoveredModels().length === 0) {
+					setDiscoveredModels([...foundById.values()]);
+				}
+			}
+			state.lastKey = apiKey;
+			state.lastAt = Date.now();
+			state.lastErrorAt = 0;
+		} catch {
+			// Offline or transient error: preserve any already-discovered models for this key and retry soon.
+			state.lastKey = apiKey;
+			state.lastErrorAt = Date.now();
+		} finally {
+			if (state.inFlight === run) {
+				state.inFlight = undefined;
+				state.inFlightKey = undefined;
+			}
+		}
+	})();
+
+	state.inFlight = run;
+	state.inFlightKey = apiKey;
+	return run;
 }

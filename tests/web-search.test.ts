@@ -209,6 +209,7 @@ function fakeJobStore(): JobStore {
 		},
 		listJobs: () => [...jobs.values()],
 		findJobByToolCallId: () => null,
+		deleteJob: (id) => jobs.delete(id),
 		deleteJobsForChat: () => 0, // the drop tests never delete
 	};
 }

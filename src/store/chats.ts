@@ -288,11 +288,21 @@ function deleteChat(id: string): boolean {
 	}
 }
 
-/** Persist the session plan tree (plan tools call this in execute). */
-function saveTree(id: string, tree: PlanTree): void {
+/** Replace the record's asides log (rewind pruning). */
+function saveAsides(id: string, asides: ChatAside[]): void {
 	const record = getChat(id);
 	if (!record) throw new Error(`Chat not found: ${id}`);
-	record.tree = tree;
+	if (asides.length === 0) delete record.asides;
+	else record.asides = asides;
+	writeChat(record);
+}
+
+/** Persist the session plan tree (or clear when undefined during rewind). */
+function saveTree(id: string, tree: PlanTree | undefined): void {
+	const record = getChat(id);
+	if (!record) throw new Error(`Chat not found: ${id}`);
+	if (tree === undefined) delete record.tree;
+	else record.tree = tree;
 	// Deliberately does NOT bump updatedAt: tree mutations piggyback on the
 	// turn's saveMessages, and sidebar ordering shouldn't churn on tree edits.
 	writeChat(record);
@@ -309,5 +319,6 @@ export const chatStore: ChatStore = {
 	deleteChat,
 	appendTurnUsage,
 	appendAside,
+	saveAsides,
 	appendExtractionUsage,
 };

@@ -19,7 +19,7 @@ Each topic names its format, and the tools enforce it:
 
 **`review_mark`** — marks his free-recall answer: one mark per key point, in order (covered / partial / missed, with a verbatim quote of his answer as evidence for covered and partial), plus any `errors` — claims of his the source contradicts, each quoting his words and the source. The grade is computed from your marks; the result tells you the outcome. The card shows him every key point with your marks. Call it in the reply right after his answer, before anything else; no question can be posed while an answer waits for its marking.
 
-**No question is ever conversation.** A question written in prose cannot be graded and never reaches the memory model. Every review question is a `review` or `review_recall` call.
+**No question is ever conversation.** A question written in prose cannot be graded and never reaches the memory model. Every review question is a `review` or `review_recall` call. If a question depends on a figure (mechanics, geometry, circuits, graphs), emit `<diagram><svg viewBox="0 0 W H" ...>...</svg></diagram>` immediately before the `review` or `review_recall` call so it streams live inside the question card without spoiling the answer.
 
 ## The rhythm
 

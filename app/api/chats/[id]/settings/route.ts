@@ -4,7 +4,7 @@ import {
 	getChat,
 	parseSettingsBody,
 	stores,
-	validateChatSettings,
+	validateChatSettingsLive,
 } from "@/src/server";
 import type { ChatSettings } from "@/src/core";
 
@@ -32,7 +32,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 	const parsed = parseSettingsBody(body);
 	if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
 
-	const verdict = validateChatSettings(parsed.settings);
+	const verdict = await validateChatSettingsLive(parsed.settings);
 	if (!verdict.ok) {
 		return Response.json({ error: verdict.error, supported: verdict.supported }, { status: 400 });
 	}

@@ -29,14 +29,18 @@ import {
 } from "./native-messages.ts";
 import type { ToolResultMessage } from "../llm/index.ts";
 import { stripCitations } from "./citations.ts";
+import { stripDiagrams } from "./diagram.ts";
 
 /** The user-facing text blocks of a native message (string or text parts). */
 function textOf(content: unknown): string[] {
-	if (typeof content === "string") return content.trim() ? [content] : [];
+	if (typeof content === "string") {
+		const cleaned = stripDiagrams(content);
+		return cleaned.trim() ? [cleaned] : [];
+	}
 	if (!Array.isArray(content)) return [];
 	return content
 		.filter((c): c is { type: "text"; text: string } => (c as { type?: string }).type === "text")
-		.map((c) => stripCitations(c.text))
+		.map((c) => stripDiagrams(stripCitations(c.text)))
 		.filter((t) => t.trim().length > 0);
 }
 

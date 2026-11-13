@@ -38,8 +38,8 @@ import {
 	effectiveSettings,
 	promptOverrides,
 	readSettingsRecord,
-	validateChatSettings,
-	validateModelsSettings,
+	validateChatSettingsLive,
+	validateModelsSettingsLive,
 	writeSettingsRecord,
 	type SettingsBodyResult,
 } from "@/src/server";
@@ -68,7 +68,7 @@ export async function PUT(request: Request, ctx: { params: Promise<{ section: st
 	// Section-specific cross-validation (against the catalog / the prompt
 	// store) — the parsers only see shapes.
 	if (section === "chat") {
-		const verdict = validateChatSettings(parsed.settings as ChatSettings);
+		const verdict = await validateChatSettingsLive(parsed.settings as ChatSettings);
 		if (!verdict.ok) {
 			return Response.json({ error: verdict.error, supported: verdict.supported }, { status: 400 });
 		}
@@ -77,7 +77,7 @@ export async function PUT(request: Request, ctx: { params: Promise<{ section: st
 	// catalog gate the chat section gets — a slot must name a real
 	// provider+model and a thinking level it supports.
 	if (section === "models") {
-		const verdict = validateModelsSettings(parsed.settings as ModelsSettings);
+		const verdict = await validateModelsSettingsLive(parsed.settings as ModelsSettings);
 		if (!verdict.ok) {
 			return Response.json({ error: verdict.error, supported: verdict.supported }, { status: 400 });
 		}

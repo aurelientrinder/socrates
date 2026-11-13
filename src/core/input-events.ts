@@ -41,7 +41,9 @@ import {
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 import { warmupDoneAppends } from "./review.ts";
 import { withAsideDigest } from "./asides.ts";
-import type { ChatAside } from "./contracts.ts";
+import { THINKING_LEVELS } from "./settings.ts";
+import type { ChatAside, ChatSettings } from "./contracts.ts";
+import type { ThinkingLevel } from "../llm/index.ts";
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
@@ -51,7 +53,10 @@ export type ChatInput =
 	/** Re-ask the tutor's last reply (2026-11-01): the reply after the
 	 *  learner's last message is dropped and the turn runs again from
 	 *  there (native-messages.ts retryBase decides what may be retried). */
-	| { type: "retry" }
+	| { type: "retry"; settings?: ChatSettings }
+	/** Regenerate from any AI reply (rewinds everything after assistantMessageId,
+	 *  optionally applying model/thinking overrides updated in the picker). */
+	| { type: "regenerate"; messageId: string; settings?: ChatSettings }
 	/** The practice dock's two buttons (owner, 2026-10-04): the learner's
 	 *  thinking on the ACTIVE problem — one lane (owner 2026-10-05):
 	 *  whether it claims an answer is read from the text. One
@@ -158,6 +163,32 @@ export function dismissAppends(record: { messages: LhMessage[]; asides?: ChatAsi
 /** A malformed input event (the honest 400 — the orphan-trap discipline). */
 export class ChatInputError extends Error {}
 
+function parseOptionalChatSettings(raw: unknown): ChatSettings | undefined {
+	if (raw === undefined) return undefined;
+	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+		throw new ChatInputError("settings must be an object");
+	}
+	const s = raw as { model?: unknown; thinkingLevel?: unknown };
+	const out: ChatSettings = {};
+	if (s.model !== undefined) {
+		if (typeof s.model !== "object" || s.model === null || Array.isArray(s.model)) {
+			throw new ChatInputError("settings.model must be {provider, id}");
+		}
+		const m = s.model as { provider?: unknown; id?: unknown };
+		if (typeof m.provider !== "string" || m.provider.length === 0 || typeof m.id !== "string" || m.id.length === 0) {
+			throw new ChatInputError("settings.model must be {provider, id}");
+		}
+		out.model = { provider: m.provider, id: m.id };
+	}
+	if (s.thinkingLevel !== undefined) {
+		if (typeof s.thinkingLevel !== "string" || !THINKING_LEVELS.includes(s.thinkingLevel as ThinkingLevel)) {
+			throw new ChatInputError("settings.thinkingLevel is invalid");
+		}
+		out.thinkingLevel = s.thinkingLevel as ThinkingLevel;
+	}
+	return out;
+}
+
 /** Parse and validate an input event off a request body. */
 export function parseChatInput(input: unknown): ChatInput {
 	if (typeof input !== "object" || input === null) throw new ChatInputError("input must be an object");
@@ -181,8 +212,19 @@ export function parseChatInput(input: unknown): ChatInput {
 			return { type: "answer", toolCallId: i.toolCallId, answer: i.answer as QuestionAnswerData };
 		case "continue":
 			return { type: "continue" };
-		case "retry":
-			return { type: "retry" };
+		case "retry": {
+			const settings = parseOptionalChatSettings(i.settings);
+			return settings !== undefined ? { type: "retry", settings } : { type: "retry" };
+		}
+		case "regenerate": {
+			if (typeof i.messageId !== "string" || i.messageId.length === 0) {
+				throw new ChatInputError("regenerate input requires messageId");
+			}
+			const settings = parseOptionalChatSettings(i.settings);
+			return settings !== undefined
+				? { type: "regenerate", messageId: i.messageId, settings }
+				: { type: "regenerate", messageId: i.messageId };
+		}
 		case "thinking":
 			if (typeof i.problemCallId !== "string" || i.problemCallId.length === 0) {
 				throw new ChatInputError("thinking input requires problemCallId");
@@ -228,8 +270,9 @@ export function inputAppends(
 		case "continue":
 			return dismissalConclusion(record);
 		case "retry":
-			// The truncation itself is the handler's (retryBase): nothing is
-			// appended — the learner's message is already the record's tail.
+		case "regenerate":
+			// The truncation itself is the handler's (retryBase / regenerateSplit):
+			// nothing is appended.
 			return [];
 		case "thinking": {
 			const active = activeProblemOf(record.messages);

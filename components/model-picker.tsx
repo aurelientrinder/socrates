@@ -20,17 +20,67 @@ import { defaultOrderLevel, populateLevel, THINKING_LABEL } from "@/components/t
 let catalogCache: ModelCatalogResponse | undefined;
 let catalogInflight: Promise<void> | undefined;
 let catalogGeneration = 0;
+let catalogRetryCount = 0;
+let catalogRetryTimer: ReturnType<typeof setTimeout> | undefined;
 let stopCatalogSignals: (() => void) | undefined;
+const CATALOG_RETRY_DELAYS = [1500, 3000, 6000, 15000];
 const catalogReaders = new Set<() => void>();
 const publishCatalog = () => { for (const reader of catalogReaders) reader(); };
+const clearCatalogRetry = () => {
+	if (catalogRetryTimer !== undefined) {
+		clearTimeout(catalogRetryTimer);
+		catalogRetryTimer = undefined;
+	}
+};
+
+/** Synchronous optimistic per-chat settings map so clicking Regenerate / Try again
+ *  right after changing the model/thinking pill never races PUT /api/chats/:id/settings. */
+const optimisticChatSettings = new Map<string, ChatSettings>();
+export function latestChatSettings(chatId: string): ChatSettings | undefined {
+	return optimisticChatSettings.get(chatId);
+}
+export function setOptimisticChatSettings(chatId: string, settings: ChatSettings | undefined): void {
+	if (settings === undefined) optimisticChatSettings.delete(chatId);
+	else optimisticChatSettings.set(chatId, settings);
+}
+
+function scheduleCatalogRetry(generation: number): void {
+	if (!catalogReaders.size || catalogRetryTimer !== undefined) return;
+	const delay = CATALOG_RETRY_DELAYS[Math.min(catalogRetryCount, CATALOG_RETRY_DELAYS.length - 1)]!;
+	catalogRetryCount++;
+	catalogRetryTimer = setTimeout(() => {
+		catalogRetryTimer = undefined;
+		if (generation === catalogGeneration && catalogReaders.size > 0) {
+			fetchCatalog(true);
+		}
+	}, delay);
+}
+
 function fetchCatalog(revalidate = false): void {
-	if (revalidate) { catalogGeneration++; catalogInflight = undefined; }
+	if (revalidate) {
+		catalogGeneration++;
+		catalogInflight = undefined;
+		clearCatalogRetry();
+	}
 	if (catalogInflight) return;
 	const generation = catalogGeneration;
 	catalogInflight = fetch("/api/models")
 		.then((r) => { if (!r.ok) throw new Error(`catalog request failed: ${r.status}`); return r.json() as Promise<ModelCatalogResponse>; })
-		.then((c) => { if (generation === catalogGeneration) { catalogCache = c; publishCatalog(); } })
-		.catch(() => { /* existing unavailable/usage-only posture, no retry timer */ })
+		.then((c) => {
+			if (generation !== catalogGeneration) return;
+			catalogCache = c;
+			publishCatalog();
+			const hasKeyedEmpty = c.models.length === 0 && c.providers.some((p) => p.keyPresent);
+			if (hasKeyedEmpty) {
+				scheduleCatalogRetry(generation);
+			} else {
+				catalogRetryCount = 0;
+				clearCatalogRetry();
+			}
+		})
+		.catch(() => {
+			if (generation === catalogGeneration) scheduleCatalogRetry(generation);
+		})
 		.finally(() => { if (generation === catalogGeneration) catalogInflight = undefined; });
 }
 export function useModelCatalog(): { catalog: ModelCatalogResponse | undefined; refresh: () => void } {
@@ -43,15 +93,26 @@ export function useModelCatalog(): { catalog: ModelCatalogResponse | undefined; 
 			stopCatalogSignals = onSettingsSaved((section) => {
 				if (section === "keys") {
 					catalogGeneration++; catalogInflight = undefined; catalogCache = undefined;
+					catalogRetryCount = 0; clearCatalogRetry();
 					publishCatalog(); fetchCatalog();
 				} else if (section === "models" || section === "modelList") fetchCatalog(true);
 			});
 			fetchCatalog(true);
 		} else fetchCatalog();
 		read();
-		return () => { catalogReaders.delete(read); if (!catalogReaders.size) { stopCatalogSignals?.(); stopCatalogSignals = undefined; } };
+		return () => {
+			catalogReaders.delete(read);
+			if (!catalogReaders.size) {
+				stopCatalogSignals?.();
+				stopCatalogSignals = undefined;
+				clearCatalogRetry();
+			}
+		};
 	}, []);
-	const refresh = useCallback(() => fetchCatalog(true), []);
+	const refresh = useCallback(() => {
+		catalogRetryCount = 0;
+		fetchCatalog(true);
+	}, []);
 	return { catalog, refresh };
 }
 
@@ -222,9 +283,13 @@ export function ModelControl({ chatId, onModelChange, flat = false }: { chatId?:
 	// truth (a pick riding an unsupported level lands CLAMPED — the pill
 	// shows the stored value). No notifySettingsSaved: the write touches
 	// one session's record, not the slots — no other surface reads it.
+	const saveChatSeqRef = useRef(0);
 	const saveChat = useCallback(
 		async (next: ChatSettings) => {
 			setError(null);
+			const seq = ++saveChatSeqRef.current;
+			const prev = chatId ? latestChatSettings(chatId) : undefined;
+			if (chatId) setOptimisticChatSettings(chatId, next);
 			try {
 				const res = await fetch(`/api/chats/${chatId}/settings`, {
 					method: "PUT",
@@ -232,14 +297,18 @@ export function ModelControl({ chatId, onModelChange, flat = false }: { chatId?:
 					body: JSON.stringify(next),
 				});
 				if (!res.ok) {
+					if (chatId && saveChatSeqRef.current === seq) setOptimisticChatSettings(chatId, prev);
 					const body = (await res.json().catch(() => ({}))) as { error?: string };
 					setError(body.error ?? `settings rejected (${res.status})`);
 					return;
 				}
 				const stored = (await res.json().catch(() => null)) as { settings?: ChatSettings } | null;
-				setSession(stored?.settings ?? next);
+				const settled = stored?.settings ?? next;
+				if (chatId && saveChatSeqRef.current === seq) setOptimisticChatSettings(chatId, settled);
+				setSession(settled);
 				setOpen(null);
 			} catch {
+				if (chatId && saveChatSeqRef.current === seq) setOptimisticChatSettings(chatId, prev);
 				setError("Could not reach the server — try again.");
 			}
 		},

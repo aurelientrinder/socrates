@@ -34,7 +34,7 @@ import { Hint } from "@/components/ui/hint";
  *  (sidebar previews etc.) — the buttons simply don't render there. */
 export const SessionMermaidContext = createContext<{
 	openMermaid: (chart: string) => void;
-	openFigure: (svg: string, inverted: boolean) => void;
+	openFigure: (svg: string, inverted: boolean, opts?: { themed?: boolean }) => void;
 } | null>(null);
 
 export function useSessionMermaid() {
@@ -77,11 +77,13 @@ export function MermaidOverlay({
 	chart,
 	svg: rawSvg,
 	inverted = false,
+	themed = false,
 	onClose,
 }: {
 	chart?: string;
 	svg?: string;
 	inverted?: boolean;
+	themed?: boolean;
 	onClose: () => void;
 }) {
 	// ── chart render (own instance, own ids); figure mode uses the raw svg ──
@@ -282,9 +284,9 @@ export function MermaidOverlay({
 								data-lh-overlay-chart
 								className={cn(
 									"[&_svg]:h-auto [&_svg]:w-full",
-									rawSvg !== undefined && "bg-white",
+									rawSvg !== undefined && (themed ? "rounded-lg bg-card p-6 text-card-foreground" : "bg-white"),
 								)}
-								style={rawSvg !== undefined && inverted ? { filter: "invert(1) hue-rotate(180deg)" } : undefined}
+								style={rawSvg !== undefined && !themed && inverted ? { filter: "invert(1) hue-rotate(180deg)" } : undefined}
 								dangerouslySetInnerHTML={{ __html: svg }}
 							/>
 						</div>

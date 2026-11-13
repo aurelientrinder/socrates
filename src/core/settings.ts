@@ -467,7 +467,7 @@ function sanitizeGeneral(raw: Record<string, unknown>): GeneralSettings {
 	return out;
 }
 
-const THINKING_LEVELS: readonly ThinkingLevel[] = [
+export const THINKING_LEVELS: readonly ThinkingLevel[] = [
 	"off",
 	"minimal",
 	"low",

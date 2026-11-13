@@ -23,6 +23,9 @@ import { artifactRenderers } from "@/components/artifacts";
 import { SubagentSteerCard } from "@/components/artifacts/steer-card";
 import { ComposerHost } from "@/components/composer";
 import { ReplyActions } from "@/components/reply-actions";
+import { RegenerateDialog } from "@/components/regenerate-dialog";
+import { DiagramFigure } from "@/components/diagram-figure";
+import { latestChatSettings } from "@/components/model-picker";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
@@ -34,6 +37,7 @@ import { JobsContext } from "@/components/jobs-context";
 import { StatsBar } from "@/components/stats-bar";
 import { useServerEvent, useServerResync } from "@/components/server-events";
 import {
+	activeStreamingDiagram,
 	isProviderKeyRefusal,
 	firstSourceTextParts,
 	messageAnchorId,
@@ -414,10 +418,13 @@ export function Chat({
 	const [abortAsk, setAbortAsk] = useState<AbortMode | null>(null);
 	const abortAskRef = useRef<AbortMode | null>(null);
 	abortAskRef.current = abortAsk;
+	const [regenerateTarget, setRegenerateTarget] = useState<{ messageId: string } | null>(null);
+	const regenerateTargetRef = useRef<{ messageId: string } | null>(null);
+	regenerateTargetRef.current = regenerateTarget;
 	useEffect(() => {
 		const onAbort = () => {
 			const target = escAbortTarget({
-				abortAsk: abortAskRef.current !== null,
+				abortAsk: abortAskRef.current !== null || regenerateTargetRef.current !== null,
 				mermaidFocus: mermaidFocusRef.current !== null || figureFocusRef.current !== null,
 				planOpen: planOpenRef.current,
 				setupOpen: setupOpenRef.current,
@@ -428,7 +435,10 @@ export function Chat({
 			if (target === "question") setAbortAsk("question");
 			else if (target === "problem") setAbortAsk("problem");
 			else if (target === "turn") setAbortAsk("turn");
-			else if (target === "mermaid") setMermaidFocus(null);
+			else if (target === "mermaid") {
+				setMermaidFocus(null);
+				setFigureFocus(null);
+			}
 			else if (target === "plan") setPlanOpen(false);
 			// setup closes itself; null = nothing to do — both claimed.
 		};
@@ -495,6 +505,8 @@ export function Chat({
 	// listener is mount-scoped; the value it needs is render-scoped).
 	const pendingRef = useRef(pending);
 	pendingRef.current = pending;
+	const messagesRef = useRef(messages);
+	messagesRef.current = messages;
 
 	// THE ACTIVE PRACTICE PROBLEM (practice sessions, 2026-10-04): the
 	// same dock-ownership rule as a pending question — an active problem
@@ -519,8 +531,31 @@ export function Chat({
 	const canRetry = !busy && pending === null && (status === "ready" || status === "error") && retryBase(nativeMessages) !== null;
 	const retryLast = useCallback(() => {
 		clearError();
-		void send({ type: "retry" });
-	}, [clearError, send]);
+		const settings = latestChatSettings(chatId);
+		void send({ type: "retry", ...(settings ? { settings } : {}) });
+	}, [chatId, clearError, send]);
+	const runRegenerate = useCallback(
+		(messageId: string) => {
+			clearError();
+			const settings = latestChatSettings(chatId);
+			void send({ type: "regenerate", messageId, ...(settings ? { settings } : {}) });
+		},
+		[chatId, clearError, send],
+	);
+	const requestRegenerate = useCallback(
+		(messageId: string, mi: number) => {
+			if (
+				mi === messagesRef.current.length - 1 &&
+				!pendingRef.current &&
+				!activeProblemRef.current
+			) {
+				runRegenerate(messageId);
+			} else {
+				setRegenerateTarget({ messageId });
+			}
+		},
+		[runRegenerate],
+	);
 	const busyRef = useRef(busy);
 	busyRef.current = busy;
 
@@ -937,7 +972,7 @@ export function Chat({
 	// Figure focus (2026-10-07): the figure card's fullscreen button — same
 	// overlay shell as mermaid, but carrying the raw svg + the card's invert
 	// state so the fullscreen view stays faithful to the toggled card.
-	const [figureFocus, setFigureFocus] = useState<{ svg: string; inverted: boolean } | null>(null);
+	const [figureFocus, setFigureFocus] = useState<{ svg: string; inverted: boolean; themed?: boolean } | null>(null);
 
 	// Overlay mirrors for the layered-Esc gate (owner 2026-10-04): the
 	// lh:kbd-abort-turn handler reads these at EVENT time — declared here
@@ -1291,6 +1326,26 @@ export function Chat({
 		doSend();
 	};
 
+	const streamingDiagram = useMemo(
+		() => activeStreamingDiagram(nativeMessages, busy),
+		[nativeMessages, busy],
+	);
+	const activeProblemDiagram = useMemo(() => {
+		if (!activeProblem) return undefined;
+		for (let mi = messages.length - 1; mi >= 0; mi--) {
+			for (const part of messages[mi]!.parts) {
+				if (
+					part.type === "tool-problem" &&
+					part.toolCallId === activeProblem.toolCallId &&
+					typeof part.diagram === "string"
+				) {
+					return part.diagram;
+				}
+			}
+		}
+		return undefined;
+	}, [messages, activeProblem]);
+
 	return (
 		<ChatActionsContext.Provider
 			value={{
@@ -1305,7 +1360,7 @@ export function Chat({
 		<SessionMermaidContext.Provider
 			value={{
 				openMermaid: setMermaidFocus,
-				openFigure: (svg, inverted) => setFigureFocus({ svg, inverted }),
+				openFigure: (svg, inverted, opts) => setFigureFocus({ svg, inverted, themed: opts?.themed }),
 			}}
 		>
 		<JobsContext.Provider value={jobs}>
@@ -1548,7 +1603,7 @@ export function Chat({
 									})}
 								</Fragment>
 							) : (
-									<div key={m.id || `m-${mi}`} data-role={m.role} className="lh-msg flex flex-col gap-4">
+									<div key={m.id || `m-${mi}`} data-role={m.role} className="lh-msg group flex flex-col gap-4">
 									{/* THE INFERRED TEACH SEAM (owner ruling 2026-09-26, the verdict
 									death): teaching begins where the FIRST nodeId-tagged quiz is
 									posed — the fold (phaseTimeline, the same derivation the phase chip
@@ -1671,6 +1726,13 @@ export function Chat({
 																onOpen={() => setPlanOpen(true)}
 															/>
 														);
+													case "data-diagram":
+														return (
+															<DiagramFigure
+																key={part.id || pi}
+																svg={(part.data as { svg: string }).svg}
+															/>
+														);
 													case "tool-quiz":
 													case "tool-probe":
 													case "tool-review":
@@ -1695,6 +1757,7 @@ export function Chat({
 																		answer={part.output as QuestionAnswerData}
 																		input={part.input}
 																		label={kind !== "review" && part.type === "tool-review" ? "Warm-up" : undefined}
+																		diagram={typeof part.diagram === "string" ? part.diagram : undefined}
 																	/>
 																	{sideTalk}
 																</Fragment>
@@ -1724,7 +1787,11 @@ export function Chat({
 											})}
 										</MessageContent>
 										{!(busy && mi === messages.length - 1) && (
-											<ReplyActions parts={m.parts} onRetry={canRetry && mi === messages.length - 1 ? retryLast : undefined} />
+											<ReplyActions
+												parts={m.parts}
+												onRetry={canRetry && mi === messages.length - 1 ? retryLast : undefined}
+												onRegenerate={!busy && !compacting && m.id ? () => requestRegenerate(m.id, mi) : undefined}
+											/>
 										)}
 									</Message>
 									)}
@@ -1798,6 +1865,8 @@ export function Chat({
 				<DockOverlay
 					pending={pending}
 					practice={activeProblem}
+					streamingDiagram={streamingDiagram}
+					practiceDiagram={activeProblemDiagram}
 					compactionRunning={compacting}
 					onSubmitThinking={submitThinking}
 					chatId={chatId}
@@ -1901,11 +1970,21 @@ export function Chat({
 					<MermaidOverlay
 						svg={figureFocus.svg}
 						inverted={figureFocus.inverted}
+						themed={figureFocus.themed}
 						onClose={() => setFigureFocus(null)}
 					/>
 				)}
 				{planOpen && <PlanPopup messages={messages} onClose={() => setPlanOpen(false)} />}
 				<AbortTurnDialog mode={abortAsk} onClose={() => setAbortAsk(null)} onConfirm={confirmAbort} busy={busy} />
+				<RegenerateDialog
+					open={regenerateTarget !== null}
+					onClose={() => setRegenerateTarget(null)}
+					onConfirm={() => {
+						const t = regenerateTarget;
+						setRegenerateTarget(null);
+						if (t) runRegenerate(t.messageId);
+					}}
+				/>
 				</div>
 			</div>
 			{planSteps && <PlanRail steps={planSteps} onOpenPlan={() => setPlanOpen(true)} />}
@@ -2043,6 +2122,8 @@ export function shouldStampGeometryMute(nextH: number, prevH: number, pending: b
 function DockOverlay({
 	pending,
 	practice,
+	streamingDiagram,
+	practiceDiagram,
 	compactionRunning,
 	onSubmitThinking,
 	requiresReveal,
@@ -2068,6 +2149,10 @@ function DockOverlay({
 	pending: ReturnType<typeof findPendingToolCall>;
 	/** The pending question's warm-up step, when it is one (warm-up recall). */
 	warmup?: WarmupStep;
+	/** Live diagram currently streaming (or just closed) ahead of a pending question/problem. */
+	streamingDiagram: { svg: string; streaming: boolean } | null;
+	/** Optional SVG diagram attached to the active practice problem. */
+	practiceDiagram?: string;
 	/** Compaction running for this chat (round 14) — the docks' submit
 	 *  affordance gate (the server's registry is the real one). */
 	compactionRunning: boolean;
@@ -2122,14 +2207,16 @@ function DockOverlay({
 	// frame too late. Assigned per render like the other refs below.
 	const atBottomRef = useRef(isAtBottom);
 	atBottomRef.current = isAtBottom;
+	const showStreamingDiagram = !pending && !practice && streamingDiagram !== null;
 	// Teach-phase mount (session reload with a pending check): the dock starts
-	// as the collapsed invitation too — the check must not pop open on reload.
-	const [expanded, setExpanded] = useState(!requiresReveal);
+	// as the collapsed invitation too — unless the check carries a diagram, in
+	// which case it opens immediately so the figure is visible in the dock.
+	const [expanded, setExpanded] = useState(!requiresReveal || Boolean(pending?.diagram));
 	// Reveal state (W5): false until the learner clicks the invitation. While
 	// false, the scroll machine must NOT auto-expand at the bottom — the
 	// learner reads the teaching first and opens the check when ready. Once
 	// revealed, the normal collapse machine rules apply untouched.
-	const [revealed, setRevealed] = useState(false);
+	const [revealed, setRevealed] = useState(Boolean(pending?.diagram));
 	const revealPending = requiresReveal && !revealed;
 	const toolsInQuestion = Boolean(pending && expanded && !revealPending);
 	const toolsRow = (
@@ -2156,32 +2243,42 @@ function DockOverlay({
 	// the transcript as if it had opened. Resetting here means the paint
 	// measures the bar, the reserve keeps the composer's height, and the
 	// only motion is the teaching text itself.
+	const prevStreamingDiagramRef = useRef(Boolean(streamingDiagram));
+	if (showStreamingDiagram && !prevStreamingDiagramRef.current && !expanded) {
+		setExpanded(true);
+	}
 	const prevPendingIdRef = useRef(pendingId);
 	if (pendingId !== prevPendingIdRef.current) {
 		const wasQuestion = prevPendingIdRef.current !== null;
 		prevPendingIdRef.current = pendingId;
 		if (pendingId && requiresReveal) {
-			const arrival = revealArrival(wasQuestion);
-			setExpanded(arrival.expanded);
-			setRevealed(arrival.revealed);
+			if (Boolean(pending?.diagram) || prevStreamingDiagramRef.current) {
+				setExpanded(true);
+				setRevealed(true);
+			} else {
+				const arrival = revealArrival(wasQuestion);
+				setExpanded(arrival.expanded);
+				setRevealed(arrival.revealed);
+			}
 		} else if (pendingId) {
 			setExpanded(true);
 		}
 	}
+	prevStreamingDiagramRef.current = Boolean(streamingDiagram);
 
 	useEffect(() => {
 		if (!pendingId || pendingId === initialPendingRef.current) return;
-		if (!requiresReveal && atBottomRef.current) void scrollToBottom();
+		if ((!requiresReveal || Boolean(pending?.diagram)) && atBottomRef.current) void scrollToBottom();
 		// fire only when a NEW question lands
-	}, [pendingId, requiresReveal, scrollToBottom]);
+	}, [pendingId, pending?.diagram, requiresReveal, scrollToBottom]);
 
 	const expandedRef = useRef(expanded);
 	expandedRef.current = expanded;
+	const docked = Boolean(pending) || Boolean(practice) || showStreamingDiagram;
 	// Dock ownership (the reserve immunity, the arrival states): a pending
-	// question OR an active practice problem — either replaces the composer
-	// and owns the band.
-	const pendingRef = useRef(!!pending || !!practice);
-	pendingRef.current = !!pending || !!practice;
+	// question, active practice problem, or streaming diagram owns the band.
+	const pendingRef = useRef(docked);
+	pendingRef.current = docked;
 
 	// The plan marginalia's flank width (owner, plan-placement round): from
 	// the DOCK container's right edge to the block's right edge — the bare
@@ -2223,7 +2320,7 @@ function DockOverlay({
 	// wheel listener so the browser scrolls the quiz's inner scroll container
 	// directly on the compositor thread without main-thread lag or accidental
 	// scroll-chaining into the transcript.
-	const dockExpanded = (Boolean(pending) || Boolean(practice)) && expanded;
+	const dockExpanded = docked && expanded;
 	useEffect(() => {
 		if (dockExpanded) return;
 		const root = blockRef.current;
@@ -2315,7 +2412,9 @@ function DockOverlay({
 		? `question:${pending.toolCallId}`
 		: practice
 			? `practice:${practice.toolCallId}`
-			: "chat";
+			: showStreamingDiagram
+				? "streaming-diagram"
+				: "chat";
 	// The opening variant of a session appears instantly — the fade/rise is
 	// reserved for mid-session transitions.
 	const initialModeRef = useRef(mode);
@@ -2341,7 +2440,7 @@ function DockOverlay({
 	// term (the fold) belongs to EVERY docked variant — question AND
 	// practice (owner fix, 2026-10-06). Typing growth keeps the key and
 	// never animates; the fold/unfold morphs like teaching always has.
-	const stateKey = dockStateKey(mode, !!pending || !!practice, expanded);
+	const stateKey = dockStateKey(mode, docked, expanded);
 	const prevRef = useRef<{ key: string; height: number } | null>(null);
 	useIsoLayoutEffect(() => {
 		const block = blockRef.current;
@@ -2421,6 +2520,7 @@ function DockOverlay({
 									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall" | "review" | "review_recall"}
 									toolCallId={pending.toolCallId}
 									input={pending.input as never}
+									diagram={pending.diagram}
 									expanded={expanded}
 									reveal={revealPending}
 									phase={phase}
@@ -2437,6 +2537,7 @@ function DockOverlay({
 								<PracticeDock
 									problemCallId={practice.toolCallId}
 									input={practice.input as { statement: string }}
+									diagram={practiceDiagram}
 									expanded={expanded}
 									onExpand={() => {
 										setExpanded(true);
@@ -2447,6 +2548,18 @@ function DockOverlay({
 									onEscape={dictationCancel}
 									compactionRunning={compactionRunning}
 								/>
+							) : showStreamingDiagram && streamingDiagram ? (
+								<div data-testid="streaming-diagram-dock" className="flex max-h-[var(--dock-max-h,75dvh)] flex-col">
+									{!streamingDiagram.streaming && (
+										<div className="flex shrink-0 items-center gap-2 px-4 pt-3 pb-2 text-[0.8rem] font-medium text-muted-foreground">
+											<span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
+											<span>Writing question…</span>
+										</div>
+									)}
+									<div className={`min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 ${streamingDiagram.streaming ? "pt-3" : ""}`}>
+										<DiagramFigure svg={streamingDiagram.svg} streaming={streamingDiagram.streaming} />
+									</div>
+								</div>
 							) : (
 								composer
 							)}

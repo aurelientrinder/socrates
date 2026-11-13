@@ -17,6 +17,7 @@ import type { AgentEvent } from "@/src/core";
 import type { ToolResultMessage } from "@/src/core";
 import {
 	needsContinuation,
+	regenerateSplit,
 	retryBase,
 	measuredContextTokens,
 	newAnswerResult,
@@ -599,6 +600,14 @@ export class SessionModel {
 			const base = retryBase([...this.base, ...this.tail]);
 			if (base) this.mutate(() => {
 				this.base = base;
+				this.tail = [];
+			});
+		} else if (input.type === "regenerate") {
+			// Regenerate: drop the target reply and everything after it
+			// optimistically (regenerateSplit is shared with the server).
+			const split = regenerateSplit([...this.base, ...this.tail], input.messageId);
+			if (split) this.mutate(() => {
+				this.base = split.surviving;
 				this.tail = [];
 			});
 		}

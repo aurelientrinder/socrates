@@ -822,6 +822,48 @@ export function retryBase(messages: readonly LhMessage[]): LhMessage[] | null {
 	return messages.slice(0, last + 1);
 }
 
+/** REGENERATE: split the native record right before the given assistant reply
+ *  (identified by the projected view message's id, which is the group's first
+ *  visible assistant message). Walks backward across any immediately preceding
+ *  empty settled assistant frames omitted by projectView, and drops any active
+ *  compaction markers whose firstKeptMessageId was discarded so the kept boundary
+ *  never dangles. Returns null when the id is missing or not an assistant reply. */
+export function regenerateSplit(
+	messages: readonly LhMessage[],
+	assistantMessageId: string,
+): { surviving: LhMessage[]; discarded: LhMessage[] } | null {
+	let idx = messages.findIndex(
+		(m) => m.id === assistantMessageId && (m as { role?: string }).role === "assistant",
+	);
+	if (idx === -1) return null;
+	// Step back across immediately preceding empty assistant messages (which
+	// projectView omits rather than rendering as groups).
+	while (idx > 0) {
+		const prev = messages[idx - 1]!;
+		if ((prev as { role?: string }).role !== "assistant") break;
+		const content = (prev as AssistantMessage).content;
+		if (!Array.isArray(content) || content.length === 0) {
+			idx--;
+		} else {
+			break;
+		}
+	}
+	const rawSurviving = messages.slice(0, idx);
+	const discarded = messages.slice(idx);
+	const discardedIds = new Set(discarded.map((m) => m.id));
+	// Any compaction marker inside surviving whose firstKeptMessageId was
+	// discarded would point to a non-existent id (-1). Drop such orphaned
+	// compaction markers cleanly so compaction re-evaluates against surviving.
+	const surviving = rawSurviving.filter((m) => {
+		if ((m as { role?: string }).role !== "custom") return true;
+		const marker = m as LhMarkerMessage;
+		if (marker.customType !== "compaction") return true;
+		const firstKeptId = (marker.details as { firstKeptMessageId?: unknown } | undefined)?.firstKeptMessageId;
+		return typeof firstKeptId === "string" && !discardedIds.has(firstKeptId);
+	});
+	return { surviving, discarded };
+}
+
 export function needsContinuation(messages: readonly LhMessage[]): boolean {
 	const last = messages[messages.length - 1];
 	// A warm-up skipped through the silent dismissal route ends on its

@@ -116,3 +116,60 @@ export function sanitizeSvg(svg: string): string {
 	text(input.slice(last));
 	return out;
 }
+
+const SVG_VOID_ELEMENTS = new Set(["path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "stop", "use", "feoffset", "feflood", "fegaussianblur", "fecolormatrix", "feblend", "fecomposite", "femergenode", "fedropshadow", "image"]);
+
+/** Sanitize a partially streamed `<svg>` fragment: drops incomplete trailing tag/entity
+ *  tokens, removes unclosed `<style>` blocks (so raw CSS text doesn't flash), runs the
+ *  allow-list sanitizer, and closes still-open container tags so DOMParser/innerHTML
+ *  renders every element streamed so far in real time. */
+export function sanitizeStreamingSvg(raw: string): string {
+	const svgStart = raw.search(/<svg\b/i);
+	if (svgStart === -1) return "";
+	let fragment = raw.slice(svgStart);
+
+	// Trim an incomplete trailing tag (`<circle cx=...`) or entity (`&amp`)
+	const lastLt = fragment.lastIndexOf("<");
+	const lastGt = fragment.lastIndexOf(">");
+	if (lastLt > lastGt) {
+		fragment = fragment.slice(0, lastLt);
+	}
+	fragment = fragment.replace(/&[a-zA-Z0-9#]*$/, "");
+
+	// Drop unclosed `<style>...` while its CSS rules are still streaming
+	const lastStyleOpen = fragment.search(/<style\b[^>]*>(?![\s\S]*<\/style>)/i);
+	if (lastStyleOpen !== -1) {
+		fragment = fragment.slice(0, lastStyleOpen);
+	}
+
+	const sanitized = sanitizeSvg(fragment);
+	if (!sanitized || !/<svg\b/i.test(sanitized)) return "";
+
+	// Close any still-open container elements in reverse order
+	const openStack: string[] = [];
+	const tagScan = /<(\/?)([a-zA-Z][\w:.-]*)(?:\s[^>]*)?(\/?)>/g;
+	let match: RegExpExecArray | null;
+	while ((match = tagScan.exec(sanitized)) !== null) {
+		const closing = match[1] === "/";
+		const rawName = match[2]!;
+		const lower = rawName.toLowerCase();
+		const selfClosing = match[3] === "/" || SVG_VOID_ELEMENTS.has(lower);
+		if (closing) {
+			for (let i = openStack.length - 1; i >= 0; i--) {
+				if (openStack[i]!.toLowerCase() === lower) {
+					openStack.length = i;
+					break;
+				}
+			}
+		} else if (!selfClosing) {
+			openStack.push(rawName);
+		}
+	}
+
+	let closed = sanitized;
+	for (let i = openStack.length - 1; i >= 0; i--) {
+		closed += `</${openStack[i]}>`;
+	}
+	return closed;
+}
+

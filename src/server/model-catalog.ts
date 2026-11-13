@@ -17,13 +17,25 @@
  * set; nothing here changes.
  */
 
-import { clampThinkingLevel, getSupportedThinkingLevels, type Api, type Model } from "../llm/index.ts";
-import type { ThinkingLevel } from "../llm/index.ts";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { PATHS } from "../../config.ts";
+import {
+	clampThinkingLevel,
+	getSupportedThinkingLevels,
+	listDiscoveredModels,
+	setDiscoveredModels,
+	type Api,
+	type Model,
+	type ThinkingLevel,
+} from "../llm/index.ts";
 import { piModels } from "../agent/models.ts";
-import { refreshDiscoveredModels } from "../llm/discovery.ts";
+import { refreshDiscoveredModels, type RemoteListingFn } from "../llm/discovery.ts";
 function connectionModel(provider: string, id: string): Model<Api> | undefined { return piModels().getModel(provider, id); }
 function connectionProviderIds(): string[] { return piModels().getProviders().map((p) => p.id); }
 import { settingsStore, readSettings } from "../store/settings.ts";
+import { writeFileAtomic } from "../store/fs-atomic.ts";
 import { effectiveSettings } from "./stores.ts";
 import { keyValue } from "./keys.ts";
 import type { ChatSettings } from "../core/contracts/chat.ts";
@@ -38,6 +50,82 @@ import type {
 import type { EffectiveModelSpec, EffectiveSlot } from "../core/settings-resolution.ts";
 import { AUTH_PROVIDER_KEYS } from "../core/auth-keys.ts";
 import { BACKGROUND_MODEL_ROLES, MODEL_SLOTS, type BackgroundModelRole, type ModelSlotName, type ModelsSettings } from "../core/settings.ts";
+
+const DISK_HYDRATE_KEY = Symbol.for("lh.modelDiskHydrate");
+
+interface DiskCacheRecord {
+	version: 1;
+	keyHash: string;
+	updatedAt: string;
+	models: Model<Api>[];
+}
+
+function discoveredCachePath(): string {
+	const dataRoot = process.env.LH_DATA_DIR ? path.resolve(process.env.LH_DATA_DIR) : PATHS.data;
+	return path.join(dataRoot, "cache", "discovered-models.json");
+}
+
+function activeGeminiKey(): string | undefined {
+	return keyValue("GEMINI_API_KEY") || process.env.GOOGLE_API_KEY || undefined;
+}
+
+function hashKey(key: string): string {
+	return crypto.createHash("sha256").update(key).digest("hex").slice(0, 16);
+}
+
+function diskHydrateState(): { hydratedHash?: string } {
+	const g = globalThis as Record<symbol, { hydratedHash?: string } | undefined>;
+	if (!g[DISK_HYDRATE_KEY]) g[DISK_HYDRATE_KEY] = {};
+	return g[DISK_HYDRATE_KEY];
+}
+
+/** Test-only reset for the cold-start disk cache hydration guard. */
+export function resetDiscoveredDiskHydration(): void {
+	diskHydrateState().hydratedHash = undefined;
+}
+
+/** Lazily hydrate live-discovered models from disk on cold boot when matching the active key hash. */
+export function ensureDiscoveredHydrated(cacheFile: string = discoveredCachePath()): void {
+	const key = activeGeminiKey();
+	if (!key) return;
+	const currentHash = hashKey(key);
+	const st = diskHydrateState();
+	if (st.hydratedHash === currentHash || listDiscoveredModels().length > 0) return;
+	st.hydratedHash = currentHash;
+	try {
+		if (!fs.existsSync(cacheFile)) return;
+		const parsed = JSON.parse(fs.readFileSync(cacheFile, "utf8")) as Partial<DiskCacheRecord>;
+		if (parsed?.version !== 1 || parsed.keyHash !== currentHash || !Array.isArray(parsed.models)) return;
+		const valid = parsed.models.filter(
+			(m): m is Model<Api> =>
+				Boolean(m) &&
+				typeof m === "object" &&
+				typeof m.id === "string" &&
+				typeof m.name === "string" &&
+				typeof m.provider === "string",
+		);
+		if (valid.length > 0) setDiscoveredModels(valid);
+	} catch {
+		/* corrupt or unreadable cache — falls back to live discovery + baked models */
+	}
+}
+
+function writeDiscoveredCache(key: string, models: Model<Api>[], cacheFile: string = discoveredCachePath()): void {
+	if (models.length === 0) return;
+	try {
+		fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+		const payload: DiskCacheRecord = {
+			version: 1,
+			keyHash: hashKey(key),
+			updatedAt: new Date().toISOString(),
+			models,
+		};
+		writeFileAtomic(cacheFile, JSON.stringify(payload));
+		diskHydrateState().hydratedHash = payload.keyHash;
+	} catch {
+		/* non-fatal cache write error */
+	}
+}
 
 /** The picker's client-safe model entry (contract: core/contracts/models.ts). */
 export type ModelDto = ModelCatalogEntry;
@@ -166,6 +254,7 @@ export function toModelDto(model: Model<Api>): ModelDto {
  *  server-side through this. No hardcoded fallback exists anywhere:
  *  a model missing here reads limit-null (usage-only, honest render). */
 export function catalogContextLimits(): Map<string, number> {
+	ensureDiscoveredHydrated();
 	const keyed = keyedProviderIds();
 	const index = new Map<string, number>();
 	for (const provider of piModels().getProviders()) {
@@ -182,11 +271,12 @@ export function catalogContextLimits(): Map<string, number> {
  *  defaults a settings-less chat runs + the background roles' resolved
  *  pins (the settings UI's per-role default captions). */
 export function modelCatalog(): ModelCatalogResponse {
+	ensureDiscoveredHydrated();
 	const keyed = keyedProviderIds();
 	const models = piModels()
 		.getProviders()
 		.filter((p) => keyed.has(p.id))
-		.flatMap((p) => piModels().getModels(p.id))
+		.flatMap((p) => piModels().getModels(providerId(p)))
 		.map(toModelDto)
 		.sort((a, b) => (a.provider === b.provider ? a.id.localeCompare(b.id) : a.provider.localeCompare(b.provider)))
 		;
@@ -198,6 +288,10 @@ export function modelCatalog(): ModelCatalogResponse {
 		providers: catalogProviders(),
 		shown: readSettings()?.modelList?.shown ?? {},
 	};
+}
+
+function providerId(p: { id: string }): string {
+	return p.id;
 }
 
 /** One validated outcome for a settings write. */
@@ -212,6 +306,7 @@ export type SettingsValidation =
  *    the model the picker writes against (settings.model, else config's
  *    prober/teacher pin; one controller, so the two specs share it). */
 export function validateChatSettings(settings: ChatSettings): SettingsValidation {
+	ensureDiscoveredHydrated();
 	const providers = connectionProviderIds();
 	if (settings.model) {
 		const { provider, id } = settings.model;
@@ -232,6 +327,7 @@ export function validateChatSettings(settings: ChatSettings): SettingsValidation
 }
 
 export function validateModelsSettings(settings: ModelsSettings): SettingsValidation {
+	ensureDiscoveredHydrated();
 	for (const name of MODEL_SLOTS) {
 		const slot = settings[name];
 		if (!slot) continue;
@@ -270,6 +366,7 @@ function validateSlotSpec(name: ModelSlotName, slot: { model?: { provider: strin
  *  or the level already supported — the existence gate rejects unknown
  *  models separately, so this only ever sees real ones in practice). */
 function clampLevelFor(provider: string, id: string, level: ThinkingLevel): ThinkingLevel {
+	ensureDiscoveredHydrated();
 	const model = connectionModel(provider, id);
 	return model ? clampThinkingLevel(model, level) : level;
 }
@@ -307,9 +404,44 @@ export function clampChatLevel(settings: ChatSettings, strong: EffectiveSlot | n
 	return { ...settings, thinkingLevel: clampLevelFor(provider, id, settings.thinkingLevel) };
 }
 
+/** Hydrate disk-cached discovered models, refresh live discovery, and update disk cache on success. */
+export async function hydrateServerModelCatalog(
+	force = false,
+	opts?: { listRemote?: RemoteListingFn; cacheFile?: string },
+): Promise<void> {
+	ensureDiscoveredHydrated(opts?.cacheFile);
+	await refreshDiscoveredModels(force, opts?.listRemote);
+	const key = activeGeminiKey();
+	const discovered = listDiscoveredModels();
+	if (key && discovered.length > 0 && (process.env.NODE_ENV !== "test" || process.env.LH_DATA_DIR || opts?.cacheFile)) {
+		writeDiscoveredCache(key, discovered, opts?.cacheFile);
+	}
+}
+
+export async function validateChatSettingsLive(settings: ChatSettings): Promise<SettingsValidation> {
+	const initial = validateChatSettings(settings);
+	if (initial.ok) return initial;
+	if (settings.model?.provider === "google" && activeGeminiKey()) {
+		await hydrateServerModelCatalog(true);
+		return validateChatSettings(settings);
+	}
+	return initial;
+}
+
+export async function validateModelsSettingsLive(settings: ModelsSettings): Promise<SettingsValidation> {
+	const initial = validateModelsSettings(settings);
+	if (initial.ok) return initial;
+	const hasGoogleSlot = MODEL_SLOTS.some((slot) => settings[slot]?.model?.provider === "google");
+	if (hasGoogleSlot && activeGeminiKey()) {
+		await hydrateServerModelCatalog(true);
+		return validateModelsSettings(settings);
+	}
+	return initial;
+}
+
 /** The picker payload after asking Google which models this key can use
- *  (cached 10 minutes; offline or a bad key keeps the baked list). */
+ *  (cached 10 minutes; offline or a bad key keeps disk/memory/baked lists). */
 export async function freshModelCatalog(): Promise<ModelCatalogResponse> {
-	await refreshDiscoveredModels();
+	await hydrateServerModelCatalog();
 	return modelCatalog();
 }

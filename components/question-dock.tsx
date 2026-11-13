@@ -7,6 +7,7 @@ import { finishDictation, isDictationActive, joinDictation, useDictationTarget }
 import { useEnterSubmits } from "@/components/enter-submits";
 import { RemarkableCapture } from "@/components/remarkable-capture";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { DiagramFigure } from "@/components/diagram-figure";
 import { cn } from "@/lib/utils";
 import {
 	buildAnswer,
@@ -65,6 +66,8 @@ export interface QuestionDockProps {
 	toolName: "quiz" | "probe" | "ask_user_question" | "explain" | "recall" | "review" | "review_recall";
 	toolCallId: string;
 	input: QuizToolInput | AskToolInput | ExplainToolInput;
+	/** Optional SVG diagram emitted immediately before this question call. */
+	diagram?: string;
 	/** Collapse state, owned by the DockOverlay (it drives the shell's height morph). */
 	expanded: boolean;
 	/**
@@ -119,6 +122,7 @@ export function QuestionDock({
 	toolName,
 	toolCallId,
 	input,
+	diagram,
 	expanded,
 	reveal = false,
 	onExpand,
@@ -201,6 +205,7 @@ export function QuestionDock({
 					toolName={toolName}
 					toolCallId={toolCallId}
 					input={parsed}
+					diagram={diagram}
 					phase={phase}
 					active={expanded}
 					onCollapse={onCollapse}
@@ -316,6 +321,7 @@ function QuestionDockForm({
 	toolName,
 	toolCallId,
 	input,
+	diagram,
 	phase = "probe",
 	active,
 	onCollapse,
@@ -701,6 +707,7 @@ function QuestionDockForm({
 						<MessageResponse>{qd.context}</MessageResponse>
 					</div>
 				)}
+				{diagram && <DiagramFigure svg={diagram} className="mb-4" />}
 
 				{qd.mode !== "text" && (
 					<div className={cn("grid gap-2.5 pb-3", compactOptions && "sm:grid-cols-2")} role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
