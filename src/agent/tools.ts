@@ -25,6 +25,7 @@ import { findTool } from "./tools/find.ts";
 import { grepTool } from "./tools/grep.ts";
 import { notesToolFor } from "./tools/notes.ts";
 import { healToolRecord } from "./tools/heal.ts";
+import type { RecallEvent } from "../core/retention.ts";
 import type { GraphStore, NotesLibraryReader } from "../core/ports.ts";
 
 export { jobTools };
@@ -277,6 +278,10 @@ export interface ProberToolContext extends ProbeDoneContext {
 	 *  master switch AND the agent.graphTools toggle (settings-resolution).
 	 *  Absent = the gate is closed, no map tools (tests drive this seam). */
 	graphStore?: GraphStore;
+	/** Optional fast-path recall feed for the prober's map reader. */
+	graphRecallEvents?: () => RecallEvent[];
+	/** Deterministic clock seam for tests. */
+	graphNow?: () => number;
 	/** The saved notes library: present = the `notes` tool is registered. */
 	notes?: NotesLibraryReader;
 }
@@ -341,7 +346,12 @@ export function createProberTools(
 				// The map reader (wave 7): present only when the settings gate
 				// opened.
 				...(ctx.graphStore
-					? proberGraphTools({ chatStore: ctx.chatStore, graphStore: ctx.graphStore })
+					? proberGraphTools({
+							chatStore: ctx.chatStore,
+							graphStore: ctx.graphStore,
+							...(ctx.graphRecallEvents ? { recallEvents: ctx.graphRecallEvents } : {}),
+							...(ctx.graphNow ? { now: ctx.graphNow } : {}),
+						})
 					: {}),
 				...done,
 			},

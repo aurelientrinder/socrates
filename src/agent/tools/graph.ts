@@ -1,21 +1,32 @@
 import { Type } from "typebox";
 import type { AgentTool } from "../../llm/index.ts";
 import { serverExecute } from "../tool-execute.ts";
-import { getGraph, graphSessionIndex, graphSessionPropositions } from "../../core/graph.ts";
+import {
+	getGraph,
+	graphSessionIndex,
+	graphSessionPropositionDetails,
+	graphSessionPropositions,
+	graphSessionRetentionMap,
+	type SessionRetentionSummary,
+	type TopicSignal,
+} from "../../core/graph.ts";
+import { propositionNames, recallEvents, type RecallEvent } from "../../core/retention.ts";
 import type { ChatStore, GraphStore } from "../../core/ports.ts";
 
 /**
- * THE PROBER'S GRAPH TOOLS (wave 7, owner-locked 2026-09-23): context
- * injection is dead — zero configuration beyond chat models. The prober
- * reads the learner's persistent knowledge map through two tools instead,
- * replacing the old injected block with on-demand eyes.
+ * THE PROBER'S GRAPH TOOLS (wave 7, owner-locked 2026-09-23; enriched with
+ * measured retention + chain dependencies): context injection is dead — zero
+ * configuration beyond chat models. The prober reads the learner's persistent
+ * knowledge map through two tools instead, replacing the old injected block
+ * with on-demand eyes.
  *
- * Names + levels + dating ONLY — no statement text, no session contents
- * (owner ruling: the map's ORGANIZATION is the prober's business, its
- * prose is not). The data comes from Platform's pure core seams
- * (graphSessionIndex / graphSessionPropositions) over the same ports the
- * snapshot reads, so the prober and the learner's graph view can never
- * disagree.
+ * Names + measured retention/weak-spot signals + chain links + dating ONLY —
+ * no statement text, no session contents (owner ruling: the map's
+ * ORGANIZATION is the prober's business, its prose is not). The data comes
+ * from Platform's pure core seams (graphSessionIndex /
+ * graphSessionPropositionDetails / graphSessionRetentionMap) over the same
+ * ports the snapshot reads, so the prober and the learner's graph view can
+ * never disagree.
  *
  * Registered on the prober ONLY when the settings gate opens
  * (graphToolsEnabled — the graph master switch AND the agent.graphTools
@@ -27,6 +38,11 @@ import type { ChatStore, GraphStore } from "../../core/ports.ts";
 export interface GraphToolContext {
 	chatStore: ChatStore;
 	graphStore: GraphStore;
+	/** Optional fast-path recall feed (e.g. cached digests + exams on server).
+	 *  Falls back to scanning chatStore records when omitted. */
+	recallEvents?: () => RecallEvent[];
+	/** Deterministic clock seam for tests. */
+	now?: () => number;
 }
 
 const listSessionsInput = Type.Object({});
@@ -38,23 +54,63 @@ const listPropositionsInput = Type.Object({
 	}),
 });
 
+function resolveRecallEvents(ctx: GraphToolContext): RecallEvent[] {
+	if (ctx.recallEvents) return ctx.recallEvents();
+	const names = propositionNames(ctx.graphStore.readNodes());
+	const propName = (id: string) => names.get(id);
+	const out: RecallEvent[] = [];
+	for (const summary of ctx.chatStore.listChats()) {
+		const record = ctx.chatStore.getChat(summary.id);
+		if (record && Array.isArray(record.messages)) {
+			out.push(...recallEvents(record, propName));
+		}
+	}
+	return out;
+}
+
+function formatSignal(signal: TopicSignal): string {
+	const pct = Math.round(signal.retention * 100);
+	const dueNote = (signal.status === "overconfident" || signal.status === "shaky") && signal.due ? ", due" : "";
+	return `${signal.status}${dueNote}, ${pct}% recall`;
+}
+
+function formatPremiseTag(signal: TopicSignal): string {
+	const pct = Math.round(signal.retention * 100);
+	const dueNote = (signal.status === "overconfident" || signal.status === "shaky") && signal.due ? ", due" : "";
+	return `${signal.status}${dueNote}, ${pct}%`;
+}
+
+function formatSessionRetention(summary: SessionRetentionSummary | undefined): string {
+	if (!summary || summary.tested === 0) return "";
+	const parts: string[] = [];
+	if (summary.weak > 0) {
+		parts.push(`${summary.weak} weak${summary.overconfident > 0 ? ` (${summary.overconfident} overconfident)` : ""}`);
+	}
+	if (summary.due > 0) parts.push(`${summary.due} due`);
+	if (summary.solid > 0) parts.push(`${summary.solid} solid`);
+	return parts.length > 0 ? `; ${parts.join(", ")}` : "";
+}
+
 export function proberGraphTools(ctx: GraphToolContext): Record<string, AgentTool<any>> {
 	const deps = { chatStore: ctx.chatStore, graphStore: ctx.graphStore };
+	const nowFn = ctx.now ?? Date.now;
 	return {
 		list_sessions: {
 			name: "list_sessions",
 			label: "list_sessions",
 			description:
 				"List the sessions of the learner's persistent knowledge graph — every chat or imported-notes file that ever contributed a proposition, most recent first. The map is organized into birth-session clusters (propositions grouped by the session they were first learned in), and session names are those clusters' labels. " +
-				"Each line: the session's name, kind (chat/file), how many propositions were born in it, its dates, and its id — use that id with list_propositions. " +
-				"Reading this first shows what he has already covered and when, before you probe anything.",
+				"Each line: the session's name, kind (chat/file), how many propositions were born in it, its dates, its id, and (when tested) a summary of weak/due/solid recall counts — use that id with list_propositions. " +
+				"Reading this first shows what he has already covered, when, and where retention is shaky or due before you probe or pose problems.",
 			parameters: listSessionsInput,
 			execute: serverExecute("list_sessions", listSessionsInput, async (): Promise<string> => {
 				const sessions = graphSessionIndex(deps);
 				if (sessions.length === 0) return "The knowledge graph is empty — no session has contributed propositions yet.";
+				const retentionBySession = graphSessionRetentionMap(deps, resolveRecallEvents(ctx), nowFn());
 				const lines = sessions.map((s, i) =>
 					`${i + 1}. ${s.name} (${s.kind}, ${s.propositions} proposition${s.propositions === 1 ? "" : "s"}, ` +
-					`born ${s.createdAt ?? "unknown date"}${s.updatedAt ? `, last active ${s.updatedAt}` : ""}) — id: ${s.id}`,
+					`born ${s.createdAt ?? "unknown date"}${s.updatedAt ? `, last active ${s.updatedAt}` : ""}) — id: ${s.id}` +
+					formatSessionRetention(retentionBySession.get(s.id)),
 				);
 				return `${sessions.length} session(s) in the knowledge graph, most recent first:\n${lines.join("\n")}`;
 			}),
@@ -63,16 +119,37 @@ export function proberGraphTools(ctx: GraphToolContext): Record<string, AgentToo
 			name: "list_propositions",
 			label: "list_propositions",
 			description:
-				"List the propositions BORN in one knowledge-graph session — what was covered there. " +
+				"List the propositions BORN in one knowledge-graph session — what was covered there, plus measured recall/weak-spot status (when tested), direct prerequisite (`requires`) and dependent (`leads to`) links, and any tested plan-node checks from that session. " +
 				"Names only — no statement text, no session contents (owner ruling 2026-09-23: the map's ORGANIZATION is your business, its prose is not).",
 			parameters: listPropositionsInput,
 			execute: serverExecute("list_propositions", listPropositionsInput, async ({ session }): Promise<string> => {
-				const propositions = graphSessionPropositions(deps, session);
-				if (propositions.length === 0) {
+				const report = graphSessionPropositionDetails(deps, session, resolveRecallEvents(ctx), nowFn());
+				if (report.propositions.length === 0) {
 					return `No propositions born in session "${session}". Call list_sessions for the current ids.`;
 				}
-				const lines = propositions.map((p) => `- ${p.name}`);
-				return `${propositions.length} proposition(s) covered in this session:\n${lines.join("\n")}`;
+				const lines = report.propositions.map((p) => {
+					let line = `- ${p.name}`;
+					if (p.signal) line += ` [${formatSignal(p.signal)}]`;
+					const extras: string[] = [];
+					if (p.requires.length > 0) {
+						const reqs = p.requires.map((r) =>
+							r.signal && r.signal.status !== "solid" ? `${r.name} [${formatPremiseTag(r.signal)}]` : r.name,
+						);
+						extras.push(`requires: ${reqs.join(", ")}`);
+					}
+					if (p.leadsTo.length > 0) {
+						extras.push(`leads to: ${p.leadsTo.map((d) => d.name).join(", ")}`);
+					}
+					if (extras.length > 0) line += `; ${extras.join("; ")}`;
+					return line;
+				});
+				if (report.planChecks.length > 0) {
+					lines.push("", "Session plan-node checks:");
+					for (const check of report.planChecks) {
+						lines.push(`- ${check.title} [${formatSignal(check.signal)}]`);
+					}
+				}
+				return `${report.propositions.length} proposition(s) covered in this session:\n${lines.join("\n")}`;
 			}),
 		},
 	};

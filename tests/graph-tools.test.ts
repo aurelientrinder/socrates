@@ -13,8 +13,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createProberTools } from "../src/agent/tools.ts";
 import { auditorGraphTools } from "../src/agent/tools/graph.ts";
+import { graphSessionPropositionDetails, graphSessionRetentionMap } from "../src/core/graph.ts";
+import { GRADE_AGAIN, GRADE_GOOD, GRADE_HARD, type RecallEvent } from "../src/core/retention.ts";
 import type { ChatStore, GraphStore, JobStore } from "../src/core/ports.ts";
-import type { ChatSummary } from "../src/core/contracts/chat.ts";
+import type { ChatRecord, ChatSummary } from "../src/core/contracts/chat.ts";
 import type { GraphChain, GraphNode } from "../src/core/contracts/graph.ts";
 
 // ─── fixtures ────────────────────────────────────────────────────────────────
@@ -28,18 +30,28 @@ const node = (
 	id,
 	name,
 	statement: `statement of ${name}`, // must NEVER leak into tool output
-	aliases: [],
+	aliases: [`alias of ${name}`],
 	createdAt: "2026-09-23T00:00:00.000Z",
 	provenance,
+});
+
+const chain = (id: string, premises: string[], conclusion: string): GraphChain => ({
+	id,
+	premises,
+	conclusion,
+	provenance: [pt("c1")],
+	createdAt: "2026-09-23T00:00:00.000Z",
 });
 
 function fakeStores(
 	nodes: GraphNode[],
 	over: {
 		chats?: Array<Pick<ChatSummary, "id" | "title" | "createdAt" | "updatedAt">>;
+		records?: ChatRecord[];
+		chains?: GraphChain[];
 	} = {},
 ): { chatStore: ChatStore; graphStore: GraphStore } {
-	const chains: GraphChain[] = [];
+	const chains: GraphChain[] = over.chains ?? [];
 	const graphStore: GraphStore = {
 		readNodes: () => nodes,
 		readChains: () => chains,
@@ -52,11 +64,20 @@ function fakeStores(
 		appendClusterLabel: () => {},
 		appendNamingRun: () => {},
 	} as unknown as GraphStore;
+	const summaries =
+		over.chats ??
+		(over.records ?? []).map((r) => ({
+			id: r.id,
+			title: r.title,
+			createdAt: r.createdAt,
+			updatedAt: r.updatedAt,
+		}));
 	const chatStore: ChatStore = {
-		listChats: () =>
-			(over.chats ?? []).map((c) => ({ ...c, messageCount: 0 }) as unknown as ChatSummary),
+		listChats: () => summaries.map((c) => ({ ...c, messageCount: 0 }) as unknown as ChatSummary),
 		getChat: (id: string) =>
-			((over.chats ?? []).find((c) => c.id === id) as unknown as ChatSummary) ?? undefined,
+			(over.records ?? []).find((r) => r.id === id) ??
+			((over.chats ?? []).find((c) => c.id === id) as unknown as ChatSummary) ??
+			undefined,
 	} as unknown as ChatStore;
 	return { chatStore, graphStore };
 }
@@ -176,6 +197,164 @@ describe("list_propositions", () => {
 		const tools = createProberTools({ ...baseCtx, chatStore, graphStore });
 		const out = (await tools.list_propositions!.execute!("tc", { session: "no-such" })).details as string;
 		assert.equal(out, 'No propositions born in session "no-such". Call list_sessions for the current ids.');
+	});
+
+	it("surfaces measured retention, weak-spot status, chain links, and plan checks while keeping names-only", async () => {
+		const DAY = 24 * 60 * 60 * 1000;
+		const now = Date.UTC(2026, 10, 15, 12, 0, 0);
+		const nodes = [
+			node("n1", "Chain rule", [pt("c1")]),
+			node("n2", "Product rule", [pt("c2")]),
+			node("n3", "Quotient rule", [pt("c2")]),
+			node("n4", "Implicit diff", [pt("c2")]),
+		];
+		const chains = [
+			chain("arg1", ["n1"], "n2"),
+			chain("arg2", ["n2"], "n3"),
+		];
+		const events: RecallEvent[] = [
+			// n1 (born in c1): missed while 90% sure -> overconfident + due
+			{
+				topicKey: "prop:n1",
+				kind: "proposition",
+				topicId: "n1",
+				title: "Chain rule",
+				chatId: "p1",
+				chatTitle: "Practice",
+				at: now - 3 * DAY,
+				grade: GRADE_AGAIN,
+				confidence: 90,
+			},
+			// n2 (born in c2): solved cleanly 1 day ago -> solid
+			{
+				topicKey: "prop:n2",
+				kind: "proposition",
+				topicId: "n2",
+				title: "Product rule",
+				chatId: "p1",
+				chatTitle: "Practice",
+				at: now - 1 * DAY,
+				grade: GRADE_GOOD,
+			},
+			// n3 (born in c2): solved with hints recently -> shaky
+			{
+				topicKey: "prop:n3",
+				kind: "proposition",
+				topicId: "n3",
+				title: "Quotient rule",
+				chatId: "p1",
+				chatTitle: "Practice",
+				at: now - 1 * DAY,
+				grade: GRADE_HARD,
+			},
+			// plan check in c2: solved cleanly 10 days ago -> due (initial Good stability ~3.7d)
+			{
+				topicKey: "plan:c2:step-1",
+				kind: "plan",
+				topicId: "step-1",
+				title: "Power rule warm-up",
+				chatId: "c2",
+				chatTitle: "Derivatives",
+				at: now - 10 * DAY,
+				grade: GRADE_GOOD,
+			},
+		];
+		const { chatStore, graphStore } = fakeStores(nodes, {
+			chains,
+			chats: [
+				{ id: "c1", title: "Chain basics", createdAt: "2026-11-01T10:00:00.000Z", updatedAt: "2026-11-01T10:00:00.000Z" },
+				{ id: "c2", title: "Derivatives", createdAt: "2026-11-05T10:00:00.000Z", updatedAt: "2026-11-05T10:00:00.000Z" },
+			],
+		});
+		const tools = createProberTools({
+			...baseCtx,
+			chatStore,
+			graphStore,
+			graphRecallEvents: () => events,
+			graphNow: () => now,
+		});
+
+		const sessionsOut = (await tools.list_sessions!.execute!("tc", {})).details as string;
+		assert.match(sessionsOut, /Chain basics .* — id: c1; 1 weak \(1 overconfident\), 1 due/);
+		assert.match(sessionsOut, /Derivatives .* — id: c2; 1 weak, 1 due, 1 solid/);
+
+		const c2Out = (await tools.list_propositions!.execute!("tc", { session: "c2" })).details as string;
+		assert.match(c2Out, /3 proposition\(s\) covered in this session:/);
+		assert.match(c2Out, /- Product rule \[solid, \d+% recall\]; requires: Chain rule \[overconfident, due, \d+%\]; leads to: Quotient rule/);
+		assert.match(c2Out, /- Quotient rule \[shaky, \d+% recall\]; requires: Product rule/);
+		assert.match(c2Out, /- Implicit diff$/m);
+		assert.match(c2Out, /Session plan-node checks:\n- Power rule warm-up \[due, \d+% recall\]/);
+		// Strict names-only invariant: statements and aliases never leak.
+		assert.ok(!c2Out.includes("statement of"));
+		assert.ok(!c2Out.includes("alias of"));
+		assert.ok(!sessionsOut.includes("statement of"));
+	});
+
+	it("falls back to scanning full ChatRecord messages when graphRecallEvents is omitted", async () => {
+		const DAY = 24 * 60 * 60 * 1000;
+		const now = Date.UTC(2026, 10, 15, 12, 0, 0);
+		const record: ChatRecord = {
+			id: "c1",
+			title: "Mechanics",
+			createdAt: "2026-11-10T10:00:00.000Z",
+			updatedAt: "2026-11-14T10:00:00.000Z",
+			tree: {
+				nodes: [{ id: "node-a", title: "Free-body diagram", summary: "Draw forces", dependsOn: [] }],
+			},
+			messages: [
+				{
+					id: "m1",
+					role: "assistant",
+					content: [{ type: "toolCall", id: "call-1", name: "quiz", arguments: { nodeId: "node-a", type: "check" } }],
+					timestamp: now - 2 * DAY,
+				},
+				{
+					id: "m2",
+					role: "toolResult",
+					toolCallId: "call-1",
+					toolName: "quiz",
+					content: [{ type: "text", text: "wrong" }],
+					details: {
+						kind: "quiz",
+						correct: false,
+						confidence: 90,
+						answeredAt: new Date(now - 2 * DAY).toISOString(),
+					},
+					timestamp: now - 2 * DAY,
+				},
+			],
+		} as unknown as ChatRecord;
+
+		const { chatStore, graphStore } = fakeStores([node("n1", "Net force", [pt("c1")])], { records: [record] });
+		const tools = createProberTools({ ...baseCtx, chatStore, graphStore, graphNow: () => now });
+		const out = (await tools.list_propositions!.execute!("tc", { session: "c1" })).details as string;
+		assert.match(out, /Session plan-node checks:\n- Free-body diagram \[overconfident(?:, due)?, \d+% recall\]/);
+	});
+
+	it("pure core helpers derive per-session counts and proposition details deterministically", () => {
+		const DAY = 24 * 60 * 60 * 1000;
+		const now = Date.UTC(2026, 10, 15, 12, 0, 0);
+		const { graphStore } = fakeStores(
+			[node("n1", "Premise", [pt("c1")]), node("n2", "Conclusion", [pt("c1")])],
+			{ chains: [chain("arg1", ["n1"], "n2")] },
+		);
+		const events: RecallEvent[] = [
+			{
+				topicKey: "prop:n1",
+				kind: "proposition",
+				topicId: "n1",
+				title: "Premise",
+				chatId: "p1",
+				chatTitle: "Practice",
+				at: now - DAY,
+				grade: GRADE_GOOD,
+			},
+		];
+		const map = graphSessionRetentionMap({ graphStore }, events, now);
+		assert.deepEqual(map.get("c1"), { tested: 1, weak: 0, overconfident: 0, due: 0, solid: 1 });
+		const details = graphSessionPropositionDetails({ graphStore }, "c1", events, now);
+		assert.equal(details.propositions[0]?.leadsTo[0]?.name, "Conclusion");
+		assert.equal(details.propositions[1]?.requires[0]?.signal?.status, "solid");
 	});
 });
 

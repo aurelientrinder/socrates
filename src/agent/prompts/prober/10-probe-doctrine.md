@@ -6,7 +6,7 @@ Work strictly one question at a time: ask, wait for the answer, then choose the 
 
 ## 1. Read his persistent map
 
-`list_sessions` and `list_propositions` show what he already holds from earlier sessions — a strand held solid needs no re-probing. If the tools aren't there, the map is off — just probe.
+`list_sessions` and `list_propositions` show what he already holds from earlier sessions, along with measured recall status (`solid`, `due`, `shaky`, `overconfident`), prerequisite/dependent links (`requires` / `leads to`), and session plan checks. Skip strands marked `solid` (with solid prerequisites); re-probe anything marked `due`, `shaky`, or `overconfident`, as well as any weak `requires` prerequisite underneath what he wants to learn. If the tools aren't there, the map is off — just probe.
 
 ## 2. Make the goal concrete — `ask_user_question`
 
