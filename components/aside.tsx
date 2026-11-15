@@ -51,9 +51,9 @@ function SendButton({ disabled, label = "Send" }: { disabled: boolean; label?: s
 			type="submit"
 			aria-label={label}
 			disabled={disabled}
-			className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-85 disabled:opacity-25"
+			className="flex size-6.5 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-85 disabled:opacity-25"
 		>
-			<ArrowUpIcon className="size-4" strokeWidth={2.4} />
+			<ArrowUpIcon className="size-3.5" strokeWidth={2.4} />
 		</button>
 	);
 }
@@ -78,13 +78,13 @@ export function AsideBar({
 	return (
 		<form
 			data-testid="aside-bar"
-			className="pointer-events-auto mb-2.5 flex items-center gap-2 rounded-full border border-border/80 bg-card py-1 pr-1 pl-4 shadow-[0_2px_12px_rgb(0_0_0/0.04)] transition-colors focus-within:border-foreground/25"
+			className="pointer-events-auto mb-1.5 flex items-center gap-2 rounded-lg border border-border bg-card py-0.5 pr-0.5 pl-2.5 transition-colors focus-within:border-foreground/30"
 			onSubmit={(e) => {
 				e.preventDefault();
 				send();
 			}}
 		>
-			<MessagesSquareIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.7} />
+			<MessagesSquareIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.8} />
 			<input
 				value={value}
 				onChange={(e) => setValue(e.target.value)}
@@ -95,7 +95,7 @@ export function AsideBar({
 				placeholder="Ask a question in a side thread. The quiz stays open."
 				aria-label="Ask the tutor a question about this"
 				maxLength={4000}
-				className="min-w-0 flex-1 bg-transparent py-1.5 font-ui text-[14.5px] outline-none placeholder:text-muted-foreground"
+				className="min-w-0 flex-1 bg-transparent py-1 font-ui text-[13.5px] outline-none placeholder:text-muted-foreground"
 			/>
 			<SendButton disabled={!canSend} label="Ask" />
 		</form>
@@ -125,27 +125,27 @@ export function SideThreadLink({
 			aria-expanded={open}
 			onClick={onOpen}
 			className={cn(
-				"group/link my-1 flex w-fit max-w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-left font-ui transition-colors",
-				open ? "border-foreground/30 bg-ink-soft" : "border-border/80 bg-card hover:border-foreground/25 hover:bg-ink-soft",
+				"group/link my-0.5 flex w-fit max-w-full items-center gap-2 rounded-md border px-2 py-1 text-left font-ui transition-colors",
+				open ? "border-foreground/30 bg-ink-soft" : "border-border hover:border-foreground/25 hover:bg-ink-soft",
 			)}
 		>
-			<MessagesSquareIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.7} />
-			<span className="shrink-0 text-[13.5px] font-semibold text-foreground">
+			<MessagesSquareIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.8} />
+			<span className="shrink-0 text-[12.5px] font-semibold text-foreground">
 				Side thread
 			</span>
-			<span className="shrink-0 text-[13px] text-muted-foreground">
+			<span className="shrink-0 text-[12.5px] text-muted-foreground">
 				· {count} {count === 1 ? "question" : "questions"}
 				{working ? " · answering…" : ""}
 			</span>
-			<span className="min-w-0 truncate text-[13.5px] text-muted-foreground/90 italic">“{plain(first)}”</span>
-			<ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-hover/link:translate-x-0.5" />
+			<span className="min-w-0 truncate text-[12.5px] text-muted-foreground/90 italic">“{plain(first)}”</span>
+			<ChevronRightIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover/link:translate-x-0.5" />
 		</button>
 	);
 }
 
 function AsideQuestion({ text }: { text: string }) {
 	return (
-		<div data-testid="aside-question" className="my-3 ml-auto w-fit max-w-[88%] rounded-2xl bg-accent/80 px-4 py-2.5">
+		<div data-testid="aside-question" className="my-2 ml-auto w-fit max-w-[88%] rounded-lg bg-accent/80 px-3 py-1.5">
 			<span className="sr-only">You: </span>
 			<div className="whitespace-pre-wrap font-ui text-[15px] leading-relaxed text-foreground">{text}</div>
 		</div>
@@ -241,14 +241,14 @@ export function SideThreadPanel({
 		<aside
 			data-testid="side-thread-panel"
 			aria-label="Side thread"
-			className="lh-thread-in flex h-full w-[clamp(20rem,38%,32rem)] shrink-0 flex-col border-l border-border bg-background"
+			className="lh-thread-in flex h-full w-[clamp(18rem,34%,28rem)] shrink-0 flex-col border-l border-border bg-background"
 		>
-			<div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-4">
+			<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/70 px-3">
 				<MessagesSquareIcon aria-hidden className="size-4 text-muted-foreground" strokeWidth={1.7} />
 				<span className="font-ui text-[14px] font-semibold text-foreground">Side thread</span>
 				<span
 					className={cn(
-						"rounded-full px-2 py-0.5 font-ui text-[11.5px] font-medium",
+						"rounded px-1.5 py-px font-ui text-[11px] font-medium",
 						questionOpen ? "bg-amber-500/12 text-amber-800 dark:text-amber-300" : "bg-ink-soft text-muted-foreground",
 					)}
 				>
@@ -264,23 +264,23 @@ export function SideThreadPanel({
 					<XIcon className="size-4" />
 				</button>
 			</div>
-			<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-6">
-				<div className="rounded-xl border border-border/80 bg-card px-3.5 py-3">
+			<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4">
+				<div className="border-l-2 border-border py-0.5 pl-3">
 					<div className="font-ui text-[11.5px] font-semibold tracking-wide text-muted-foreground uppercase">About this question</div>
-					<div className="lh-source-passage mt-1 line-clamp-4 text-[14.5px] [&_p]:my-0">
+					<div className="lh-source-passage mt-0.5 line-clamp-4 text-[14px] [&_p]:my-0">
 						<MessageResponse>{question || "The quiz question"}</MessageResponse>
 					</div>
-					<div className="mt-1.5 font-ui text-[12px] text-muted-foreground">
+					<div className="mt-1 font-ui text-[11.5px] text-muted-foreground">
 						The tutor sees the whole session so far and this question, but won’t give away the answer.
 					</div>
 				</div>
 				<AsideThread asides={asides} pending={pending} onRetry={onRetry} />
 			</div>
-			<div className="shrink-0 px-4 pb-4">
+			<div className="shrink-0 px-3 pb-3">
 				{questionOpen ? (
 					<form
 						data-testid="side-thread-composer"
-						className="rounded-[22px] border border-border/80 bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_6px_22px_rgb(0_0_0/0.05)] transition-colors focus-within:border-foreground/25"
+						className="flex items-end gap-1 rounded-lg border border-border bg-card p-1 transition-colors focus-within:border-foreground/30"
 						onSubmit={(e) => {
 							e.preventDefault();
 							send();
@@ -301,14 +301,12 @@ export function SideThreadPanel({
 							maxLength={4000}
 							placeholder="Ask a follow-up…"
 							aria-label="Ask a follow-up in the side thread"
-							className="field-sizing-content lh-input block max-h-40 min-h-11 w-full resize-none bg-transparent px-4 pt-3 pb-1 outline-none placeholder:text-muted-foreground"
+							className="field-sizing-content lh-input block max-h-40 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-2 py-1.5 text-[14px] outline-none placeholder:text-muted-foreground"
 						/>
-						<div className="flex items-center justify-end px-2 pb-2">
-							<SendButton disabled={!canSend} />
-						</div>
+						<SendButton disabled={!canSend} />
 					</form>
 				) : (
-					<div className="rounded-xl bg-ink-soft px-4 py-3 text-center font-ui text-[13px] text-muted-foreground">
+					<div className="rounded-md bg-ink-soft px-3 py-2 text-center font-ui text-[12px] text-muted-foreground">
 						This quiz has been answered, so the thread is closed. The tutor got this thread along with your answer.
 					</div>
 				)}

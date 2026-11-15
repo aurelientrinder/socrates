@@ -85,7 +85,7 @@ export function AnsweredCard({
 		    p-4 into a 28px void below (12px above); the card's own padding is
 		    the bottom rhythm when a row ends the card. */}
 		<div
-			className="rounded-xl border bg-card p-4 text-card-foreground [&>*:last-child]:mb-0"
+			className="rounded-lg border bg-card px-3.5 py-3 text-card-foreground [&>*:last-child]:mb-0"
 			data-testid="answered-card"
 		>
 			<div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -116,7 +116,7 @@ export function AnsweredCard({
 						<span className="rounded bg-red-500/15 px-1.5 py-0.5 text-red-500">incorrect</span>
 					))}
 			</div>
-			<div className="mb-3 font-medium">
+			<div className="mb-2 font-medium">
 				<MessageResponse>{repairMathForDisplay(answer.questionText)}</MessageResponse>
 			</div>
 			{parsedDetails && (
@@ -129,7 +129,7 @@ export function AnsweredCard({
 			{diagram && <DiagramFigure svg={diagram} className="mb-3" />}
 
 			{((answer.options?.length ?? 0) > 0 || answer.other) && (
-				<div className="flex flex-col gap-1.5 text-sm">
+				<div className="flex flex-col gap-1 text-sm">
 					{answer.options?.map((opt) => {
 						const sel = selectedIdx.has(opt.index);
 						const key = isQuiz && correctIdx.has(opt.index);
@@ -137,7 +137,7 @@ export function AnsweredCard({
 							<div
 								key={opt.index}
 								className={cn(
-									"flex items-center gap-2 rounded-lg border px-3 py-1.5",
+									"flex items-center gap-2 rounded-md border px-2.5 py-1 leading-snug [&_p]:my-0",
 									sel && key && "border-good/50 bg-good-soft",
 									sel && !key && isQuiz && "border-red-500/60 bg-red-500/10",
 									sel && !isQuiz && "border-primary bg-accent",
@@ -259,7 +259,7 @@ export function AnsweredCard({
 			<div
 				data-testid="tucked-explanation"
 				data-open={whyOpen ? "true" : "false"}
-				className="mt-3 rounded-xl border bg-card px-5 py-4 text-card-foreground"
+				className="mt-2 rounded-lg border bg-card px-3.5 py-3 text-card-foreground"
 			>
 				<div className="flex items-center justify-between gap-3">
 					<span className="flex items-center gap-2 text-sm font-medium">

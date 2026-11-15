@@ -1653,7 +1653,7 @@ export function Chat({
 										    transcript reads as a conversation: tutor on the left as
 										    open prose, learner on the right. User text renders plain —
 										    the model's LaTeX pipeline is not applied to learner text. */
-										className="my-3 ml-auto w-fit max-w-[80%] rounded-2xl bg-accent/80 px-4 py-2.5"
+										className="my-1.5 ml-auto w-fit max-w-[80%] rounded-lg bg-accent/80 px-3 py-1.5"
 									>
 												<span className="sr-only">You: </span>
 												<div className="whitespace-pre-wrap font-ui text-[15px] leading-relaxed text-foreground">
@@ -2530,11 +2530,11 @@ function DockOverlay({
 					{/* The tools row is built once: an expanded question carries it
 					    inside its answer box (question card redesign, 2026-11-01);
 					    everything else keeps it under the shell. */}
-					{/* The input box (chat redesign, 2026-11-15): one soft, round card
-					    like the Gemini/ChatGPT/Claude apps, a hairline that darkens on
-					    focus, and a two-layer shadow instead of a heavy border. */}
-					<div className="pointer-events-auto rounded-[26px] border border-border/70 bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_10px_32px_-6px_rgb(0_0_0/0.09)] transition-[border-color,box-shadow] focus-within:border-foreground/20 dark:shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_32px_-6px_rgb(0_0_0/0.5)]" data-testid="dock-card">
-					<div ref={shellRef} className="overflow-hidden rounded-t-[26px]">
+					{/* The input box (chat redesign, 2026-11-15, tightened same day:
+					    "too bubbly"): a crisp 12px card, thin border that darkens on
+					    focus, barely-there shadow. */}
+					<div className="pointer-events-auto rounded-xl border border-border bg-card shadow-[0_1px_3px_rgb(0_0_0/0.05)] transition-colors focus-within:border-foreground/30 dark:shadow-none" data-testid="dock-card">
+					<div ref={shellRef} className="overflow-hidden rounded-t-xl">
 						<div
 						ref={contentRef}
 						key={mode}

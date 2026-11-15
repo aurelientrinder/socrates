@@ -649,7 +649,7 @@ function QuestionDockForm({
 			{/* Pinned header row: label on the left, optional warm-up skip and
 			    the X close button in the top-right corner so hiding the quiz
 			    is always reachable even when scrolling through long options. */}
-			<div className="flex shrink-0 items-center gap-2 px-4 pt-3 pb-2 text-[0.8rem] font-medium text-muted-foreground">
+			<div className="flex shrink-0 items-center gap-2 px-3.5 pt-2.5 pb-1 text-[12.5px] font-medium text-muted-foreground">
 				<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground/50" />
 				<span className="min-w-0 flex-1">
 				{warmup
@@ -698,8 +698,8 @@ function QuestionDockForm({
 
 			{/* Question + options area — scrolls internally inside the 75dvh
 			    quiz window cap while the header and bottom controls stay pinned. */}
-			<div data-session-find-root="" className="min-h-0 overflow-y-auto overscroll-contain px-4 pt-1">
-				<div className="mb-4 text-[1.2rem] leading-[1.55] font-normal">
+			<div data-session-find-root="" className="min-h-0 overflow-y-auto overscroll-contain px-3.5 pt-0.5">
+				<div className="mb-2.5 text-[16px] leading-[1.5] font-normal">
 					<MessageResponse>{qd.question}</MessageResponse>
 				</div>
 				{qd.context && (
@@ -710,7 +710,7 @@ function QuestionDockForm({
 				{diagram && <DiagramFigure svg={diagram} className="mb-4" />}
 
 				{qd.mode !== "text" && (
-					<div className={cn("grid gap-2.5 pb-3", compactOptions && "sm:grid-cols-2")} role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
+					<div className={cn("grid gap-1.5 pb-2", compactOptions && "sm:grid-cols-2")} role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
 						{qd.options.map((opt, i) => {
 							const isSel = sel.selected.has(i);
 							return (
@@ -722,7 +722,7 @@ function QuestionDockForm({
 									data-kbdrow={i}
 									onClick={() => toggle(i)}
 									className={cn(
-										"relative flex min-h-14 items-center gap-3.5 rounded-2xl border border-border/80 bg-card py-3 pr-11 pl-3.5 text-left text-[1.1rem] outline-none transition-[box-shadow,opacity,background-color,border-color] hover:border-foreground/30 hover:shadow-sm",
+										"relative flex min-h-9 items-center gap-2.5 rounded-lg border border-border/80 bg-card py-1 pr-9 pl-2 text-left text-[15px] [&_p]:my-0 outline-none transition-[opacity,background-color,border-color] hover:border-foreground/30",
 										isSel && "border-foreground bg-accent shadow-[0_0_0_1px_var(--foreground)] hover:border-foreground",
 										!isSel && anyPicked && "opacity-60 hover:opacity-100",
 										i === kbdIdx && !isSel && "ring-1 ring-border bg-accent/40",
@@ -731,7 +731,7 @@ function QuestionDockForm({
 									<span
 										aria-hidden
 										className={cn(
-											"flex size-6.5 shrink-0 items-center justify-center rounded-lg font-sans text-xs font-medium transition-colors",
+											"flex size-5.5 shrink-0 items-center justify-center rounded-md font-sans text-[11px] font-medium transition-colors",
 											isSel ? "bg-foreground text-background" : "bg-muted text-muted-foreground",
 										)}
 									>
@@ -740,7 +740,7 @@ function QuestionDockForm({
 									<span
 										aria-hidden
 										className={cn(
-											"absolute top-1/2 right-3 flex size-5.5 -translate-y-1/2 items-center justify-center rounded-full bg-foreground text-background transition-transform",
+											"absolute top-1/2 right-2.5 flex size-4.5 -translate-y-1/2 items-center justify-center rounded-full bg-foreground text-background transition-transform",
 											isSel ? "scale-100" : "scale-0",
 										)}
 									>
@@ -776,7 +776,7 @@ function QuestionDockForm({
 								className={cn(
 									// A small pill under the tiles: the deliberate non-answer,
 									// quiet until chosen (redesign 2026-11-01).
-									"col-span-full inline-flex w-fit items-center gap-2 rounded-full border border-dashed py-1.5 pr-3.5 pl-2 text-[0.8rem] font-medium outline-none transition-colors hover:border-foreground/40 hover:text-foreground",
+									"col-span-full inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed py-1 pr-2.5 pl-1.5 text-[12.5px] font-medium outline-none transition-colors hover:border-foreground/40 hover:text-foreground",
 									sel.dontKnow ? "border-solid border-foreground bg-muted text-foreground" : "text-muted-foreground",
 									kbdIdx === optionCount && !sel.dontKnow && "ring-1 ring-border bg-accent/40",
 								)}
@@ -802,7 +802,7 @@ function QuestionDockForm({
 								data-kbdrow={optionCount}
 								onClick={selectOther}
 								className={cn(
-									"flex min-h-14 items-center gap-3.5 rounded-2xl border px-3.5 py-3 text-left text-[1.1rem] outline-none transition-colors sm:col-span-full",
+									"flex min-h-10 items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left text-[15px] outline-none transition-colors sm:col-span-full",
 									sel.otherSelected ? "border-foreground bg-accent" : "border-dashed hover:bg-accent/50",
 									kbdIdx === optionCount && !sel.otherSelected && "ring-1 ring-border bg-accent/40",
 								)}
@@ -906,7 +906,7 @@ function QuestionDockForm({
 			)}
 
 			{rated && (
-				<div className="mx-3 shrink-0 rounded-2xl bg-muted/50 px-4 pt-3 pb-3.5">
+				<div className="mx-3.5 shrink-0 rounded-lg bg-muted/50 px-3 pt-2 pb-2.5">
 					<div className="flex items-center gap-4">
 						<span
 							className={cn(
@@ -1002,7 +1002,7 @@ function QuestionDockForm({
 			    is for dumping, soon dictated; the button submits); text mode
 			    keeps "Your answer" with Enter-to-submit. */}
 			<form
-				className="shrink-0 p-3"
+				className="shrink-0 px-3.5 pt-2 pb-3"
 				onSubmit={(e) => {
 					e.preventDefault();
 					submit();
@@ -1010,7 +1010,7 @@ function QuestionDockForm({
 			>
 				<div
 					data-testid={qd.mode === "text" ? "answer-field" : "thinking-field"}
-					className="rounded-2xl border border-border bg-card transition-[border-color,box-shadow] focus-within:border-foreground/40 focus-within:shadow-[0_0_0_4px_var(--muted)]"
+					className="rounded-lg border border-border bg-card transition-colors focus-within:border-foreground/35"
 				>
 					<div className="sr-only">{qd.mode === "text" ? "Your answer" : "Your thinking"}</div>
 					{qd.mode === "text" ? (
@@ -1042,7 +1042,7 @@ function QuestionDockForm({
 							placeholder={freeRecall ? "Explain it in your own words, from memory…" : "Type your answer…"}
 							rows={1}
 							aria-label="Your answer"
-							className="field-sizing-content lh-input max-h-48 min-h-12 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 outline-none placeholder:text-muted-foreground/70"
+							className="field-sizing-content lh-input max-h-48 min-h-10 w-full resize-none bg-transparent px-3 pt-2.5 pb-0.5 text-[15px] outline-none placeholder:text-muted-foreground/70"
 						/>
 					) : (
 						<textarea
@@ -1098,7 +1098,7 @@ function QuestionDockForm({
 					{/* One bottom row, the chat composer's: dictate, usage, model and
 					    effort (the session's tools row, when the dock card hands it
 					    in), then Submit. The chord lives on Submit's tooltip. */}
-					<div className="flex items-center gap-1 pr-2 pb-2">
+					<div className="flex items-center gap-1 pr-1.5 pb-1.5">
 						<div className="min-w-0 flex-1 [&_[data-testid=stats-bar]]:pb-0">{tools}</div>
 						{/* Desktop app only: write on the reMarkable (Screen Share),
 						    read into the field above, editable before Submit. */}
@@ -1107,7 +1107,7 @@ function QuestionDockForm({
 							type="submit"
 							disabled={!canSubmit || compactionRunning}
 							title="↵ submits · ⇧↵ newline"
-							className="h-9 shrink-0 rounded-xl px-4 text-sm font-medium"
+							className="h-7.5 shrink-0 rounded-md px-3 text-[13px] font-medium"
 						>
 							{compactionRunning ? "Compacting…" : submitLabel}
 						</Button>
