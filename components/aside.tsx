@@ -198,6 +198,63 @@ export function AsideThread({
 	);
 }
 
+const WIDTH_KEY = "lh.sideThread.width";
+const MIN_W = 280;
+const MAX_W = 960;
+const DEFAULT_W = 400;
+
+function clampWidth(w: number): number {
+	const max = typeof window === "undefined" ? MAX_W : Math.min(MAX_W, Math.round(window.innerWidth * 0.6));
+	return Math.round(Math.min(Math.max(w, MIN_W), Math.max(MIN_W, max)));
+}
+
+/** The panel's width: dragged from its left edge, remembered per device. */
+function usePanelWidth() {
+	const [width, setWidth] = useState(() => {
+		try {
+			const v = Number(window.localStorage.getItem(WIDTH_KEY));
+			if (v > 0) return clampWidth(v);
+		} catch {}
+		return DEFAULT_W;
+	});
+	const save = (w: number) => {
+		try {
+			window.localStorage.setItem(WIDTH_KEY, String(w));
+		} catch {}
+	};
+	const startDrag = (e: React.PointerEvent) => {
+		if (e.button !== 0) return;
+		e.preventDefault();
+		const startX = e.clientX;
+		const startW = width;
+		let last = startW;
+		const prevCursor = document.body.style.cursor;
+		const prevSelect = document.body.style.userSelect;
+		document.body.style.cursor = "col-resize";
+		document.body.style.userSelect = "none";
+		const move = (ev: PointerEvent) => {
+			last = clampWidth(startW + (startX - ev.clientX));
+			setWidth(last);
+		};
+		const up = () => {
+			window.removeEventListener("pointermove", move);
+			window.removeEventListener("pointerup", up);
+			document.body.style.cursor = prevCursor;
+			document.body.style.userSelect = prevSelect;
+			save(last);
+		};
+		window.addEventListener("pointermove", move);
+		window.addEventListener("pointerup", up);
+	};
+	const nudge = (dx: number) =>
+		setWidth((w) => {
+			const next = clampWidth(w + dx);
+			save(next);
+			return next;
+		});
+	return { width, startDrag, nudge };
+}
+
 /** The right-hand split view: one question's side thread. */
 export function SideThreadPanel({
 	question,
@@ -227,6 +284,7 @@ export function SideThreadPanel({
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const count = asides.length + (pending ? 1 : 0);
+	const { width, startDrag, nudge } = usePanelWidth();
 	// Follow the newest exchange.
 	useEffect(() => {
 		const el = scrollRef.current;
@@ -241,8 +299,31 @@ export function SideThreadPanel({
 		<aside
 			data-testid="side-thread-panel"
 			aria-label="Side thread"
-			className="lh-thread-in flex h-full w-[clamp(18rem,34%,28rem)] shrink-0 flex-col border-l border-border bg-background"
+			style={{ width }}
+			// relative + overflow-hidden: KaTeX's MathML copies are absolutely
+			// positioned; without a positioned ancestor they escaped the panel's
+			// scroller and made the whole window scroll (owner report 2026-11-15).
+			className="lh-thread-in relative flex h-full max-w-[70%] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
 		>
+			<div
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="Resize side thread"
+				aria-valuenow={width}
+				tabIndex={0}
+				data-testid="side-thread-resize"
+				onPointerDown={startDrag}
+				onKeyDown={(e) => {
+					if (e.key === "ArrowLeft") nudge(24);
+					else if (e.key === "ArrowRight") nudge(-24);
+					else return;
+					e.preventDefault();
+					e.stopPropagation();
+				}}
+				className="group/resize absolute inset-y-0 left-0 z-10 w-2 -translate-x-1 cursor-col-resize outline-none"
+			>
+				<span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-foreground/30 group-focus-visible/resize:bg-foreground/40 group-active/resize:bg-foreground/50" />
+			</div>
 			<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/70 px-3">
 				<MessagesSquareIcon aria-hidden className="size-4 text-muted-foreground" strokeWidth={1.7} />
 				<span className="font-ui text-[14px] font-semibold text-foreground">Side thread</span>
@@ -264,7 +345,7 @@ export function SideThreadPanel({
 					<XIcon className="size-4" />
 				</button>
 			</div>
-			<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4">
+			<div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4">
 				<div className="border-l-2 border-border py-0.5 pl-3">
 					<div className="font-ui text-[11.5px] font-semibold tracking-wide text-muted-foreground uppercase">About this question</div>
 					<div className="lh-source-passage mt-0.5 line-clamp-4 text-[14px] [&_p]:my-0">
