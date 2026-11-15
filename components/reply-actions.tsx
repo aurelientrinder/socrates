@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { CheckIcon, CopyIcon, RotateCcwIcon } from "lucide-react";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { stripDiagrams } from "@/src/core";
@@ -22,7 +22,7 @@ export function replyCopyText(parts: readonly { type: string; text?: string }[])
  * 2026-11-01): Claude's feed grammar — the reply is open text, and its
  * actions sit below it, subtly visible at rest and full opacity on hover/focus.
  */
-export function ReplyActions({
+export const ReplyActions = memo(function ReplyActions({
 	parts,
 	onRetry,
 	onRegenerate,
@@ -73,4 +73,4 @@ export function ReplyActions({
 			)}
 		</div>
 	);
-}
+});

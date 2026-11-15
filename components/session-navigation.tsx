@@ -76,19 +76,23 @@ export function SessionMessageNavigation() {
 	// anchor (a deleted message) — the session simply opens where it opens.
 	useEffect(() => {
 		if (!window.location.hash) return;
-		let ticks = 0;
-		const id = window.setInterval(() => {
-			// Keep watching PAST the first success: hydration / record adoption
-			// can REPLACE the node that was just jumped to (observed on cold
-			// dev loads, 2026-10-13) — jump() re-targets the fresh node and
-			// re-flashes it, while steady-state ticks are no-ops via the
-			// lastJump guard. ~20s watchdog covers a cold compile (observed
-			// 6.8s SSR flush) or slow first load; a deleted-message anchor
-			// gives up and the session opens as-is.
-			if (++ticks > 300) window.clearInterval(id);
-			else jump();
-		}, 64);
-		return () => window.clearInterval(id);
+		jump();
+		let raf = 0;
+		const scheduleJump = () => {
+			if (raf) return;
+			raf = window.requestAnimationFrame(() => {
+				raf = 0;
+				jump();
+			});
+		};
+		const observer = new MutationObserver(scheduleJump);
+		observer.observe(document.body, { childList: true, subtree: true });
+		const timeout = window.setTimeout(() => observer.disconnect(), 15_000);
+		return () => {
+			if (raf) window.cancelAnimationFrame(raf);
+			window.clearTimeout(timeout);
+			observer.disconnect();
+		};
 	}, [jump]);
 
 	useEffect(() => {

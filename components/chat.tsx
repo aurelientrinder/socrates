@@ -50,8 +50,10 @@ import {
 	type LhMessage,
 	type ModelSlotName,
 } from "@/src/core";
-import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
+import dynamic from "next/dynamic";
+import { PlanBlock, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
+const PlanPopup = dynamic(() => import("@/components/plan-block").then((m) => m.PlanPopup), { ssr: false });
 import { PlanRail, planStepOf, railProgress, usePlanSteps } from "@/components/session-rail";
 import { PlanProgressLine, SessionTimerChip, useSessionTimer } from "@/components/session-timer";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
@@ -610,8 +612,8 @@ export function Chat({
 	/* The READING-THINKING channel (owner 2026-10-03): a draft field for
 	 * thinking while reading the teaching prose, mounted while a check waits
 	 * behind its reveal, riding the check answer (or its dismissal) as the
-	 * separate `readingThinking` field. Reset per pending question. */
-	const [readingThinking, setReadingThinking] = useState("");
+	 * separate `readingThinking` field. State lives in DockOverlay; Chat
+	 * keeps only the ref mirror so typing never re-renders the transcript. */
 	const readingThinkingRef = useRef("");
 
 	// ⌘T (toggle-user-thinking, owner round 2026-10-07): set EVERY user
@@ -624,17 +626,14 @@ export function Chat({
 	}, []);
 	const applyReadingThinking = useCallback((v: string) => {
 		readingThinkingRef.current = v;
-		setReadingThinking(v);
 	}, []);
 	const clearReadingThinking = useCallback(() => {
 		readingThinkingRef.current = "";
-		setReadingThinking("");
 	}, []);
 	const pendingQuestionId = pending?.toolCallId ?? null;
 	useEffect(() => {
 		// A new pending question never inherits the previous one's draft.
 		readingThinkingRef.current = "";
-		setReadingThinking("");
 	}, [pendingQuestionId]);
 
 	// The phase at every message (one linear fold): the transcript draws a
@@ -860,10 +859,23 @@ export function Chat({
 		[chatId, pending?.toolCallId, send],
 	);
 
+	const syncAbortRef = useRef<AbortController | null>(null);
+	const syncSeqRef = useRef(0);
 	const syncFromServer = useCallback(async () => {
-		const res = await fetch(`/api/chats/${chatId}`);
-		if (!res.ok) return;
+		syncAbortRef.current?.abort();
+		const ac = new AbortController();
+		syncAbortRef.current = ac;
+		const seq = ++syncSeqRef.current;
+		let res: Response;
+		try {
+			res = await fetch(`/api/chats/${chatId}`, { signal: ac.signal });
+		} catch (err) {
+			if ((err as { name?: string })?.name === "AbortError") return;
+			throw err;
+		}
+		if (!res.ok || seq !== syncSeqRef.current) return;
 		const record = (await res.json()) as { messages?: LhMessage[]; turns?: TurnUsage[]; pricing?: SessionPricing; asides?: ChatAside[] };
+		if (seq !== syncSeqRef.current) return;
 		if (Array.isArray(record.turns)) setTurns(record.turns);
 		if (Array.isArray(record.asides)) setAsides(record.asides);
 		setPricing(record.pricing);
@@ -1051,28 +1063,14 @@ export function Chat({
 		// branch — the re-fire-on-dep-churn wart, fixed S3).
 		prevStatusRef.current = status;
 		if (!transitioned) return;
-		// immediate: turns-only refetch — the stats bar updates even while
-		// the server's persist/endTurn lags the client by milliseconds
-		void syncTurns();
 		// The coverage ring re-reads at turn settle too (extraction-UX
 		// redesign, 2026-09-24); the ring's own running-poll handles runs.
 		setCoverageTick((t) => t + 1);
-		// CANONIZATION (fix B, the duplicate-previous-message bug, 2026-10-02):
-		// turn-settled for OUR OWN turn arrives while the stream is still open
-		// (endTurn emits from onFinish before the response terminates, so the
-		// SSE frame reliably beats [DONE]) — the handler below cannot sync
-		// there, it flags instead, and THIS flip consumes the flag: the record
-		// is guaranteed durable (endTurn fires only after persistTurn, the S2
-		// ordering law), so replacing the view onto it absorbs the tail's
-		// streamed c_-id copies into base under their server ids. Without
-		// this the tail kept those copies forever and the next send's
-		// steer-adoption window rendered them a second time. The wake handoff
-		// cannot be missed by this sync: the wake fires only after the idle
-		// gates + grace (≥750ms past this flip), so its turn-started event
-		// lands at an idle, already-canonical view and attaches normally.
 		if (settleAnnouncedRef.current) {
 			settleAnnouncedRef.current = false;
 			void syncFromServer();
+		} else {
+			void syncTurns();
 		}
 		// (The extraction-discovery nudges that lived here died at S5: the
 		// pipeline announces every phase on the events channel.)
@@ -1346,23 +1344,29 @@ export function Chat({
 		return undefined;
 	}, [messages, activeProblem]);
 
+	const chatActionsValue = useMemo(
+		() => ({
+			chatId,
+			syncFromServer,
+			sendText: (t: string) => {
+				void send({ type: "text", text: t });
+			},
+			openSetup: () => setSetupOpen(true),
+		}),
+		[chatId, syncFromServer, send],
+	);
+	const sessionMermaidValue = useMemo(
+		() => ({
+			openMermaid: setMermaidFocus,
+			openFigure: (svg: string, inverted: boolean, opts?: { themed?: boolean }) =>
+				setFigureFocus({ svg, inverted, themed: opts?.themed }),
+		}),
+		[],
+	);
+
 	return (
-		<ChatActionsContext.Provider
-			value={{
-				chatId,
-				syncFromServer,
-				sendText: (t: string) => {
-					void send({ type: "text", text: t });
-				},
-				openSetup: () => setSetupOpen(true),
-			}}
-		>
-		<SessionMermaidContext.Provider
-			value={{
-				openMermaid: setMermaidFocus,
-				openFigure: (svg, inverted, opts) => setFigureFocus({ svg, inverted, themed: opts?.themed }),
-			}}
-		>
+		<ChatActionsContext.Provider value={chatActionsValue}>
+		<SessionMermaidContext.Provider value={sessionMermaidValue}>
 		<JobsContext.Provider value={jobs}>
 		{/* The session surface: the transcript column (header + scroller) and
 		    the plan-tree panel as full-height SIBLINGS — the panel spans top to
@@ -1873,7 +1877,6 @@ export function Chat({
 					plan={hasPlan ? <PlanMarginalia messages={messages} /> : undefined}
 					onOpenPlan={() => setPlanOpen(true)}
 					requiresReveal={requiresReveal}
-					readingThinking={readingThinking}
 					onReadingThinking={applyReadingThinking}
 					phase={phases.at(-1) ?? "probe"}
 					turns={turns}
@@ -2127,7 +2130,6 @@ function DockOverlay({
 	compactionRunning,
 	onSubmitThinking,
 	requiresReveal,
-	readingThinking,
 	onReadingThinking,
 	phase,
 	turns,
@@ -2164,9 +2166,7 @@ function DockOverlay({
 	onSubmitThinking: (text: string) => void;
 	/** Teach-phase pending question: arrives collapsed behind the reveal button (W5). */
 	requiresReveal: boolean;
-	/** The reading-thinking draft (owner 2026-10-03) — owned by ChatView so
-	 *  the submit + dismissal seams (outside this overlay) can merge it. */
-	readingThinking: string;
+	/** Syncs reading-thinking draft to ChatView's ref mirror without re-rendering Chat. */
 	onReadingThinking: (v: string) => void;
 	/** Session phase at the pending question — scales the thinking field. */
 	phase: Phase3;
@@ -2233,6 +2233,18 @@ function DockOverlay({
 
 	const pendingId = pending?.toolCallId ?? null;
 	const initialPendingRef = useRef(pendingId);
+	const [readingThinking, setReadingThinking] = useState("");
+	useEffect(() => {
+		setReadingThinking("");
+		onReadingThinking("");
+	}, [pendingId, onReadingThinking]);
+	const handleReadingThinking = useCallback(
+		(v: string) => {
+			setReadingThinking(v);
+			onReadingThinking(v);
+		},
+		[onReadingThinking],
+	);
 
 	// Teach-question ARRIVAL state, applied during render — BEFORE the
 	// first paint (owner, scroll-honesty round 2026-09-25). Until now the
@@ -2244,27 +2256,30 @@ function DockOverlay({
 	// measures the bar, the reserve keeps the composer's height, and the
 	// only motion is the teaching text itself.
 	const prevStreamingDiagramRef = useRef(Boolean(streamingDiagram));
-	if (showStreamingDiagram && !prevStreamingDiagramRef.current && !expanded) {
-		setExpanded(true);
-	}
 	const prevPendingIdRef = useRef(pendingId);
-	if (pendingId !== prevPendingIdRef.current) {
-		const wasQuestion = prevPendingIdRef.current !== null;
-		prevPendingIdRef.current = pendingId;
-		if (pendingId && requiresReveal) {
-			if (Boolean(pending?.diagram) || prevStreamingDiagramRef.current) {
-				setExpanded(true);
-				setRevealed(true);
-			} else {
-				const arrival = revealArrival(wasQuestion);
-				setExpanded(arrival.expanded);
-				setRevealed(arrival.revealed);
-			}
-		} else if (pendingId) {
+	useIsoLayoutEffect(() => {
+		const hasDiagramStream = Boolean(streamingDiagram);
+		if (showStreamingDiagram && !prevStreamingDiagramRef.current && !expandedRef.current) {
 			setExpanded(true);
 		}
-	}
-	prevStreamingDiagramRef.current = Boolean(streamingDiagram);
+		if (pendingId !== prevPendingIdRef.current) {
+			const wasQuestion = prevPendingIdRef.current !== null;
+			prevPendingIdRef.current = pendingId;
+			if (pendingId && requiresReveal) {
+				if (Boolean(pending?.diagram) || prevStreamingDiagramRef.current) {
+					setExpanded(true);
+					setRevealed(true);
+				} else {
+					const arrival = revealArrival(wasQuestion);
+					setExpanded(arrival.expanded);
+					setRevealed(arrival.revealed);
+				}
+			} else if (pendingId) {
+				setExpanded(probeArrivalExpanded(atBottomRef.current));
+			}
+		}
+		prevStreamingDiagramRef.current = hasDiagramStream;
+	}, [pendingId, pending?.diagram, requiresReveal, showStreamingDiagram, streamingDiagram]);
 
 	useEffect(() => {
 		if (!pendingId || pendingId === initialPendingRef.current) return;
@@ -2419,29 +2434,7 @@ function DockOverlay({
 	// reserved for mid-session transitions.
 	const initialModeRef = useRef(mode);
 
-	// Height morph: animate the shell from its previous height to its new one
-	// whenever the variant (chat ↔ question ↔ collapsed bar) changes. Typing
-	// growth keeps the same stateKey and is NOT animated.
-	const shellRef = useRef<HTMLDivElement>(null);
-	// The fold's CONTENT fade (owner round, 2026-10-05): the shell height
-	// morphs, but the bar↔form content used to hard-swap. A WAAPI fade/rise
-	// on the toggle — no remount, so the question form's state survives.
-	const contentRef = useRef<HTMLDivElement>(null);
-	const prevExpandedForFadeRef = useRef(expanded);
-	useIsoLayoutEffect(() => {
-		if (prevExpandedForFadeRef.current === expanded) return;
-		prevExpandedForFadeRef.current = expanded;
-		contentRef.current?.animate(
-			[{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "translateY(0)" }],
-			{ duration: 160, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
-		);
-	}, [expanded]);
-	// The height-morph key (components/dock-state-key.ts): the expanded
-	// term (the fold) belongs to EVERY docked variant — question AND
-	// practice (owner fix, 2026-10-06). Typing growth keeps the key and
-	// never animates; the fold/unfold morphs like teaching always has.
 	const stateKey = dockStateKey(mode, docked, expanded);
-	const prevRef = useRef<{ key: string; height: number } | null>(null);
 	useIsoLayoutEffect(() => {
 		const block = blockRef.current;
 		if (!block) return;
@@ -2451,11 +2444,7 @@ function DockOverlay({
 				flankWRef.current = next;
 				setFlankW(next);
 			}
-			const el = shellRef.current;
-			if (el && el.getAnimations().length === 0) {
-				if (prevRef.current) prevRef.current.height = el.getBoundingClientRect().height;
-				measureBlock();
-			}
+			measureBlock();
 		};
 		measure();
 		const ro = new ResizeObserver(measure);
@@ -2463,29 +2452,7 @@ function DockOverlay({
 		return () => ro.disconnect();
 	}, []);
 	useIsoLayoutEffect(() => {
-		const el = shellRef.current;
-		if (!el) return;
-		const p = prevRef.current;
-		if (p && p.key === stateKey) {
-			if (el.getAnimations().length === 0) {
-				const h = el.getBoundingClientRect().height;
-				p.height = h;
-				measureBlock();
-			}
-			return;
-		}
-		el.getAnimations().forEach((a) => a.cancel()); // flush to natural height before measuring
-		const h = el.getBoundingClientRect().height;
-		// Variant change → re-reserve. Growth applies instantly; a drop (the
-		// fold, or question → composer) is filtered by the offer policy.
 		measureBlock();
-		if (p && Math.abs(p.height - h) > 1) {
-			el.animate([{ height: `${p.height}px` }, { height: `${h}px` }], {
-				duration: 120,
-				easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
-			});
-		}
-		prevRef.current = { key: stateKey, height: h };
 	}, [stateKey]);
 
 	return (
@@ -2503,15 +2470,14 @@ function DockOverlay({
 					{/* ONE BOX (owner, feed redesign 2026-11-01): the composer/question
 					    shell and its tools row (dictate, usage, model) share a single
 					    card, Claude's composer shape. The inner shell keeps its own
-					    overflow clip for the height morph; the outer card does not
-					    clip, so the tools' popovers can open above it. */}
+					    overflow clip; the outer card does not clip, so the tools'
+					    popovers can open above it. */}
 					{/* The tools row is built once: an expanded question carries it
 					    inside its answer box (question card redesign, 2026-11-01);
 					    everything else keeps it under the shell. */}
 					<div className="pointer-events-auto rounded-[14px] border bg-card shadow-[0_4px_18px_rgb(0_0_0/0.05)]" data-testid="dock-card">
-					<div ref={shellRef} className="overflow-hidden rounded-t-[14px]">
+					<div className="overflow-hidden rounded-t-[14px]">
 						<div
-						ref={contentRef}
 						key={mode}
 						className={mode === initialModeRef.current ? undefined : "dock-variant"}
 					>
@@ -2528,7 +2494,7 @@ function DockOverlay({
 									onCollapse={() => setExpanded(false)}
 									onSubmit={onSubmitAnswer}
 									onEscape={dictationCancel}
-									dictationClaim={!revealPending}
+									dictationClaim={!revealPending && expanded}
 									compactionRunning={compactionRunning}
 									warmup={pending.tool === "review" ? warmup : undefined}
 									tools={expanded && !revealPending ? toolsRow : undefined}
@@ -2576,7 +2542,7 @@ function DockOverlay({
 					{pending && requiresReveal && (
 						<ReadingThinkingField
 							value={readingThinking}
-							onChange={onReadingThinking}
+							onChange={handleReadingThinking}
 							onEscape={dictationCancel}
 							onOpen={
 								!expanded
@@ -2622,10 +2588,10 @@ function DockOverlay({
 						data-testid="plan-marginalia"
 						onClick={onOpenPlan}
 						style={{ left: `calc(50% + ${DOCK_W / 2 + MARGIN_GAP}px)` }}
-						className={`absolute bottom-5 right-4 top-0 cursor-pointer transition-[filter,opacity] duration-300 ease-out ${
+						className={`absolute bottom-5 right-4 top-0 cursor-pointer transition-opacity duration-200 ease-out ${
 							expanded && flankW >= MARGIN_MIN_W
-								? "pointer-events-auto opacity-100 blur-0"
-								: "pointer-events-none opacity-0 blur-md"
+								? "pointer-events-auto opacity-100"
+								: "pointer-events-none opacity-0"
 						}`}
 					>
 						{plan}

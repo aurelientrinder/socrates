@@ -766,8 +766,13 @@ export class SessionModel {
 		this.mutate(() => {
 			this.base = record;
 			this.incompleteUsageIds.clear();
-			this.tail = [];
-			this.streamingMessageId = null; // the tail (and its slot) is gone
+			if (this.status === "ready") {
+				this.tail = [];
+				this.streamingMessageId = null; // the tail (and its slot) is gone
+			} else {
+				const recordIds = new Set(record.map((m) => (m as { id?: string }).id));
+				this.tail = this.tail.filter((m) => !recordIds.has((m as { id?: string }).id));
+			}
 		});
 	}
 

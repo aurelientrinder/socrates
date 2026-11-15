@@ -146,7 +146,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 		// persists like any other open, so a restart at a narrow width
 		// still auto-restores when widened.
 		if (narrow && !open) {
-			localStorage.setItem(STORAGE_KEY, "0");
+			localStorage.setItem(STORAGE_KEY, "1");
 			setOpen(true);
 			window.lh?.expandWindow();
 			return;
@@ -170,8 +170,10 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 		return () => window.removeEventListener(event, onToggle);
 	}, [toggle]);
 
+	const value = useMemo(() => ({ open: open && !narrow, toggle }), [open, narrow, toggle]);
+
 	return (
-		<SidebarContext.Provider value={{ open: open && !narrow, toggle }}>
+		<SidebarContext.Provider value={value}>
 			{/* transitions gated on mount: no slide-in flash on page load */}
 			<div className={cn("flex h-dvh", mounted && "[&_.sidebar-motion]:transition-[width,margin,opacity]")}>{children}</div>
 		</SidebarContext.Provider>
@@ -506,7 +508,7 @@ function TodayLink() {
 	}, []);
 	useEffect(() => {
 		void refresh();
-	}, [refresh, pathname]);
+	}, [refresh]);
 	useServerEvent("turn-settled", () => void refresh());
 	useServerResync(() => void refresh());
 	return (
@@ -529,22 +531,24 @@ function TodayLink() {
 }
 
 /** Today's next plan step as the sidebar reads it from GET /api/briefing. */
-function useNextPlanStep(pathname: string): BriefingItem | null {
+function useNextPlanStep(): BriefingItem | null {
 	const [next, setNext] = useState<BriefingItem | null>(null);
+	const refresh = useCallback(async () => {
+		try {
+			const r = await fetch("/api/briefing", { cache: "no-store" });
+			if (!r.ok) return;
+			const d = (await r.json()) as { briefing: { plan?: { items: BriefingItem[] } } | null; done?: string[] };
+			const done = new Set(d.done ?? []);
+			setNext(d.briefing?.plan?.items.find((i) => !done.has(i.id)) ?? null);
+		} catch {
+			// transient blip: keep last known step
+		}
+	}, []);
 	useEffect(() => {
-		let live = true;
-		void fetch("/api/briefing", { cache: "no-store" })
-			.then((r) => (r.ok ? (r.json() as Promise<{ briefing: { plan?: { items: BriefingItem[] } } | null; done?: string[] }>) : null))
-			.then((d) => {
-				if (!live || !d) return;
-				const done = new Set(d.done ?? []);
-				setNext(d.briefing?.plan?.items.find((i) => !done.has(i.id)) ?? null);
-			})
-			.catch(() => undefined);
-		return () => {
-			live = false;
-		};
-	}, [pathname]);
+		void refresh();
+	}, [refresh]);
+	useServerEvent("turn-settled", () => void refresh());
+	useServerResync(() => void refresh());
 	return next;
 }
 
@@ -553,9 +557,8 @@ function useNextPlanStep(pathname: string): BriefingItem | null {
  *  anything else. With no plan step left it is the plain Start studying
  *  button that opens the dialog. */
 function NextStepStart({ onOpenDialog }: { onOpenDialog: () => void }) {
-	const pathname = usePathname();
 	const router = useRouter();
-	const next = useNextPlanStep(pathname);
+	const next = useNextPlanStep();
 	const [starting, setStarting] = useState(false);
 	const shortcut = (
 		<kbd suppressHydrationWarning className="ml-auto font-sans text-xs font-medium opacity-60">
@@ -915,9 +918,9 @@ function SessionsSidebar() {
 	useEffect(() => {
 		if (!open) return;
 		void refresh();
-		// Opening + navigation refetch; while open, the events channel owns
+		// Opening refetches; while open, the events channel owns
 		// freshness (S6) — no interval, nothing standing.
-	}, [open, pathname, refresh]);
+	}, [open, refresh]);
 
 	return (
 		<aside

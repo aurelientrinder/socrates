@@ -21,6 +21,7 @@
 
 import { extractionStatuses, type ExtractionPhase } from "../agent/subagents/extraction.ts";
 import { chatStore } from "../store/chats.ts";
+import { listAllJobs, listAllJobsAsync } from "../store/jobs.ts";
 import { graphRevision } from "./graph.ts";
 import { catalogContextLimits } from "./model-catalog.ts";
 import { listJobs } from "./jobs.ts";
@@ -66,24 +67,23 @@ export interface ActivityExtraction {
  *  graph changed underneath me" (a merge landed, a deletion purged) and
  *  refetch clusters/layout. Reads never move it; the DELETE response
  *  returns the same stamp. */
-export function activityFeed(): {
+function buildActivityFeed(allJobs: ReturnType<typeof listAllJobs>): {
 	jobs: ActivityJob[];
 	extractions: ActivityExtraction[];
 	graphRevision: number;
 } {
 	const chats = chatStore.listChats();
+	const chatTitleById = new Map(chats.map((c) => [c.id, c.title ?? c.id]));
 	const limits = catalogContextLimits();
 	const jobs: ActivityJob[] = [];
-	for (const chat of chats) {
-		for (const job of listJobs(chat.id)) {
-			if (job.status === "running") {
-				jobs.push({
-					...job,
-					costUsd: jobCost(job),
-					title: chat.title ?? chat.id,
-					contextLimit: job.usage ? (limits.get(job.usage.model) ?? null) : null,
-				});
-			}
+	for (const job of allJobs) {
+		if (job.status === "running" && chatTitleById.has(job.chatId)) {
+			jobs.push({
+				...job,
+				costUsd: jobCost(job),
+				title: chatTitleById.get(job.chatId) ?? job.chatId,
+				contextLimit: job.usage ? (limits.get(job.usage.model) ?? null) : null,
+			});
 		}
 	}
 	const extractions: ActivityExtraction[] = extractionStatuses().map((run) => ({
@@ -94,7 +94,7 @@ export function activityFeed(): {
 		// status route) — the chat store's title, or the bare id for notes
 		// sources, plus the chunk suffix when the source fanned out.
 		title:
-			(run.label ?? chatStore.getChat(run.chatId)?.title ?? run.chatId) +
+			(run.label ?? chatTitleById.get(run.chatId) ?? chatStore.getChat(run.chatId)?.title ?? run.chatId) +
 			(run.part ? ` · ${run.part.i}/${run.part.n}` : ""),
 		phase: run.phase,
 		startedAt: run.startedAt,
@@ -106,4 +106,20 @@ export function activityFeed(): {
 		extractions: extractions.sort((a, b) => a.startedAt - b.startedAt),
 		graphRevision: graphRevision(),
 	};
+}
+
+export function activityFeed(): {
+	jobs: ActivityJob[];
+	extractions: ActivityExtraction[];
+	graphRevision: number;
+} {
+	return buildActivityFeed(listAllJobs());
+}
+
+export async function activityFeedAsync(): Promise<{
+	jobs: ActivityJob[];
+	extractions: ActivityExtraction[];
+	graphRevision: number;
+}> {
+	return buildActivityFeed(await listAllJobsAsync());
 }

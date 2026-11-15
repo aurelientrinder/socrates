@@ -1,7 +1,7 @@
 import { abortExtraction, extractionStatuses } from "../agent/subagents/extraction.ts";
 import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
-import { titleFromPrompt } from "../core/contracts.ts";
+import { titleFromPrompt, type ChatRecord } from "../core/contracts.ts";
 import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
 import { propositionNames, recallEvents, retentionReport, type RecallEvent, type RetentionReport } from "../core/retention.ts";
 import { weakSpotReport, type WeakSpotReport } from "../core/weak-spots.ts";
@@ -153,9 +153,10 @@ export interface SessionCoverage {
 
 /** The per-session coverage block (see SessionCoverage). Null when the
  *  chat doesn't exist — callers own the 404. */
-export function sessionCoverage(chatId: string): SessionCoverage | null {
-	const record = stores.chatStore.getChat(chatId);
+export function sessionCoverage(chatOrId: string | ChatRecord): SessionCoverage | null {
+	const record = typeof chatOrId === "string" ? stores.chatStore.getChat(chatOrId) : chatOrId;
 	if (!record) return null;
+	const chatId = record.id;
 	const entries = stores.graphStore.readCoverage();
 	// Wave B: the record is native history — coverage reads through the
 	// projection (same view the extraction pipeline folds).

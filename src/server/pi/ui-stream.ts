@@ -244,8 +244,8 @@ export function runPiTurn(spec: PiTurnSpec): PiTurnHandle {
 			if (m?.role === "custom") noteSteerVisible(event.message as SteerMessage);
 		}
 		if (event.type === "agent_end") {
-			closeAll();
 			settleWith();
+			closeAll();
 		}
 	};
 	agent.subscribe(handle);
@@ -261,8 +261,8 @@ export function runPiTurn(spec: PiTurnSpec): PiTurnHandle {
 			if (settled) return;
 			console.error("[turn] agent loop failed:", err);
 			send({ type: "error", errorText: onError?.(err) ?? "An error occurred." });
-			closeAll();
 			settleWith();
+			closeAll();
 		}
 	})();
 

@@ -23,6 +23,7 @@ import { QUESTION_TOOLS } from "../core/pending.ts";
 import { planBlocksFor } from "../core/plan-blocks.ts";
 import { coverageOf } from "../core/coverage.ts";
 import type { ChatStore, GraphStore } from "../core/ports.ts";
+import type { TurnUsage } from "../core/contracts.ts";
 import type { ExtractionPipeline } from "../agent/subagents/extraction.ts";
 import { ModelsNotConfiguredError, ProviderKeyMissingError } from "../core/settings.ts";
 
@@ -53,6 +54,7 @@ export function persistTurn(
 	baseCount: number,
 	turnMessages: readonly AgentMessage[],
 	isAborted: boolean,
+	buildUsage?: (stamped: LhMessage[]) => TurnUsage | undefined,
 ): LhMessage[] {
 	try {
 		const record = chatStore.getChat(chatId);
@@ -75,7 +77,14 @@ export function persistTurn(
 			...record.messages,
 			...stamped,
 		]);
-		chatStore.saveMessages(chatId, [...record.messages, ...stamped, ...blocks]);
+		const nextMessages = [...record.messages, ...stamped, ...blocks];
+		const usage = buildUsage?.(stamped);
+		if (chatStore.saveTurn) {
+			chatStore.saveTurn(chatId, nextMessages, usage);
+		} else {
+			chatStore.saveMessages(chatId, nextMessages);
+			if (usage) chatStore.appendTurnUsage(chatId, usage);
+		}
 		return stamped;
 	} catch (err) {
 		console.error(`[chat ${chatId}] persist failed:`, err, { isAborted });

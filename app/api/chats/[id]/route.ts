@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 		pricing: sessionCost(chat),
 		turnInFlight: isTurnRunning(id),
 		compacting: compactionInFlight(id),
-		coverage: sessionCoverage(id),
+		coverage: sessionCoverage(chat),
 	});
 }
 

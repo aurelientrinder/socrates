@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Source_Sans_3 } from "next/font/google";
-import "katex/dist/katex.min.css";
 import "./globals.css";
 import { AppShell, SidebarProvider } from "@/components/sidebar";
 import { ActivityProvider } from "@/components/activity-dock";
@@ -8,6 +7,7 @@ import { ServerEventsProvider } from "@/components/server-events";
 import { AppearanceProvider } from "@/components/settings/appearance";
 import UpdateBanner from "@/components/update-banner";
 import { ReviewReminder } from "@/components/review-reminder";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 // One font for every bit of UI text (owner, 2026-11-03): Source Sans 3
 // for chrome, reading prose and titles alike; JetBrains Mono is kept only
@@ -48,7 +48,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 				<AppearanceProvider>
 					<SidebarProvider>
 						<ActivityProvider>
-							<AppShell>{children}</AppShell>
+							<TooltipProvider>
+								<AppShell>{children}</AppShell>
+							</TooltipProvider>
 						</ActivityProvider>
 					</SidebarProvider>
 				</AppearanceProvider>
