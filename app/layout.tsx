@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Source_Sans_3 } from "next/font/google";
-// KaTeX styles live here, not in components/ai-elements/message.tsx: the
-// node test runner cannot import .css from a component module.
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { AppShell, SidebarProvider } from "@/components/sidebar";
