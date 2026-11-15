@@ -71,7 +71,7 @@ export function PracticeDock({ problemCallId, input, diagram, expanded, onExpand
 			},
 			[],
 		),
-		true,
+		expanded,
 	);
 
 	const submit = () => {
@@ -85,9 +85,9 @@ export function PracticeDock({ problemCallId, input, diagram, expanded, onExpand
 
 	/* ENTER SUBMITS FROM ANYWHERE (owner round 6, 2026-10-05): dictation
 	 * means the field is often never focused — the window-level Enter
-	 * (typing surfaces and buttons excluded) submits the trace. Mounted
-	 * while the dock is — collapsed bar included (the trace survives). */
-	useEnterSubmits(submit);
+	 * (typing surfaces and buttons excluded) submits the trace. Active
+	 * only while expanded so a collapsed problem bar never submits. */
+	useEnterSubmits(submit, expanded);
 
 	/* ── the collapsed bar ── */
 	if (!expanded) {

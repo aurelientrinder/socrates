@@ -44,6 +44,8 @@ export interface ChatStore {
 	/** Persist the full native message list (the record IS the agent
 	 * state — Wave B, owner-approved 2026-09-26). */
 	saveMessages(id: string, messages: LhMessage[]): void;
+	/** Persist messages and optional turn usage in a single atomic write. */
+	saveTurn?(id: string, messages: LhMessage[], turnUsage?: TurnUsage): void;
 	/** Persist the session plan tree (or clear when undefined during rewind). */
 	saveTree(id: string, tree: PlanTree | undefined): void;
 	/** Append one usage entry to the record's turn log (the money channel,

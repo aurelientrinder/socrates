@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -65,8 +65,9 @@ export function StartDialogProvider({ children }: { children: React.ReactNode })
 		window.addEventListener(OPEN_START_EVENT, onOpen);
 		return () => window.removeEventListener(OPEN_START_EVENT, onOpen);
 	}, []);
+	const value = useMemo(() => ({ open }), [open]);
 	return (
-		<StartDialogContext.Provider value={{ open }}>
+		<StartDialogContext.Provider value={value}>
 			{children}
 			{mode !== null && <StartDialog initialMode={mode} initialMinutes={minutes} preset={preset} onClose={() => setMode(null)} />}
 		</StartDialogContext.Provider>

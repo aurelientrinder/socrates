@@ -26,6 +26,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -108,8 +109,9 @@ export function SettingsDialogProvider({
 		setLandOnRow(row ?? null);
 		setShow(true);
 	}, []);
+	const value = useMemo(() => ({ open }), [open]);
 	return (
-		<DialogContext.Provider value={{ open }}>
+		<DialogContext.Provider value={value}>
 			{children}
 			{show && (
 				<SettingsDialog onClose={() => setShow(false)} initialSection={landOn} initialRow={landOnRow} />

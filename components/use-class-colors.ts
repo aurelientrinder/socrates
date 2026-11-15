@@ -8,9 +8,17 @@ let pending: Promise<LensClass[]> | null = null;
 /** The classes and their colors, fetched once and shared by every caller on the page. */
 function loadClasses(): Promise<LensClass[]> {
 	pending ??= fetch("/api/courses/lens")
-		.then((r) => (r.ok ? (r.json() as Promise<{ classes: LensClass[] }>) : { classes: [] }))
-		.then((d) => d.classes)
-		.catch(() => []);
+		.then((r) => {
+			if (!r.ok) {
+				pending = null;
+				return [];
+			}
+			return (r.json() as Promise<{ classes: LensClass[] }>).then((d) => d.classes);
+		})
+		.catch(() => {
+			pending = null;
+			return [];
+		});
 	return pending;
 }
 

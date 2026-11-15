@@ -57,12 +57,13 @@ export function buttonKeepsNativeEnter(el: HTMLElement): boolean {
 	return !!el.closest(OVERLAY_ROOTS);
 }
 
-/** Mount-scoped: while the dock is mounted (a problem/question is active),
+/** Mount-scoped: while the dock is mounted and enabled (a problem/question is active and expanded),
  *  plain Enter anywhere outside a typing surface or button submits it. */
-export function useEnterSubmits(submit: () => void): void {
+export function useEnterSubmits(submit: () => void, enabled = true): void {
 	const submitRef = useRef(submit);
 	submitRef.current = submit;
 	useEffect(() => {
+		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Enter") return;
 			if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
@@ -74,5 +75,5 @@ export function useEnterSubmits(submit: () => void): void {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, []);
+	}, [enabled]);
 }

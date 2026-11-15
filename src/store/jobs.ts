@@ -122,6 +122,39 @@ function deleteJobsForChat(chatId: string): number {
 	return removed;
 }
 
+export function listAllJobs(): JobRecord[] {
+	try {
+		fs.mkdirSync(JOBS_DIR, { recursive: true });
+		return fs
+			.readdirSync(JOBS_DIR)
+			.filter((f) => f.endsWith(".json"))
+			.map((f) => getJob(f.slice(0, -5)))
+			.filter((j): j is JobRecord => j !== null);
+	} catch {
+		return [];
+	}
+}
+
+export async function listAllJobsAsync(): Promise<JobRecord[]> {
+	try {
+		await fs.promises.mkdir(JOBS_DIR, { recursive: true });
+		const files = (await fs.promises.readdir(JOBS_DIR)).filter((f) => f.endsWith(".json"));
+		const records = await Promise.all(
+			files.map(async (f) => {
+				try {
+					const raw = await fs.promises.readFile(jobFile(f.slice(0, -5)), "utf-8");
+					return JSON.parse(raw) as JobRecord;
+				} catch {
+					return null;
+				}
+			}),
+		);
+		return records.filter((j): j is JobRecord => j !== null);
+	} catch {
+		return [];
+	}
+}
+
 export const jobStore: JobStore = {
 	createJob,
 	getJob,

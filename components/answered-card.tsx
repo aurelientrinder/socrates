@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { LightbulbIcon } from "lucide-react";
 import { ConfidenceRail } from "@/components/confidence-rail";
 import { GlyphMark } from "@/components/ui/glyph-mark";
@@ -21,7 +21,7 @@ import { normalizeQuizType, parseAskInput, parseQuizInput, repairMathForDisplay 
  * client — the card reveals his answer, the committed correct answer, and
  * the explanation, with NO verdict chips (owner ruling 2026-09-27).
  */
-export function AnsweredCard({
+export const AnsweredCard = memo(function AnsweredCard({
 	answer,
 	input,
 	label,
@@ -284,4 +284,4 @@ export function AnsweredCard({
 		)}
 		</>
 	);
-}
+});
