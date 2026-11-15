@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Maximize2Icon } from "lucide-react";
 import { sanitizeSvg, sanitizeStreamingSvg } from "@/components/artifacts/sanitize-svg";
 import { useSessionMermaid } from "@/components/session-overlay";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  * - Theme-blended container using semantic tokens (`currentColor` / CSS vars).
  * - Click-to-expand fullscreen pan/zoom overlay once settled.
  */
-export function DiagramFigure({
+export const DiagramFigure = memo(function DiagramFigure({
 	svg,
 	streaming = false,
 	className,
@@ -70,4 +70,4 @@ export function DiagramFigure({
 			)}
 		</div>
 	);
-}
+});

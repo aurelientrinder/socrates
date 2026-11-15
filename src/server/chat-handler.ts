@@ -642,20 +642,24 @@ export async function handleChatInput(
 			onFinish: (turnMessages, isAborted) => {
 				// Wave B: the record write is the agent's own final state —
 				// the new messages are the slice past the merged base.
-				const stamped = persistTurn(stores.chatStore, chatId, persistBaseCount, turnMessages, isAborted);
-				// usage log append (idempotent per turn id) — the stats bar
-				// refolds this on the client after the turn settles. The
-				// provenance message is the turn's FIRST new assistant message.
-				const response = stamped.find((m) => (m as { role?: string }).role === "assistant");
-				if (response && steps.length > 0) {
-					stores.chatStore.appendTurnUsage(chatId, {
-						id: turnUsageId,
-						messageId: response.id,
-						at: new Date().toISOString(),
-						model: modelId,
-						steps,
-					});
-				}
+				const stamped = persistTurn(
+					stores.chatStore,
+					chatId,
+					persistBaseCount,
+					turnMessages,
+					isAborted,
+					(s) => {
+						const response = s.find((m) => (m as { role?: string }).role === "assistant");
+						if (!response || steps.length === 0) return undefined;
+						return {
+							id: turnUsageId,
+							messageId: response.id,
+							at: new Date().toISOString(),
+							model: modelId,
+							steps,
+						};
+					},
+				);
 				// GRAPH GATE (settings-storage wave, 2026-09-19): the write channel —
 				// extraction, its auditor — dies with the master switch.
 				// PRACTICE (owner, 2026-10-04): practice sessions write nothing —

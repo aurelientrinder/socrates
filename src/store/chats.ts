@@ -228,6 +228,17 @@ function appendTurnUsage(id: string, entry: TurnUsage): void {
 	writeChat(record);
 }
 
+function saveTurn(id: string, messages: LhMessage[], turnUsage?: TurnUsage): void {
+	const record = getChat(id);
+	if (!record) throw new Error(`Chat not found: ${id}`);
+	record.messages = messages;
+	record.updatedAt = new Date().toISOString();
+	if (turnUsage && !record.turns?.some((t) => t.id === turnUsage.id)) {
+		record.turns = [...(record.turns ?? []), turnUsage];
+	}
+	writeChat(record);
+}
+
 /** Append one side exchange to the record's asides log (idempotent per id). */
 function appendAside(id: string, aside: ChatAside): void {
 	const record = getChat(id);
@@ -313,6 +324,7 @@ export const chatStore: ChatStore = {
 	getChat,
 	listChats,
 	saveMessages,
+	saveTurn,
 	saveTree,
 	saveSettings,
 	renameChat,

@@ -200,7 +200,7 @@ export function QuestionDock({
 					}
 				/>
 			)}
-			<div className={expanded ? "dock-variant" : "invisible h-0 overflow-hidden"}>
+			<div className={expanded ? "dock-variant" : "invisible h-0 overflow-hidden"} inert={!expanded} aria-hidden={!expanded}>
 				<QuestionDockForm
 					toolName={toolName}
 					toolCallId={toolCallId}
@@ -497,8 +497,9 @@ function QuestionDockForm({
 
 	/* ENTER SUBMITS FROM ANYWHERE (owner round 6, 2026-10-05): the same
 	 * law as the practice dock — dictated answers rarely focus the field.
-	 * Rides submit() so the dictation-flush law is shared, not forked. */
-	useEnterSubmits(submit);
+	 * Rides submit() so the dictation-flush law is shared, not forked.
+	 * Gated on `active` so a collapsed quiz bar never submits on Enter. */
+	useEnterSubmits(submit, active);
 
 	// Selecting Other never clears the thinking field — two channels, the
 	// answer and the reasoning behind it, side by side.

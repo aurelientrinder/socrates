@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo } from "react";
+import { memo, useId, useMemo } from "react";
 import { derivedNodeStatus, derivePlanStatuses } from "@/src/core";
 import {
 	PlanDiagram,
@@ -41,7 +41,7 @@ export function planExists(messages: readonly PopupMessage[]): boolean {
 	return !!tree && tree.nodes.length > 0;
 }
 
-export function PlanMarginalia({ messages }: { messages: readonly PopupMessage[] }) {
+export const PlanMarginalia = memo(function PlanMarginalia({ messages }: { messages: readonly PopupMessage[] }) {
 	const markerId = useId().replace(/[^a-zA-Z0-9-]/g, "");
 	const tree = useMemo(() => latestTree(messages), [messages]);
 	const statuses = useMemo(
@@ -62,4 +62,4 @@ export function PlanMarginalia({ messages }: { messages: readonly PopupMessage[]
 			fill
 		/>
 	);
-}
+});
