@@ -33,6 +33,7 @@ const {
 	applyAudit,
 	examCalibrationAnswers,
 	examDraftProblems,
+	normalizeExamDraft,
 	examRecallEvents,
 	examView,
 	finalizeRubricGrades,
@@ -136,9 +137,35 @@ describe("exam authoring laws", () => {
 			{ rubric: [{ criterion: "method", points: 4 }] }, // numeric without a final item
 		]);
 		const problems = examDraftProblems(bad, 2);
-		assert.ok(problems.some((p) => p.includes("exactly 2 problems")));
+		assert.ok(examDraftProblems({ ...bad, problems: [] }, 2).some((p) => p.includes("exactly 2 problems")));
+		assert.ok(examDraftProblems({ ...bad, problems: [...bad.problems, ...bad.problems, ...bad.problems] }, 2).some((p) => p.includes("got 3")));
 		assert.ok(problems.some((p) => p.includes("add up to 1")));
 		assert.ok(problems.some((p) => p.includes("final: true")));
+	});
+
+	it("repairs in code the slips code can settle", () => {
+		const slipped = draft([
+			{ points: 5 }, // rubric adds up to 2
+			{ rubric: [{ criterion: "method", points: 2 }, { criterion: "value", points: 2 }] }, // numeric, no final item
+			{},
+			{ numeric: { value: 187.1, tolerance: 0.5 }, rubric: [{ criterion: "a", points: 1, final: true }, { criterion: "b", points: 2, final: true }] },
+		]);
+		slipped.problems[0]!.parts[0]!.rubric![0]!.final = true; // written part: final means nothing
+		const four = { ...slipped, problems: [...slipped.problems, ...slipped.problems, ...slipped.problems] };
+		four.problems[0] = { ...four.problems[0]!, parts: [...four.problems[0]!.parts, ...four.problems[0]!.parts] }; // 8 parts
+		const fixed = normalizeExamDraft(four, 2);
+		assert.equal(fixed.problems.length, 2, "extra problems are cut");
+		assert.equal(fixed.problems[0]!.parts.length, 5, "parts past the cap are cut from the end");
+		const [a, b, , d] = fixed.problems[1]!.parts;
+		assert.equal(a!.points, 2, "the rubric sets the points");
+		assert.ok(!a!.rubric!.some((r) => r.final));
+		assert.deepEqual(b!.rubric!.map((r) => !!r.final), [false, true], "the last item becomes the final value");
+		assert.deepEqual(d!.rubric!.map((r) => !!r.final), [false, true], "one final item only");
+		assert.equal(d!.numeric!.tolerance, 0.1);
+		assert.deepEqual(examDraftProblems(fixed, 2), []);
+		const noValue = draft([{}, { numeric: undefined, finalAnswer: "187 J" }]);
+		assert.equal(normalizeExamDraft(noValue, 1).problems[0]!.parts[1]!.numeric!.value, 187);
+		assert.equal(slipped.problems[0]!.parts[0]!.points, 5, "the input is not mutated");
 	});
 
 	it("caps multiple choice at a quarter of the parts", () => {
@@ -424,10 +451,18 @@ function router(log: string[]): FauxResponseStep {
 		const prompt = firstUserText(messages);
 		const retry = messages.at(-1)?.role === "toolResult";
 		if (prompt.startsWith("Write a")) {
-			log.push(retry ? "author-retry" : "author");
-			// First submission breaks a law (3 problems wanted? no: rubric sum) and is sent back.
+			// Gemini, 2026-11-15: the author first answers in prose (no submit
+			// call), is nudged, then sends a draft with a broken law (sent
+			// back), then a good one. A rubric/points slip is repaired by code.
+			if (!messages.some((m) => m.role === "assistant")) {
+				log.push("author-prose");
+				return fauxAssistantMessage("Here is your mock exam. Problem 1: a heated rigid tank…");
+			}
+			const nudged = messages.at(-1)?.role === "user";
+			log.push(nudged ? "author-nudged" : "author-retry");
 			const d = draft();
-			if (!retry) d.problems[0]!.parts[0]!.points = 3;
+			d.problems[0]!.parts[0]!.points = 3; // rubric says 2: repaired, never sent back
+			if (nudged) d.problems[0]!.parts[1]!.solution = " ";
 			const two = { ...d.problems[0]!, title: "Second tank" };
 			return submit("submit_exam", { ...d, problems: [d.problems[0], two] });
 		}
@@ -506,7 +541,7 @@ describe("the exam pipeline", () => {
 		await until(() => server.getExamView(id)?.status !== "generating", "generation");
 		const ready = server.getExamView(id)!;
 		assert.equal(ready.status, "ready", ready.error);
-		assert.deepEqual(log, ["author", "author-retry", "solve", "audit"]);
+		assert.deepEqual(log, ["author-prose", "author-nudged", "author-retry", "solve", "audit"]);
 		assert.equal(ready.problemCount, 2);
 		assert.equal(ready.partCount, 7, "2d was dropped by the audit");
 		assert.deepEqual(ready.checks, { parts: 8, fixed: 0, dropped: 1 });
@@ -527,7 +562,7 @@ describe("the exam pipeline", () => {
 		await until(() => server.getExamView(id)?.status !== "grading", "grading");
 		const graded = server.getExamView(id)!;
 		assert.equal(graded.status, "graded", graded.error);
-		assert.deepEqual(log.slice(4), ["grade", "grade-retry", "grade", "grade-retry"]);
+		assert.deepEqual(log.slice(5), ["grade", "grade-retry", "grade", "grade-retry"]);
 
 		const g = graded.grades;
 		assert.equal(g["1a"]!.earned, 1); // one honest quote

@@ -54,6 +54,7 @@ const SLOT_META: Record<ModelSlotName, { label: string; roster: string }> = {
 	strong: { label: "Strong", roster: "Prober, teacher" },
 	cheap: { label: "Cheap", roster: "Researcher, demo builder, extractor, auditor" },
 	vision: { label: "Vision", roster: "Visual maker + PDF reader" },
+	exam: { label: "Mock exams", roster: "Writes and marks mock exams" },
 };
 const SLOT_ORDER: readonly ModelSlotName[] = ["strong", "cheap", "vision"];
 
@@ -84,7 +85,7 @@ export function setupStage(
  *  for tests. */
 export function prefillFromSlots(
 	models: ModelCatalogEntry[],
-	slots: Record<ModelSlotName, { model: { provider: string; id: string } } | null> | undefined,
+	slots: Partial<Record<ModelSlotName, { model: { provider: string; id: string } } | null>> | undefined,
 ): Partial<Record<ModelSlotName, ModelCatalogEntry>> {
 	const pre: Partial<Record<ModelSlotName, ModelCatalogEntry>> = {};
 	for (const slot of SLOT_ORDER) {

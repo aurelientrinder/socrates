@@ -126,6 +126,15 @@ export function resolveRoleSpec(role: ModelRole, record: UserSettings | null): E
 	return resolveModelSpec(role, override, record?.models);
 }
 
+/** The mock-exam engine's spec (2026-11-15): the exam slot when it holds
+ *  a model (its own thinking level), else the strong slot's chain, the
+ *  same one the teacher runs on. undefined = neither is set. */
+export function resolveExamSpec(record: UserSettings | null): EffectiveModelSpec | undefined {
+	const exam = record?.models?.exam;
+	if (exam?.model) return { provider: exam.model.provider, id: exam.model.id, thinkingLevel: exam.thinkingLevel };
+	return resolveRoleSpec("teacher", record);
+}
+
 /** Resolve one slot to its configured view, or null when the tier holds
  *  no model (a thinkingLevel-only slot is inert — the level has nothing
  *  to ride without the factory floor). */
@@ -188,6 +197,7 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 			strong: resolveSlot(modelsSection.strong),
 			cheap: resolveSlot(modelsSection.cheap),
 			vision: resolveSlot(modelsSection.vision),
+			exam: resolveSlot(modelsSection.exam),
 		},
 		appearance: {
 			mode: appearance.mode ?? factoryAppearance.mode,

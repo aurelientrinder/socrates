@@ -262,7 +262,7 @@ describe("parseModelsSettingsBody (model slots wave, 2026-09-20)", () => {
 	it("unknown slots are 400s with the supported list", () => {
 		const bad = parseModelsSettingsBody({ mega: { thinkingLevel: "high" } });
 		assert.equal(bad.ok, false);
-		if (!bad.ok) assert.match(bad.error, /unknown slot "mega" \(supported: strong, cheap, vision\)/);
+		if (!bad.ok) assert.match(bad.error, /unknown slot "mega" \(supported: strong, cheap, vision, exam\)/);
 	});
 
 	it("a present-but-empty slot object is rejected (absent slot = unset)", () => {

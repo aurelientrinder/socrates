@@ -19,7 +19,7 @@ import {
 	type PartGrade,
 } from "../core/exam.ts";
 import { replyLanguageInstruction } from "../core/reply-language.ts";
-import { resolveRoleSpec } from "../core/settings-resolution.ts";
+import { resolveExamSpec } from "../core/settings-resolution.ts";
 import { modelsNotConfigured } from "../core/settings.ts";
 import { examStore, newExamId } from "../store/exams.ts";
 import { notesLibrary } from "../store/notes.ts";
@@ -72,7 +72,7 @@ export class ExamError extends Error {
 
 function examinerRun(signal: AbortSignal): ExaminerRun {
 	if (examEngineOverride.current) return { engine: examEngineOverride.current, signal };
-	const spec = resolveRoleSpec("teacher", stores.settingsStore.readSettings());
+	const spec = resolveExamSpec(stores.settingsStore.readSettings());
 	if (!spec) throw new ExamError("Choose a model first (Settings, Models).", 503, modelsNotConfigured(["strong"]));
 	if (!providerKeyPresent(spec.provider)) throw new ExamError(`The ${spec.provider} key is missing (Settings, Keys).`, 503);
 	return {

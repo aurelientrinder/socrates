@@ -137,6 +137,7 @@ const catalog = (strongProvider: string | null, ...keyedProviders: string[]): Mo
 			: null,
 		cheap: null,
 		vision: null,
+		exam: null,
 	},
 	providers: keyedProviders.map((id) => ({ id, envVar: `${id.toUpperCase()}_API_KEY`, keyPresent: true })),
 });
