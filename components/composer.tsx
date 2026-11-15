@@ -85,7 +85,7 @@ export function Composer({
 	return (
 		<form
 			data-testid="composer"
-			className="flex items-end gap-1.5 py-1.5 pr-2 pl-1.5"
+			className="flex items-end gap-1.5 pt-1 pr-1.5 pb-0 pl-1"
 			onSubmit={(e) => {
 				e.preventDefault();
 				act();
@@ -117,7 +117,7 @@ export function Composer({
 				placeholder={placeholder}
 				autoFocus={autoFocus}
 				rows={1}
-				className="field-sizing-content lh-input max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
+				className="field-sizing-content lh-input max-h-48 min-h-9 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-normal outline-none placeholder:text-muted-foreground/90"
 			/>
 			{/* The button follows the text (owner report 2026-10-03): while
 				 a turn runs WITH text typed it stays the SEND affordance
@@ -138,7 +138,7 @@ export function Composer({
 						type="submit"
 						data-testid="next-problem-button"
 						aria-label="Next problem"
-						className="mb-1 flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[9px] bg-primary px-3 font-ui text-[13.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+						className="mb-1 flex h-7.5 shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary px-3 font-ui text-[13.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
 					>
 						Next problem
 						<ArrowRightIcon className="size-4" />
@@ -149,13 +149,13 @@ export function Composer({
 						aria-label={busy && !canSend ? "Stop" : "Send"}
 						disabled={!busy && !canSend}
 						className={cn(
-							"mb-1 flex size-8 shrink-0 items-center justify-center rounded-[9px] transition-colors",
+							"mb-1 flex size-7.5 shrink-0 items-center justify-center rounded-md transition-[background-color,opacity]",
 							busy && !canSend
-								? "bg-secondary text-foreground hover:bg-accent"
-								: "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40",
+								? "bg-foreground text-background hover:opacity-85"
+								: "bg-foreground text-background hover:opacity-85 disabled:bg-foreground/15 disabled:text-muted-foreground disabled:opacity-100",
 						)}
 					>
-						{busy && !canSend ? <SquareIcon className="size-3.5" /> : <ArrowUpIcon className="size-4" strokeWidth={2.4} />}
+						{busy && !canSend ? <SquareIcon className="size-3 fill-current" /> : <ArrowUpIcon className="size-3.5" strokeWidth={2.4} />}
 					</button>
 				)}
 		</form>

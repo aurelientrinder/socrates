@@ -221,51 +221,124 @@ ReasoningTrigger.displayName = "ReasoningTrigger";
 ReasoningContent.displayName = "ReasoningContent";
 
 /**
- * ONE THINKING BLOCK PER REPLY (owner, chat-feed redesign 2026-11-01):
- * a tutor reply that spans several provider steps used to render one
- * "Thinking" row per step, stacked between the step's text and tool
- * cards. The owner asked for Claude's grammar instead — every thought
- * of the reply folds into a single collapsible block at the top, and
- * opening it reads the thoughts in order. Empty texts (the arrived-but-
- * empty placeholder row) still render the row; they add no step.
+ * THE THINKING MARK (chat redesign, 2026-11-15): a brain glyph whose
+ * strokes carry a slow travelling dash while the tutor thinks, like a
+ * signal running through it, plus a soft breathing scale. At rest the
+ * same glyph sits still and muted. Ink only, no accent colour.
+ */
+export function BrainMark({ active, className }: { active: boolean; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("lh-brain relative inline-flex size-[18px] shrink-0 items-center justify-center", active && "lh-brain-active", className)}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className="size-full">
+        <path className="lh-brain-base" d="M12 18V5" />
+        <path className="lh-brain-base" d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" />
+        <path className="lh-brain-base" d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5" />
+        <path className="lh-brain-base" d="M17.997 5.125a4 4 0 0 1 2.526 5.77" />
+        <path className="lh-brain-base" d="M18 18a4 4 0 0 0 2-7.464" />
+        <path className="lh-brain-base" d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" />
+        <path className="lh-brain-base" d="M6 18a4 4 0 0 1-2-7.464" />
+        <path className="lh-brain-base" d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
+        {active && (
+          <g className="lh-brain-signal">
+            <path d="M12 18V5" />
+            <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" />
+            <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5" />
+            <path d="M17.997 5.125a4 4 0 0 1 2.526 5.77" />
+            <path d="M18 18a4 4 0 0 0 2-7.464" />
+            <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" />
+            <path d="M6 18a4 4 0 0 1-2-7.464" />
+            <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
+          </g>
+        )}
+      </svg>
+    </span>
+  );
+}
+
+/** The working line every "the tutor is thinking" moment shares: the
+ *  placeholder before the first token, the side thread's wait, and the
+ *  live head of a reply's thinking block. */
+export function ThinkingIndicator({ label = "Thinking", detail, className }: { label?: string; detail?: string; className?: string }) {
+  return (
+    <span
+      data-testid="thinking-indicator"
+      className={cn("flex min-w-0 items-center gap-2.5 font-ui text-[14px] text-muted-foreground", className)}
+      role="status"
+    >
+      <BrainMark active className="text-foreground/75" />
+      <Shimmer duration={1.6} className="shrink-0 font-medium">{label}</Shimmer>
+      {detail && <span className="min-w-0 truncate text-muted-foreground/80">{detail}</span>}
+    </span>
+  );
+}
+
+/** The newest bold headline in the thoughts (Gemini writes its thought
+ *  summaries as "**Heading**" + paragraph): the live status line. */
+export function latestThoughtHeadline(texts: readonly string[]): string | undefined {
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const all = [...(texts[i] ?? "").matchAll(/\*\*([^*\n]{3,80})\*\*/g)];
+    const last = all.at(-1)?.[1];
+    if (last) return last.trim();
+  }
+  return undefined;
+}
+
+/**
+ * ONE THINKING BLOCK PER REPLY (owner, chat-feed redesign 2026-11-01),
+ * REDRAWN AS A TRACE (2026-11-15): no box any more. The block is a quiet
+ * line led by the brain mark: animated with the newest thought headline
+ * while the tutor thinks, still and muted once done. Opening it shows the
+ * thoughts along a thin vertical trace, one node per step, the way the
+ * Gemini, ChatGPT and Claude apps show their reasoning.
  */
 export const ThinkingGroup = memo(
   ({ texts, isStreaming, className }: { texts: string[]; isStreaming: boolean; className?: string }) => {
     const steps = texts.filter((t) => t.trim() !== "");
+    const headline = isStreaming ? latestThoughtHeadline(steps) : undefined;
     return (
       <Reasoning
         isStreaming={isStreaming}
         data-testid="thinking-group"
-        className={cn("mb-2 w-full rounded-xl border border-border/80", className)}
+        className={cn("mb-1 w-full", className)}
       >
-        <ReasoningTrigger
-          className="px-3 py-2"
-          getThinkingMessage={(streaming) => (
-            <span className="flex items-center gap-1.5">
-              {streaming ? <Shimmer duration={1}>Thinking...</Shimmer> : <span>Thinking</span>}
+        <ReasoningTrigger className="group/think w-fit max-w-full gap-2.5 py-1 text-[14px] font-normal">
+          <BrainMark active={isStreaming} className={isStreaming ? "text-foreground/75" : "text-muted-foreground"} />
+          {isStreaming ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <Shimmer duration={1.6} className="shrink-0 font-medium">Thinking</Shimmer>
+              {headline && <span className="min-w-0 truncate text-muted-foreground/80" data-testid="thinking-headline">{headline}</span>}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 font-medium">
+              <span>Thought process</span>
               {steps.length > 1 && (
-                <span className="font-normal text-muted-foreground/80" data-testid="thinking-steps">
+                <span className="font-normal text-muted-foreground/75" data-testid="thinking-steps">
                   · {steps.length} steps
                 </span>
               )}
             </span>
           )}
-        />
+          <ChevronDownIcon className="size-3.5 shrink-0 -rotate-90 opacity-60 transition-transform group-data-[state=open]/think:rotate-0" />
+        </ReasoningTrigger>
         <CollapsibleContent
           className={cn(
-            "border-t border-border/80 px-3.5 py-3 text-sm text-muted-foreground outline-none",
-            "data-[state=closed]:fade-out-0 data-[state=closed]:animate-out data-[state=open]:animate-in",
+            "text-[14px] text-muted-foreground outline-none",
+            "data-[state=closed]:fade-out-0 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=open]:fade-in-0",
           )}
         >
-          <div className="flex flex-col gap-3">
+          <ol className="lh-think-trace mt-1.5 mb-2 [&_p]:my-1.5 [&_strong]:text-foreground/80 ml-[8.5px] border-l border-border pl-[19px]">
             {steps.map((t, i) => (
-              <div key={i} className={cn(i > 0 && "border-t border-dashed border-border/70 pt-3")}>
+              <li key={i} className="relative py-1.5 leading-relaxed">
+                <span aria-hidden className="absolute top-[0.85rem] -left-[23px] size-[7px] rounded-full border border-border bg-background" />
                 <Streamdown components={mdComponents} plugins={streamdownPlugins}>
                   {transformMathDelimiters(t)}
                 </Streamdown>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         </CollapsibleContent>
       </Reasoning>
     );
