@@ -8,7 +8,7 @@
  */
 
 import type { Usage } from "../../llm/index.ts";
-import type { AgentTool } from "../../llm/index.ts";
+import type { AgentMessage, AgentTool, AssistantMessage, ToolResultMessage } from "../../llm/index.ts";
 import type { TSchema } from "typebox";
 import { invalidInputResult, toToolResult } from "../tool-execute.ts";
 import type { ModelRole } from "../../../config.ts";
@@ -76,59 +76,113 @@ export async function runSubmitAgent<T>(opts: {
 	 *  a problem string yields an isError result (invalidInputResult) →
 	 *  the model retries within maxTurns. null = accept. */
 	validate?: (value: T) => string | null;
+	/** Extra rounds after a run that ended WITHOUT a valid submit (the model
+	 *  answered in prose, spent its turns exploring, kept failing the
+	 *  checks, or sent a malformed call): the transcript continues with a
+	 *  "submit now" message and only the submit tool. Default 0 (the old
+	 *  single-run behavior). Gemini, 2026-11-15: the mock-exam author ended
+	 *  runs without a submit_exam call. */
+	submitNudges?: number;
 }): Promise<T> {
 	let submitted: T | undefined;
-	const result = await runSubagent(
-		[
-			// healToolRecord (owner, 2026-10-09): the standard argument heal
-		// over the extra tools (the auditor's graph set) — same as every
-		// registry.
-		...(opts.extraTools ? Object.values(healToolRecord(opts.extraTools)) : []),
-			{
-				name: opts.toolName,
-				label: opts.toolName,
-				description: opts.toolDescription,
-				parameters: opts.parameters,
-				prepareArguments: (args) =>
-					// The standard heal composes AFTER the caller's shim (the
-					// whitehead generalization, 2026-10-09) — extraction's
-					// healStringifiedArrays stays the inner pass.
-					healEncodedArguments(
-						opts.prepareArguments ? opts.prepareArguments(args) : args,
-						opts.parameters,
-					) as never,
-				execute: async (_toolCallId, input) => {
-					const value = opts.fill(input);
-					const problem = opts.validate?.(value) ?? null;
-					if (problem) return invalidInputResult(opts.toolName, [problem]);
-					submitted = value;
-					return toToolResult(submitted);
-				},
-			} satisfies AgentTool<any>,
-		],
-		{
-			role: opts.role,
-			engine: opts.engine,
-			systemPrompt: opts.systemPrompt,
-			prompt: opts.prompt,
-			maxTurns: opts.maxTurns ?? 4,
-			abortSignal: opts.signal,
-			chatId: opts.chatId,
-			onAssistantMessage: (message, step) =>
-				opts.onStep(
-					message.usage,
-					// Provider-qualified stamp (model slots wave, 2026-09-20):
-					// pi reports the bare id; usage stamps carry provider:id to
-					// match the price table's uniform keys.
-					`${message.provider}:${message.model}`,
-					step,
-					message.stopReason,
-					message.content.filter((c) => c.type === "toolCall").map((c) => (c as { name: string }).name).join(", ") || "(none)",
-				),
-			shouldStop: (_message, toolResults) => toolResults.some((r) => r.toolName === opts.toolName && !r.isError),
+	let lastProblem: string | null = null;
+	const submitTool = {
+		name: opts.toolName,
+		label: opts.toolName,
+		description: opts.toolDescription,
+		parameters: opts.parameters,
+		prepareArguments: (args: unknown) =>
+			// The standard heal composes AFTER the caller's shim (the
+			// whitehead generalization, 2026-10-09) — extraction's
+			// healStringifiedArrays stays the inner pass.
+			healEncodedArguments(
+				opts.prepareArguments ? opts.prepareArguments(args) : args,
+				opts.parameters,
+			) as never,
+		execute: async (_toolCallId: string, input: unknown) => {
+			const value = opts.fill(input);
+			const problem = opts.validate?.(value) ?? null;
+			if (problem) {
+				lastProblem = problem;
+				return invalidInputResult(opts.toolName, [problem]);
+			}
+			submitted = value;
+			return toToolResult(submitted);
 		},
-	);
-	void result;
-	if (!submitted) throw new Error(opts.neverSubmitted);
+	} satisfies AgentTool<any>;
+	const runOptions = {
+		role: opts.role,
+		engine: opts.engine,
+		systemPrompt: opts.systemPrompt,
+		abortSignal: opts.signal,
+		chatId: opts.chatId,
+		onAssistantMessage: (message: AssistantMessage, step: number) =>
+			opts.onStep(
+				message.usage,
+				// Provider-qualified stamp (model slots wave, 2026-09-20):
+				// pi reports the bare id; usage stamps carry provider:id to
+				// match the price table's uniform keys.
+				`${message.provider}:${message.model}`,
+				step,
+				message.stopReason,
+				message.content.filter((c) => c.type === "toolCall").map((c) => (c as { name: string }).name).join(", ") || "(none)",
+			),
+		shouldStop: (_message: AssistantMessage, toolResults: ToolResultMessage[]) =>
+			toolResults.some((r) => r.toolName === opts.toolName && !r.isError),
+	};
+
+	const nudges = opts.submitNudges ?? 0;
+	let transcript: AgentMessage[] | null = null;
+	let malformed = false;
+	try {
+		transcript = (
+			await runSubagent([...(opts.extraTools ? Object.values(healToolRecord(opts.extraTools)) : []), submitTool], {
+				...runOptions,
+				prompt: opts.prompt,
+				maxTurns: opts.maxTurns ?? 4,
+			})
+		).newMessages;
+	} catch (err) {
+		if (nudges === 0 || !isMalformedCallError(err)) throw err;
+		malformed = true;
+	}
+	for (let round = 0; !submitted && round < nudges; round++) {
+		if (opts.signal?.aborted) break;
+		const nudge = submitNudge(opts.toolName, lastProblem, malformed);
+		const messages: AgentMessage[] = transcript
+			? [...transcript, { role: "user", content: nudge, timestamp: Date.now() } as AgentMessage]
+			: [{ role: "user", content: `${opts.prompt}\n\n${nudge}`, timestamp: Date.now() } as AgentMessage];
+		malformed = false;
+		try {
+			transcript = (await runSubagent([submitTool], { ...runOptions, messages, maxTurns: 3 })).newMessages;
+			// newMessages excludes the seeded input: keep the whole history.
+			transcript = [...messages, ...transcript];
+		} catch (err) {
+			if (!isMalformedCallError(err)) throw err;
+			malformed = true;
+		}
+	}
+	if (!submitted) {
+		if (lastProblem) console.info(`[${opts.toolName}] never accepted; last check: ${String(lastProblem).slice(0, 600)}`);
+		throw new Error(opts.neverSubmitted);
+	}
 	return submitted;
+}
+
+/** Gemini's finish reasons for a tool call it could not form (huge or
+ *  badly escaped arguments): the turn is lost, not the run. */
+export function isMalformedCallError(err: unknown): boolean {
+	const message = err instanceof Error ? err.message : String(err);
+	return /MALFORMED_FUNCTION_CALL|UNEXPECTED_TOOL_CALL|TOO_MANY_TOOL_CALLS/.test(message);
+}
+
+/** The "submit now" turn after a run that ended without a valid submit. */
+export function submitNudge(toolName: string, lastProblem: string | null, malformed: boolean): string {
+	const lines = [
+		`You have not completed your task: nothing was accepted through ${toolName}. Call ${toolName} NOW with your complete answer.`,
+		"Do not reply in prose and do not call any other tool: the submit call is the only thing that counts.",
+	];
+	if (malformed) lines.push("Your last call was malformed: send ONE call whose arguments are valid JSON matching the schema (escape backslashes in LaTeX).");
+	if (lastProblem) lines.push(`Your last submission was refused for these reasons; fix exactly these:\n${lastProblem}`);
+	return lines.join("\n");
 }

@@ -67,7 +67,11 @@ export interface RoleModelOverride {
  *  starting point); cheap = researcher, demo-builder, extractor, auditor,
 ; vision = visual-maker + pdf-reader. Resolution per role:
  *  ROLE OVERRIDE → slot → factory pin. */
-export const MODEL_SLOTS = ["strong", "cheap", "vision"] as const;
+export const MODEL_SLOTS = ["strong", "cheap", "vision", "exam"] as const;
+/** Optional slots: unset, they borrow another slot's model and level
+ *  (exam = mock exams, 2026-11-15: unset runs on the strong slot). They
+ *  never gate setup and never appear in a not-configured refusal. */
+export const SLOT_FALLBACK: Readonly<Partial<Record<ModelSlotName, ModelSlotName>>> = { exam: "strong" };
 export type ModelSlotName = (typeof MODEL_SLOTS)[number];
 
 /** The DEFAULT thinking level for UNSET levels only (owner, 2026-09-22):
@@ -204,6 +208,8 @@ export interface ModelsSettings {
 	strong?: ModelSlot;
 	cheap?: ModelSlot;
 	vision?: ModelSlot;
+	/** Mock exams (optional): unset = the strong slot (SLOT_FALLBACK). */
+	exam?: ModelSlot;
 }
 
 /** First-run gate (model-slots wave, owner 2026-09-20): the app refuses

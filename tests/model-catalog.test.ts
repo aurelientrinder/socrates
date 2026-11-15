@@ -71,7 +71,7 @@ describe("the model catalog projection", () => {
 		const google = providers.find((p) => p.id === "google");
 		assert.ok(google && google.keyPresent, "google federated (key pinned above)");
 		assert.deepEqual(providers.map((p) => p.id), ["google"]);
-		assert.deepEqual(Object.keys(slots), ["strong", "cheap", "vision"]);
+		assert.deepEqual(Object.keys(slots), ["strong", "cheap", "vision", "exam"]);
 		// a keyless provider's models never reach the picker
 		const keyless = providers.filter((p) => !p.keyPresent).map((p) => p.id);
 		for (const id of keyless) {

@@ -25,6 +25,7 @@ import {
 	answerText,
 	blindAgreement,
 	examDraftProblems,
+	normalizeExamDraft,
 	OPTION_LETTERS,
 	problemsFromDraft,
 	rubricSubmissionProblems,
@@ -48,7 +49,37 @@ export interface ExaminerRun {
 	onUsage?: (usage: Usage, model: string) => void;
 }
 
-const onStepOf = (run: ExaminerRun) => (usage: Usage, model: string) => run.onUsage?.(usage, model);
+/** Usage to the caller, and one log line per model step (which tools, how
+ *  it stopped), so a failed exam can be diagnosed from main.log. */
+const onStepOf =
+	(run: ExaminerRun, label: string) =>
+	(usage: Usage, model: string, step: number, finishReason: string, tools: string) => {
+		console.info(`[exam ${label}] step ${step}: ${finishReason}, tools: ${tools} (${model}, ${usage.output} out)`);
+		run.onUsage?.(usage, model);
+	};
+
+/** Notes tool calls the author may make before it is told to write. */
+export const AUTHOR_NOTES_CALLS = 8;
+
+/** The notes tool with a reading budget: past it, every call answers
+ *  "write the exam now", so exploring can never eat the turns the submit
+ *  needs (Gemini, 2026-11-15). */
+export function budgetedNotesTool(tool: AgentTool<any>, calls: number, toolName: string): AgentTool<any> {
+	let used = 0;
+	return {
+		...tool,
+		execute: async (...args: Parameters<AgentTool<any>["execute"]>) => {
+			used++;
+			if (used > calls) {
+				return {
+					content: [{ type: "text", text: `Reading budget used up. You have enough material: call ${toolName} now with the whole exam.` }],
+					details: undefined,
+				} as Awaited<ReturnType<AgentTool<any>["execute"]>>;
+			}
+			return tool.execute(...args);
+		},
+	};
+}
 
 const LANGUAGE_DEFAULT =
 	"LANGUAGE: write in the language of the learner's request and course material (if they differ, the request's language wins).";
@@ -176,7 +207,7 @@ export async function authorExam(
 		toolName: "submit_exam",
 		toolDescription: "Submit the whole exam: every problem with its scenario and parts, each part with its hidden reference solution and rubric.",
 		parameters: examDraftSchema,
-		fill: (v) => v as ExamDraft,
+		fill: (v) => normalizeExamDraft(v as ExamDraft, input.problems),
 		validate: (draft) => {
 			const problems = examDraftProblems(draft, input.problems);
 			return problems.length > 0 ? problems.join("\n") : null;
@@ -185,10 +216,11 @@ export async function authorExam(
 		prompt: authorPrompt(input),
 		engine: run.engine,
 		signal: run.signal,
-		onStep: onStepOf(run),
-		neverSubmitted: "The examiner did not produce a valid exam.",
-		...(input.notesTool ? { extraTools: { notes: input.notesTool } } : {}),
+		onStep: onStepOf(run, "author"),
+		neverSubmitted: "The examiner did not produce a valid exam. Try again; if it keeps failing, pick another mock exam model in Settings, Models.",
+		...(input.notesTool ? { extraTools: { notes: budgetedNotesTool(input.notesTool, AUTHOR_NOTES_CALLS, "submit_exam") } } : {}),
 		maxTurns: input.notesTool ? 12 : 4,
+		submitNudges: 2,
 	});
 	return { title: draft.title.trim(), problems: problemsFromDraft(draft, keys) };
 }
@@ -242,8 +274,9 @@ export async function solveBlind(run: ExaminerRun, problems: readonly ExamProble
 		prompt: `<exam>\n${paperText(problems)}\n</exam>`,
 		engine: run.engine,
 		signal: run.signal,
-		onStep: onStepOf(run),
+		onStep: onStepOf(run, "solver"),
 		neverSubmitted: "The independent check did not finish.",
+		submitNudges: 1,
 	});
 	return out.answers;
 }
@@ -326,8 +359,9 @@ export async function auditExam(run: ExaminerRun, problems: readonly ExamProblem
 		prompt: auditPrompt(problems, blind),
 		engine: run.engine,
 		signal: run.signal,
-		onStep: onStepOf(run),
+		onStep: onStepOf(run, "auditor"),
 		neverSubmitted: "The answer check did not finish.",
+		submitNudges: 1,
 	});
 	return out.verdicts;
 }
@@ -439,8 +473,9 @@ export async function gradeProblem(
 		prompt: gradePrompt(problem, answers, toGrade, codeGrades),
 		engine: run.engine,
 		signal: run.signal,
-		onStep: onStepOf(run),
+		onStep: onStepOf(run, "grader"),
 		neverSubmitted: `Problem ${problem.id} could not be graded.`,
+		submitNudges: 1,
 		maxTurns: 5,
 	});
 }

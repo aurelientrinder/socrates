@@ -229,12 +229,67 @@ export interface ExamDraft {
 const DEFAULT_TOLERANCE = 0.01;
 const MAX_TOLERANCE = 0.1;
 
+/** Repair, in code, the slips a model makes that code can settle without
+ *  changing what the exam asks or what the reference says (Gemini,
+ *  2026-11-15: a draft refused for bookkeeping slips is a whole exam
+ *  rewritten, and runs ended with no exam at all). Pure; returns a copy.
+ *  - extra problems beyond the asked count, and parts beyond MAX_PARTS,
+ *    are cut from the end (later parts build on earlier ones, never back);
+ *  - points round to a whole number in range; a rubric whose items add up
+ *    to a different WHOLE number sets the part's points (the rubric is the
+ *    detailed scheme);
+ *  - final: true stays only on numeric parts, on one item: the last
+ *    flagged one, or the last item when none is flagged;
+ *  - a numeric part with no numeric.value takes it from finalAnswer when
+ *    that reads as one number; a tolerance out of range is clamped. */
+export function normalizeExamDraft(draft: ExamDraft, expectedProblems: number): ExamDraft {
+	const problems = (draft.problems ?? []).slice(0, Math.max(1, expectedProblems)).map((p) => ({
+		...p,
+		parts: (p.parts ?? []).slice(0, MAX_PARTS).map((part) => {
+			const out = { ...part };
+			if (Number.isFinite(out.points)) out.points = Math.min(20, Math.max(1, Math.round(out.points)));
+			if (out.kind === "choice") return out;
+			let rubric = (out.rubric ?? []).map((r) => ({ ...r }));
+			if (out.kind === "numeric") {
+				if (!out.numeric || !Number.isFinite(out.numeric.value)) {
+					const value = parseNumber(out.finalAnswer);
+					if (value !== null) out.numeric = { ...out.numeric, value };
+				}
+				if (out.numeric?.tolerance !== undefined && !(out.numeric.tolerance > 0 && out.numeric.tolerance <= MAX_TOLERANCE)) {
+					const { tolerance, ...rest } = out.numeric;
+					out.numeric = tolerance > MAX_TOLERANCE ? { ...rest, tolerance: MAX_TOLERANCE } : rest;
+				}
+				if (rubric.length > 0) {
+					let last = -1;
+					rubric.forEach((r, i) => {
+						if (r.final) last = i;
+					});
+					if (last === -1) last = rubric.length - 1;
+					rubric = rubric.map((r, i) => {
+						const { final: _f, ...rest } = r;
+						return i === last ? { ...rest, final: true } : rest;
+					});
+				}
+			} else {
+				rubric = rubric.map(({ final: _f, ...rest }) => rest);
+			}
+			const sum = rubric.reduce((a, r) => a + (Number.isFinite(r.points) ? r.points : 0), 0);
+			if (rubric.length > 0 && sum !== out.points && Number.isInteger(sum) && sum >= 1 && sum <= 20) out.points = sum;
+			if (out.rubric !== undefined || rubric.length > 0) out.rubric = rubric;
+			return out;
+		}),
+	}));
+	return { ...draft, problems };
+}
+
 /** Everything wrong with a draft, as messages the examiner can act on.
  *  Empty = the draft can become an exam. */
 export function examDraftProblems(draft: ExamDraft, expectedProblems: number): string[] {
 	const out: string[] = [];
 	if (!draft.title?.trim()) out.push("title is empty.");
-	if (draft.problems.length !== expectedProblems) {
+	// Fewer problems than asked still make a usable paper (the extras are
+	// cut by normalizeExamDraft); none, or more than asked, is refused.
+	if (draft.problems.length === 0 || draft.problems.length > expectedProblems) {
 		out.push(`Write exactly ${expectedProblems} problem${expectedProblems === 1 ? "" : "s"} (got ${draft.problems.length}).`);
 	}
 	let parts = 0;

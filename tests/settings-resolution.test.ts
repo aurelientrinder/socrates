@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+	resolveExamSpec,
 	extractionEnabled,
 	graphToolsEnabled,
 	renderingEnabled,
@@ -264,5 +265,20 @@ describe("the graph channel gates (the wave's seam honoring)", () => {
 		assert.deepEqual(eff.agent.graphTools, {});
 		const off = resolveSettings({ version: 1, agent: { graphTools: { enabled: false } } });
 		assert.deepEqual(off.agent.graphTools, { enabled: false });
+	});
+});
+describe("resolveExamSpec (mock exam model, 2026-11-15)", () => {
+	const strong = { model: { provider: "google", id: "gemini-strong" }, thinkingLevel: "medium" as const };
+	it("borrows the strong slot when the exam slot is unset", () => {
+		assert.deepEqual(resolveExamSpec({ version: 1, models: { strong } }), { provider: "google", id: "gemini-strong", thinkingLevel: "medium" });
+		assert.equal(resolveExamSpec(null), undefined);
+	});
+	it("runs its own model and level once one is picked", () => {
+		const exam = { model: { provider: "google", id: "gemini-exam" }, thinkingLevel: "high" as const };
+		assert.deepEqual(resolveExamSpec({ version: 1, models: { strong, exam } }), { provider: "google", id: "gemini-exam", thinkingLevel: "high" });
+		assert.equal(resolveSettings({ version: 1, models: { strong, exam } }).models.exam?.id, "gemini-exam");
+	});
+	it("ignores a level with no model of its own", () => {
+		assert.equal(resolveExamSpec({ version: 1, models: { strong, exam: { thinkingLevel: "high" } } })?.id, "gemini-strong");
 	});
 });

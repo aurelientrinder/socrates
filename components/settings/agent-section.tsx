@@ -56,6 +56,7 @@ import type React from "react";
 import {
 	COMPACTION_THRESHOLD_FLOOR,
 	MODEL_SLOTS,
+	SLOT_FALLBACK,
 	resolveSettings,
 	type AgentSettings,
 	type CompactionSettings,
@@ -81,6 +82,7 @@ const SLOT_META: Record<ModelSlotName, { label: string; roster: string }> = {
 	strong: { label: "Teaching", roster: "The tutor you talk to" },
 	cheap: { label: "Background work", roster: "Research, demos and grading" },
 	vision: { label: "Vision", roster: "Reads PDFs and draws" },
+	exam: { label: "Mock exams", roster: "Writes and marks mock exams" },
 };
 
 /** Plain names for the tool switches (settings redesign). */
@@ -620,7 +622,7 @@ export function AgentSection({
 
 	const modelsGroup = (
 		<>
-			<SettingsGroup label="Models" hint="One for teaching, a cheaper one for background work, one that can see." testid="group-models">
+			<SettingsGroup label="Models" hint="One for teaching, a cheaper one for background work, one that can see, and optionally one for mock exams." testid="group-models">
 				{MODEL_SLOTS.map((slot) => {
 					const override = models?.[slot];
 					const modelId = override?.model?.id ?? "";
@@ -642,6 +644,11 @@ export function AgentSection({
 					// Vision slots pick from image-capable models only.
 					const slotCatalog =
 						slot === "vision" ? catalog?.filter((m) => m.input.includes("image")) : catalog;
+					// Optional slots (mock exams): unset borrows another slot,
+					// so the trigger names it, the thinking trigger waits for a
+					// model of its own, and Reset hands the job back.
+					const borrows = SLOT_FALLBACK[slot];
+					const borrowed = borrows && !modelId ? SLOT_META[borrows].label : null;
 					return (
 						<SettingsRow
 							key={slot}
@@ -657,13 +664,14 @@ export function AgentSection({
 							>
 								<MenuTrigger
 									value={modelId ? prettyModel(modelId) : ""}
-									emptyLabel="—"
+									emptyLabel={borrowed ? `Same as ${borrowed}` : "—"}
 									ariaLabel={`${SLOT_META[slot].label} model`}
 									testid={`slot-model-${slot}`}
 									open={thisMenuOpen === "model"}
 									onClick={() => setOpenMenu(thisMenuOpen === "model" ? null : { target: slot, kind: "model" })}
 									widthClass="min-w-20"
 								/>
+								{!borrowed && (
 								<MenuTrigger
 									// Legacy display (chunk 2 item 4): no stored level + a known
 									// model → the RESOLVED level (the ordering's first supported —
@@ -676,6 +684,21 @@ export function AgentSection({
 									onClick={() => setOpenMenu(thisMenuOpen === "thinking" ? null : { target: slot, kind: "thinking" })}
 									widthClass="w-20"
 								/>
+								)}
+								{borrows && modelId && (
+									<button
+										type="button"
+										className="text-xs text-muted-foreground hover:text-foreground"
+										data-testid={`slot-reset-${slot}`}
+										title={`Use the ${SLOT_META[borrows].label} model again`}
+										onClick={() => {
+											onModelsChange(composeSlotModel(models, slot, "", "", ""));
+											setOpenMenu(null);
+										}}
+									>
+										Reset
+									</button>
+								)}
 								{thisMenuOpen === "model" && (
 									<MenuShell
 										preferredSide="down"
@@ -699,7 +722,9 @@ export function AgentSection({
 											footer={
 												catalog && catalog.length === 0
 													? "No models — add a provider key in Keys"
-													: "Runs every agent of this tier"
+													: borrows
+														? `Unset, mock exams use the ${SLOT_META[borrows].label} model`
+														: "Runs every agent of this tier"
 											}
 										/>
 									</MenuShell>

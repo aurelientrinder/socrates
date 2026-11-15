@@ -195,7 +195,7 @@ export function catalogRolePins(): RolePins {
 export function catalogSlots(): SlotPins {
 	const slots = effectiveSettings().models;
 	const pins = {} as SlotPins;
-	for (const name of ["strong", "cheap", "vision"] as const) {
+	for (const name of ["strong", "cheap", "vision", "exam"] as const) {
 		const slot: EffectiveSlot | null = slots[name];
 		pins[name] = slot
 			? {
