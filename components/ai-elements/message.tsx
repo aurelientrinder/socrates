@@ -1,7 +1,5 @@
 "use client";
 
-import "katex/dist/katex.min.css";
-
 import { Button } from "@/components/ui/button";
 import {
   ButtonGroup,
