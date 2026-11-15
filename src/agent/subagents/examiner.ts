@@ -21,8 +21,12 @@ import type { Usage } from "../../llm/index.ts";
 import type { AgentTool } from "../../llm/index.ts";
 import type { PiEngine } from "../models.ts";
 import { runSubmitAgent } from "./submit-agent.ts";
+import { getHeadless } from "./headless.ts";
 import {
 	answerText,
+	figureProblem,
+	MAX_EXAM_FIGURES,
+	resolveDraftFigures,
 	blindAgreement,
 	examDraftProblems,
 	normalizeExamDraft,
@@ -96,6 +100,7 @@ const partSchema = Type.Object({
 		description: "written (explain, derive, justify, compare, prove), numeric (one number to compute), or choice (multiple choice — rare).",
 	}),
 	points: Type.Integer({ minimum: 1, maximum: 20, description: "Marks for the part, like a real paper (usually 2 to 10)." }),
+	figure: Type.Optional(Type.String({ description: "Optional: the id of a figure you drew with draw_figure that only this part needs, e.g. \"fig2\". Shown under the prompt." })),
 	options: Type.Optional(Type.Array(Type.String(), { description: "choice only: 3 to 6 option texts (no letters, they are added)." })),
 	solution: Type.String({
 		description: "HIDDEN until graded. The full worked reference solution, step by step, checked. Written BEFORE finalAnswer.",
@@ -131,8 +136,9 @@ export const examDraftSchema = Type.Object({
 		Type.Object({
 			title: Type.String({ description: "A short name for the problem, e.g. \"A piston at constant pressure\"." }),
 			scenario: Type.String({
-				description: "The situation every part refers to (markdown + LaTeX): the setup, the givens, any data, constants or figures described in words.",
+				description: "The situation every part refers to (markdown + LaTeX): the setup, the givens, any data and constants. Refer to a figure as \"the figure\"; every value a part needs is stated in words or labelled on the figure.",
 			}),
+			figure: Type.Optional(Type.String({ description: "Optional: the id of a figure you drew with draw_figure, e.g. \"fig1\". Shown under the scenario." })),
 			sources: Type.Optional(Type.Array(Type.String(), { description: "Files and pages of the learner's notes this problem draws on, e.g. \"Thermo.pdf, p. 12\"." })),
 			parts: Type.Array(partSchema, { description: "2 to 5 parts, (a), (b), (c)…, in order." }),
 		}),
@@ -171,6 +177,21 @@ THE REFERENCE (hidden from the learner until the exam is graded)
 - choice parts: options and correctOption; no rubric needed. Distractors are the mistakes real students make.
 - topicKeys: tag each part with the keys of the topics it tests, from <topics> when given, copied exactly. Leave it empty when none fit.
 
+FIGURES AND GRAPHS
+- Draw a figure wherever the real exam would show one: a geometry or mechanics setup (bodies, supports, forces, a beam, a mass-spring
+  system), a circuit, a process or phase diagram, the graph of a function, a plot of data to read values from, a labelled structure.
+  A problem the course would pose with a picture is not fair in words alone. Skip figures where the real paper would have none.
+- Draw each one with draw_figure({ id, svg }) BEFORE submit_exam, then reference it by id: a problem's \`figure\` (under the scenario) or,
+  rarely, a part's \`figure\` (a graph only that part needs). At most ${MAX_EXAM_FIGURES} figures. draw_figure shows you the render: LOOK at it and
+  redraw it (same id) until it is right. A figure that contradicts the scenario grades the learner against a lie, like a wrong reference.
+- SVG rules: one complete <svg> with a viewBox (about 480 to 640 wide), nothing touching the edges; no background rectangle; strokes,
+  text and arrowheads in currentColor (the paper is shown in light and dark themes); fill="none" or a light currentColor fill-opacity
+  for areas; at most one accent colour, the warm mid-tone #b45309, for the one thing to notice; sans-serif labels, 14px or larger.
+  Graphs: labelled axes with units, ticks and tick values a student can read, a light grid when values are to be read off.
+- The figure shows the setup, never the answer: no result a part asks for, no construction that gives the method away.
+- The learner answers in text and cannot draw. Never ask them to sketch or draw; ask them to describe, give coordinates, name
+  features or state values instead.
+
 GROUNDING
 - Write from the learner's course: their notation, definitions, methods and the kind of problems their course sets. The material is in
   <material> and, when available, in the notes tool (search before reading: course files are long). List in \`sources\` the files and pages
@@ -181,7 +202,7 @@ ${languageLine ?? LANGUAGE_DEFAULT}
 
 ${DATA_LAW}
 
-Submit the whole exam in ONE submit_exam call. If it comes back with problems, fix exactly those and submit again.`;
+Draw any figures first, then submit the whole exam in ONE submit_exam call. If it comes back with problems, fix exactly those and submit again.`;
 }
 
 export function authorPrompt(input: { scope: string; material: string; topics: readonly ExamTopic[]; minutes: number; problems: number }): string {
@@ -197,17 +218,67 @@ export function authorPrompt(input: { scope: string; material: string; topics: r
 	].join("\n\n");
 }
 
+const drawFigureSchema = Type.Object({
+	id: Type.String({ description: "A short id to reference the figure by, e.g. \"fig1\". Drawing an id again replaces that figure." }),
+	svg: Type.String({ description: "One complete <svg viewBox=\"…\">…</svg> (currentColor strokes and text, no background)." }),
+});
+
+/** The author's drawing tool: each figure is checked, rendered and SHOWN
+ *  to the author (the visual maker's law: verify by looking), and kept
+ *  here so submit_exam can reference it by id instead of carrying the
+ *  markup (huge, quote-heavy arguments are what Gemini fails to form). */
+export function figureTool(figures: Map<string, string>): AgentTool<any> {
+	return {
+		name: "draw_figure",
+		label: "draw_figure",
+		description:
+			"Draw (or redraw) one figure or graph for the exam as SVG. The render is shown to you: check it, then reference the id from a problem's or part's figure field in submit_exam.",
+		parameters: drawFigureSchema,
+		execute: async (_id: string, raw: unknown) => {
+			const input = (raw ?? {}) as { id?: unknown; svg?: unknown };
+			const id = typeof input.id === "string" ? input.id.trim() : "";
+			const svg = typeof input.svg === "string" ? input.svg.trim() : "";
+			const fail = (text: string) => ({ content: [{ type: "text" as const, text }], details: undefined, isError: true });
+			if (!/^[\w-]{1,24}$/.test(id)) return fail("id must be a short name like fig1 (letters, digits, - or _).");
+			const bad = figureProblem(svg);
+			if (bad) return fail(`Not drawn: ${bad}`);
+			if (!figures.has(id) && figures.size >= MAX_EXAM_FIGURES) return fail(`At most ${MAX_EXAM_FIGURES} figures per exam: redraw an existing id instead.`);
+			figures.set(id, svg);
+			const note = `Figure "${id}" saved. Reference it as figure: "${id}".`;
+			const headless = getHeadless();
+			if (headless.unavailableReason()) return { content: [{ type: "text" as const, text: `${note} (No preview available: re-read your SVG coordinates carefully.)` }], details: undefined };
+			try {
+				const png = await headless.renderSvg(svg);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `${note} Here is its render (light theme). LOOK: every value, label, direction and proportion true to the scenario? Labels readable, nothing clipped or overlapping, no answer given away? If not, draw_figure again with the same id.`,
+						},
+						{ type: "image" as const, data: png.toString("base64"), mimeType: "image/png" },
+					],
+					details: undefined,
+				};
+			} catch (err) {
+				figures.delete(id);
+				return fail(`Not drawn: the SVG did not render (${err instanceof Error ? err.message : String(err)}). Fix the markup and draw it again.`);
+			}
+		},
+	};
+}
+
 export async function authorExam(
 	run: ExaminerRun,
 	input: { scope: string; material: string; topics: readonly ExamTopic[]; minutes: number; problems: number; notesTool?: AgentTool<any> },
 ): Promise<{ title: string; problems: ExamProblem[] }> {
 	const keys = new Set(input.topics.map((t) => t.key));
+	const figures = new Map<string, string>();
 	const draft = await runSubmitAgent<ExamDraft>({
 		role: "teacher",
 		toolName: "submit_exam",
 		toolDescription: "Submit the whole exam: every problem with its scenario and parts, each part with its hidden reference solution and rubric.",
 		parameters: examDraftSchema,
-		fill: (v) => normalizeExamDraft(v as ExamDraft, input.problems),
+		fill: (v) => normalizeExamDraft(resolveDraftFigures(v as ExamDraft, figures), input.problems),
 		validate: (draft) => {
 			const problems = examDraftProblems(draft, input.problems);
 			return problems.length > 0 ? problems.join("\n") : null;
@@ -218,8 +289,13 @@ export async function authorExam(
 		signal: run.signal,
 		onStep: onStepOf(run, "author"),
 		neverSubmitted: "The examiner did not produce a valid exam. Try again; if it keeps failing, pick another mock exam model in Settings, Models.",
-		...(input.notesTool ? { extraTools: { notes: budgetedNotesTool(input.notesTool, AUTHOR_NOTES_CALLS, "submit_exam") } } : {}),
-		maxTurns: input.notesTool ? 12 : 4,
+		extraTools: {
+			draw_figure: figureTool(figures),
+			...(input.notesTool ? { notes: budgetedNotesTool(input.notesTool, AUTHOR_NOTES_CALLS, "submit_exam") } : {}),
+		},
+		// Drawing and looking takes turns of its own (a figure or two per
+		// problem, a redraw or two) on top of reading the notes.
+		maxTurns: (input.notesTool ? 12 : 4) + 8,
 		submitNudges: 2,
 	});
 	return { title: draft.title.trim(), problems: problemsFromDraft(draft, keys) };
@@ -238,6 +314,15 @@ const blindSchema = Type.Object({
 	),
 });
 
+/** A figure for a text-only reader: its SVG source (exact coordinates and
+ *  labels), which is what the learner sees drawn. */
+export function figureBlock(svg: string | undefined, id: string): string {
+	return svg ? `<figure for="${id}" format="svg">\n${svg}\n</figure>` : "";
+}
+
+const FIGURE_NOTE =
+	"A <figure> is shown to the learner as a drawing; you get its SVG source. Read values, labels and geometry from it as the learner would from the picture.";
+
 /** The exam as a student sees it: no solutions, no rubrics. */
 export function paperText(problems: readonly ExamProblem[]): string {
 	return problems
@@ -245,11 +330,15 @@ export function paperText(problems: readonly ExamProblem[]): string {
 			[
 				`## Problem ${p.id}: ${p.title}`,
 				p.scenario,
+				figureBlock(p.figure, p.id),
 				...p.parts.map((part) => {
 					const options = part.options?.map((o, i) => `   ${OPTION_LETTERS[i]} (index ${i}). ${o}`).join("\n");
-					return `(${part.id}) [${part.points} marks, ${part.kind}] ${part.prompt}${options ? `\n${options}` : ""}`;
+					const figure = figureBlock(part.figure, part.id);
+					return `(${part.id}) [${part.points} marks, ${part.kind}] ${part.prompt}${figure ? `\n${figure}` : ""}${options ? `\n${options}` : ""}`;
 				}),
-			].join("\n\n"),
+			]
+				.filter(Boolean)
+				.join("\n\n"),
 		)
 		.join("\n\n");
 }
@@ -270,7 +359,7 @@ export async function solveBlind(run: ExaminerRun, problems: readonly ExamProble
 			"You are a top student sitting a written exam. Solve every part carefully and completely, step by step, checking each result " +
 			"before you move on (recompute numbers, check units and signs). Use only the scenario and standard knowledge of the subject. " +
 			"Where a part is ambiguous or cannot be answered from what is given, say so plainly in your answer instead of guessing. " +
-			`Submit every answer in ONE submit_answers call.\n\n${DATA_LAW}`,
+			`${FIGURE_NOTE}\nSubmit every answer in ONE submit_answers call.\n\n${DATA_LAW}`,
 		prompt: `<exam>\n${paperText(problems)}\n</exam>`,
 		engine: run.engine,
 		signal: run.signal,
@@ -284,6 +373,11 @@ export async function solveBlind(run: ExaminerRun, problems: readonly ExamProble
 // ─── the auditor ────────────────────────────────────────────────────────────
 
 const auditSchema = Type.Object({
+	badFigures: Type.Optional(
+		Type.Array(Type.String(), {
+			description: "Ids of the problems (\"1\") or parts (\"1b\") whose figure contradicts the scenario, the reference, or gives an answer away. The figure is removed; drop the parts that cannot be answered without it.",
+		}),
+	),
 	verdicts: Type.Array(
 		Type.Object({
 			partId: Type.String(),
@@ -306,6 +400,7 @@ export function auditPrompt(problems: readonly ExamProblem[], blind: readonly Bl
 			[
 				`## Problem ${p.id}: ${p.title}`,
 				`<scenario>\n${p.scenario}\n</scenario>`,
+				figureBlock(p.figure, p.id),
 				...p.parts.map((part) => {
 					const b = byPart.get(part.id);
 					const agreement = blindAgreement(part, b);
@@ -313,6 +408,7 @@ export function auditPrompt(problems: readonly ExamProblem[], blind: readonly Bl
 					return [
 						`### Part ${part.id} [${part.points} marks, ${part.kind}]`,
 						part.prompt,
+						figureBlock(part.figure, part.id),
 						options ?? "",
 						`<reference>\n${part.solution}\nFinal answer: ${part.finalAnswer}${part.numeric ? ` (value ${part.numeric.value}${part.numeric.unit ? ` ${part.numeric.unit}` : ""}, tolerance ${part.numeric.tolerance})` : ""}${part.correctOption !== undefined ? ` (option index ${part.correctOption})` : ""}\n</reference>`,
 						`<rubric>\n${part.rubric.map((r) => `- ${r.criterion} [${r.points}]${r.final ? " (final value)" : ""}`).join("\n")}\n</rubric>`,
@@ -322,19 +418,27 @@ export function auditPrompt(problems: readonly ExamProblem[], blind: readonly Bl
 						.filter(Boolean)
 						.join("\n");
 				}),
-			].join("\n\n"),
+			]
+				.filter(Boolean)
+				.join("\n\n"),
 		)
 		.join("\n\n");
 }
 
-export async function auditExam(run: ExaminerRun, problems: readonly ExamProblem[], blind: readonly BlindAnswer[]): Promise<AuditVerdict[]> {
+export interface AuditResult {
+	verdicts: AuditVerdict[];
+	/** Problem or part ids whose figure must not reach the learner. */
+	badFigures: string[];
+}
+
+export async function auditExam(run: ExaminerRun, problems: readonly ExamProblem[], blind: readonly BlindAnswer[]): Promise<AuditResult> {
 	const ids = problems.flatMap((p) => p.parts.map((x) => x.id));
-	const out = await runSubmitAgent<{ verdicts: AuditVerdict[] }>({
+	const out = await runSubmitAgent<{ verdicts: AuditVerdict[]; badFigures?: string[] }>({
 		role: "teacher",
 		toolName: "submit_audit",
 		toolDescription: "Submit one verdict per part.",
 		parameters: auditSchema,
-		fill: (v) => v as { verdicts: AuditVerdict[] },
+		fill: (v) => v as { verdicts: AuditVerdict[]; badFigures?: string[] },
 		validate: (v) => {
 			const problemsFound: string[] = [];
 			const missing = ids.filter((id) => !v.verdicts.some((x) => x.partId === id));
@@ -355,6 +459,9 @@ export async function auditExam(run: ExaminerRun, problems: readonly ExamProblem
 			"correctOption where they apply. Only fix when the rubric still fits the corrected solution; otherwise drop.\n" +
 			"- drop: the part is ambiguous, cannot be answered from what is given, gives away another part's answer, or you cannot settle what is right.\n" +
 			"Write your reason before your verdict. A part that reaches the learner with a wrong reference grades them against a lie, so be strict.\n" +
+			"FIGURES: check every <figure> against its scenario and the references: values, labels, directions, proportions, axes. A figure that " +
+			"contradicts them, or shows a result a part asks for, goes in badFigures; drop every part that cannot be answered without it.\n" +
+			`${FIGURE_NOTE}\n` +
 			`Submit every verdict in ONE submit_audit call.\n\n${DATA_LAW}`,
 		prompt: auditPrompt(problems, blind),
 		engine: run.engine,
@@ -363,7 +470,7 @@ export async function auditExam(run: ExaminerRun, problems: readonly ExamProblem
 		neverSubmitted: "The answer check did not finish.",
 		submitNudges: 1,
 	});
-	return out.verdicts;
+	return { verdicts: out.verdicts, badFigures: out.badFigures ?? [] };
 }
 
 // ─── the grader ─────────────────────────────────────────────────────────────
@@ -406,6 +513,7 @@ THE LAWS
 - feedback: 1 to 3 plain sentences to the learner per part: what earned marks, what was missing or wrong, the key correction. The full
   reference is shown beside it, so do not restate it.
 - Grade exactly the parts listed in <to-grade>; the others are shown only as context.
+- ${FIGURE_NOTE}
 
 ${DATA_LAW}
 
@@ -424,6 +532,7 @@ export function gradePrompt(problem: ExamProblem, answers: Readonly<Record<strin
 		return [
 			`### Part ${part.id} [${part.points} marks, ${part.kind}]`,
 			part.prompt,
+			figureBlock(part.figure, part.id),
 			part.options ? part.options.map((o, i) => `  ${OPTION_LETTERS[i]}. ${o}`).join("\n") : "",
 			`<reference>\n${part.solution}\nFinal answer: ${part.finalAnswer}\n</reference>`,
 			`<rubric>\n${part.rubric.map((r) => `- [${r.id}] ${r.criterion} (${r.points} marks)${r.final ? " (final value)" : ""}`).join("\n")}\n</rubric>`,
@@ -436,9 +545,12 @@ export function gradePrompt(problem: ExamProblem, answers: Readonly<Record<strin
 	return [
 		`## Problem ${problem.id}: ${problem.title}`,
 		`<scenario>\n${problem.scenario}\n</scenario>`,
+		figureBlock(problem.figure, problem.id),
 		...parts,
 		`<to-grade>${toGrade.map((p) => p.id).join(", ")}</to-grade>`,
-	].join("\n\n");
+	]
+		.filter(Boolean)
+		.join("\n\n");
 }
 
 /** Grade one problem's rubric parts. The quote law is enforced at the

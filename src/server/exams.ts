@@ -200,8 +200,8 @@ async function generate(id: string): Promise<void> {
 		phase("Solving it independently");
 		const blind = await solveBlind(run, draft.problems);
 		phase("Checking every answer against the independent solution");
-		const verdicts = await auditExam(run, draft.problems, blind);
-		const audited = applyAudit(draft.problems, verdicts);
+		const audit = await auditExam(run, draft.problems, blind);
+		const audited = applyAudit(draft.problems, audit.verdicts, audit.badFigures);
 		if (audited.problems.length === 0) {
 			throw new Error("No problem passed the answer check, so there is no exam to trust. Try again, or narrow what it covers.");
 		}

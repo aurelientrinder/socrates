@@ -59,6 +59,8 @@ export interface ExamPart {
 	kind: ExamPartKind;
 	/** Choice parts: the option texts, shown A, B, C… */
 	options?: string[];
+	/** A figure only this part needs (an SVG the examiner drew), shown under its prompt. */
+	figure?: string;
 	// ── hidden from the learner until the exam is graded ──
 	/** The worked reference solution. */
 	solution: string;
@@ -78,6 +80,8 @@ export interface ExamProblem {
 	title: string;
 	/** The situation every part refers to (markdown + LaTeX). */
 	scenario: string;
+	/** The scenario's figure or graph (an SVG the examiner drew), shown under it. */
+	figure?: string;
 	parts: ExamPart[];
 	/** Where the material came from ("Thermo.pdf, p. 4"), when notes were used. */
 	sources: string[];
@@ -202,6 +206,22 @@ export const PART_MISS_SHARE = 0.5;
 
 export const OPTION_LETTERS = "ABCDEFGH";
 
+/** Figures the examiner may draw for one exam, and the size of one. */
+export const MAX_EXAM_FIGURES = 8;
+export const MAX_FIGURE_CHARS = 40_000;
+
+/** What is wrong with one figure the examiner drew, in words it can act
+ *  on; null when it can go on the paper. The markup is sanitized again
+ *  where it is shown (components/diagram-figure.tsx). */
+export function figureProblem(svg: string): string | null {
+	const s = svg.trim();
+	if (!/^<svg[\s>]/i.test(s) || !/<\/svg>\s*$/i.test(s)) return "a figure must be one complete <svg>…</svg> element and nothing else.";
+	if (s.length > MAX_FIGURE_CHARS) return `the figure is ${s.length} characters; keep it under ${MAX_FIGURE_CHARS} (fewer elements, no embedded images).`;
+	if (!/\bviewBox\s*=/i.test(s)) return "the <svg> needs a viewBox.";
+	if (/<(?:script|foreignObject|iframe|image)\b/i.test(s)) return "draw with shapes, paths and text only: no script, foreignObject, iframe or image.";
+	return null;
+}
+
 // ─── authoring validation (the examiner's submit seam) ──────────────────────
 
 /** The examiner's draft, before ids are assigned. */
@@ -210,9 +230,12 @@ export interface ExamDraft {
 	problems: Array<{
 		title: string;
 		scenario: string;
+		/** A figure id from draw_figure (resolved to the SVG by resolveDraftFigures). */
+		figure?: string;
 		sources?: string[];
 		parts: Array<{
 			prompt: string;
+			figure?: string;
 			kind: ExamPartKind;
 			points: number;
 			options?: string[];
@@ -282,6 +305,38 @@ export function normalizeExamDraft(draft: ExamDraft, expectedProblems: number): 
 	return { ...draft, problems };
 }
 
+/** The draft's figure references (ids from draw_figure) → the SVGs they
+ *  name. A reference that is already markup stays as is; an id that was
+ *  never drawn stays too, and examDraftProblems names it. Pure; a copy. */
+export function resolveDraftFigures(draft: ExamDraft, figures: ReadonlyMap<string, string>): ExamDraft {
+	const resolve = (ref: string | undefined): string | undefined => {
+		const key = ref?.trim();
+		if (!key) return undefined;
+		return figures.get(key) ?? key;
+	};
+	return {
+		...draft,
+		problems: (draft.problems ?? []).map((p) => {
+			const { figure, ...rest } = p;
+			const svg = resolve(figure);
+			return {
+				...rest,
+				...(svg ? { figure: svg } : {}),
+				parts: (p.parts ?? []).map((part) => {
+					const { figure: pf, ...prest } = part;
+					const psvg = resolve(pf);
+					return { ...prest, ...(psvg ? { figure: psvg } : {}) };
+				}),
+			};
+		}),
+	};
+}
+
+function figureRefProblem(ref: string): string | null {
+	if (!ref.trim().startsWith("<")) return `figure "${ref.trim()}" was never drawn: call draw_figure with that id first, or remove the reference.`;
+	return figureProblem(ref);
+}
+
 /** Everything wrong with a draft, as messages the examiner can act on.
  *  Empty = the draft can become an exam. */
 export function examDraftProblems(draft: ExamDraft, expectedProblems: number): string[] {
@@ -298,6 +353,10 @@ export function examDraftProblems(draft: ExamDraft, expectedProblems: number): s
 		const at = `problems[${i}]`;
 		if (!p.title?.trim()) out.push(`${at}.title is empty.`);
 		if ((p.scenario?.trim().length ?? 0) < 60) out.push(`${at}.scenario is missing or too short: every problem opens with a concrete situation.`);
+		if (p.figure !== undefined) {
+			const bad = figureRefProblem(p.figure);
+			if (bad) out.push(`${at}.figure: ${bad}`);
+		}
 		if (p.parts.length < MIN_PARTS || p.parts.length > MAX_PARTS) {
 			out.push(`${at} has ${p.parts.length} parts: give each problem ${MIN_PARTS} to ${MAX_PARTS} parts.`);
 		}
@@ -307,6 +366,10 @@ export function examDraftProblems(draft: ExamDraft, expectedProblems: number): s
 			parts++;
 			const pat = `${at}.parts[${j}]`;
 			if (!part.prompt?.trim()) out.push(`${pat}.prompt is empty.`);
+			if (part.figure !== undefined) {
+				const bad = figureRefProblem(part.figure);
+				if (bad) out.push(`${pat}.figure: ${bad}`);
+			}
 			if (!part.solution?.trim()) out.push(`${pat}.solution is empty: work the full reference solution.`);
 			if (!part.finalAnswer?.trim()) out.push(`${pat}.finalAnswer is empty.`);
 			if (!Number.isInteger(part.points) || part.points < 1 || part.points > 20) out.push(`${pat}.points must be a whole number from 1 to 20.`);
@@ -355,6 +418,7 @@ export function problemsFromDraft(draft: ExamDraft, topicKeys: ReadonlySet<strin
 			id: pid,
 			title: p.title.trim(),
 			scenario: p.scenario.trim(),
+			...(p.figure?.trim() ? { figure: p.figure.trim() } : {}),
 			sources: (p.sources ?? []).map((s) => s.trim()).filter(Boolean),
 			parts: p.parts.map((part, j) => {
 				const id = `${pid}${String.fromCharCode(97 + j)}`;
@@ -372,6 +436,7 @@ export function problemsFromDraft(draft: ExamDraft, topicKeys: ReadonlySet<strin
 					prompt: part.prompt.trim(),
 					points: part.points,
 					kind: part.kind,
+					...(part.figure?.trim() ? { figure: part.figure.trim() } : {}),
 					...(part.kind === "choice" ? { options: (part.options ?? []).map((o) => o.trim()), correctOption: part.correctOption } : {}),
 					solution: part.solution.trim(),
 					finalAnswer: part.finalAnswer.trim(),
@@ -424,8 +489,16 @@ export function blindAgreement(part: ExamPart, blind: BlindAnswer | undefined): 
 export function applyAudit(
 	problems: readonly ExamProblem[],
 	verdicts: readonly AuditVerdict[],
+	/** Problem ids ("1") or part ids ("1b") whose figure the audit found
+	 *  wrong: the figure goes (the audit drops the parts that needed it). */
+	badFigures: readonly string[] = [],
 ): { problems: ExamProblem[]; fixed: number; dropped: number } {
 	const byPart = new Map(verdicts.map((v) => [v.partId, v]));
+	const wrongFigure = new Set(badFigures.map((id) => id.trim()));
+	const withoutFigure = <T extends { figure?: string }>(x: T): T => {
+		const { figure: _f, ...rest } = x;
+		return rest as T;
+	};
 	let fixed = 0;
 	let dropped = 0;
 	const kept: ExamProblem[] = [];
@@ -437,8 +510,9 @@ export function applyAudit(
 				dropped++;
 				continue;
 			}
+			const shown = wrongFigure.has(part.id) ? withoutFigure(part) : part;
 			if (v?.verdict === "fix") {
-				const next: ExamPart = { ...part, solution: v.solution.trim() || part.solution, finalAnswer: v.finalAnswer.trim() || part.finalAnswer };
+				const next: ExamPart = { ...shown, solution: v.solution.trim() || part.solution, finalAnswer: v.finalAnswer.trim() || part.finalAnswer };
 				if (part.kind === "numeric" && part.numeric && typeof v.numericValue === "number" && Number.isFinite(v.numericValue)) {
 					next.numeric = { ...part.numeric, value: v.numericValue };
 				}
@@ -449,13 +523,13 @@ export function applyAudit(
 				parts.push(next);
 				continue;
 			}
-			parts.push(part);
+			parts.push(shown);
 		}
 		if (parts.length < MIN_PARTS) {
 			dropped += parts.length;
 			continue;
 		}
-		kept.push({ ...problem, parts });
+		kept.push({ ...(wrongFigure.has(problem.id) ? withoutFigure(problem) : problem), parts });
 	}
 	return { problems: renumber(kept), fixed, dropped };
 }
@@ -728,6 +802,7 @@ export interface ExamPartView {
 	points: number;
 	kind: ExamPartKind;
 	options?: string[];
+	figure?: string;
 	unit?: string;
 	/** Present only once graded. */
 	solution?: string;
@@ -741,6 +816,7 @@ export interface ExamProblemView {
 	id: string;
 	title: string;
 	scenario: string;
+	figure?: string;
 	parts: ExamPartView[];
 	sources: string[];
 }
@@ -789,6 +865,7 @@ export function examView(record: ExamRecord, now: number): ExamView {
 				id: p.id,
 				title: p.title,
 				scenario: p.scenario,
+				...(p.figure ? { figure: p.figure } : {}),
 				sources: p.sources,
 				parts: p.parts.map((part) => ({
 					id: part.id,
@@ -796,6 +873,7 @@ export function examView(record: ExamRecord, now: number): ExamView {
 					points: part.points,
 					kind: part.kind,
 					...(part.options ? { options: part.options } : {}),
+					...(part.figure ? { figure: part.figure } : {}),
 					...(part.numeric?.unit ? { unit: part.numeric.unit } : {}),
 					...(graded
 						? {
