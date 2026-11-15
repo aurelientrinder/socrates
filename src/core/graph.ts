@@ -68,6 +68,8 @@ import { MIN_CLUSTER_SIZE } from "./clusters.ts";
 import { formatChainLine } from "./chains.ts";
 import { attachImpToCommunities, birthSessionOf, birthSessionPartition } from "./session-clusters.ts";
 import type { ChatStore, GraphStore } from "./ports.ts";
+import { parseTopicKey, retentionReport, type RecallEvent, type TopicRetention } from "./retention.ts";
+import { weakSpotOf } from "./weak-spots.ts";
 
 /** The storage ports every graph operation needs, passed explicitly. */
 export interface GraphDeps {
@@ -682,6 +684,200 @@ export function graphSessionPropositions(deps: GraphDeps, sessionId: string): Gr
 	return born
 		.map((node) => ({ nodeId: node.id, name: node.name }))
 		.sort((a, b) => (a.nodeId < b.nodeId ? -1 : 1));
+}
+
+export type TopicSignalStatus = "overconfident" | "shaky" | "due" | "solid";
+
+export interface TopicSignal {
+	status: TopicSignalStatus;
+	/** Predicted probability of recall at `now`, 0-1. */
+	retention: number;
+	due: boolean;
+}
+
+export interface SessionRetentionSummary {
+	tested: number;
+	weak: number;
+	overconfident: number;
+	due: number;
+	solid: number;
+}
+
+export interface GraphPropositionPremise {
+	nodeId: string;
+	name: string;
+	signal?: TopicSignal;
+}
+
+export interface GraphPropositionDependent {
+	nodeId: string;
+	name: string;
+}
+
+export interface GraphSessionPropositionDetail {
+	nodeId: string;
+	name: string;
+	signal?: TopicSignal;
+	requires: GraphPropositionPremise[];
+	leadsTo: GraphPropositionDependent[];
+}
+
+export interface SessionPlanCheck {
+	topicId: string;
+	title: string;
+	signal: TopicSignal;
+}
+
+export interface GraphSessionPropositionsReport {
+	propositions: GraphSessionPropositionDetail[];
+	planChecks: SessionPlanCheck[];
+}
+
+function buildTopicSignals(
+	events: readonly RecallEvent[],
+	now: number,
+): { topics: TopicRetention[]; signals: Map<string, TopicSignal> } {
+	const signals = new Map<string, TopicSignal>();
+	if (events.length === 0) return { topics: [], signals };
+	const byTopic = new Map<string, RecallEvent[]>();
+	for (const event of events) {
+		const list = byTopic.get(event.topicKey);
+		if (list) list.push(event);
+		else byTopic.set(event.topicKey, [event]);
+	}
+	const { topics } = retentionReport(events, now);
+	for (const topic of topics) {
+		const spot = weakSpotOf(topic, byTopic.get(topic.key) ?? []);
+		const status: TopicSignalStatus =
+			spot?.spot === "overconfident"
+				? "overconfident"
+				: spot?.spot === "shaky"
+					? "shaky"
+					: topic.due
+						? "due"
+						: "solid";
+		signals.set(topic.key, { status, retention: topic.retention, due: topic.due });
+	}
+	return { topics, signals };
+}
+
+function planChatId(topicKey: string): string | undefined {
+	return /^plan:([^:]+):/.exec(topicKey)?.[1];
+}
+
+/** Per-birth-session retention/weak-spot counts from both born propositions
+ *  (`prop:<nodeId>`) and that session's tested plan checks (`plan:<chatId>:<nodeId>`). */
+export function graphSessionRetentionMap(
+	deps: Pick<GraphDeps, "graphStore">,
+	events: readonly RecallEvent[],
+	now: number = Date.now(),
+): Map<string, SessionRetentionSummary> {
+	const out = new Map<string, SessionRetentionSummary>();
+	if (events.length === 0) return out;
+	const { topics, signals } = buildTopicSignals(events, now);
+	const birthByNodeId = new Map<string, string>();
+	for (const node of getGraph(deps.graphStore).nodes) {
+		const birth = birthSessionOf(node);
+		if (birth) birthByNodeId.set(node.id, birth);
+	}
+	const bump = (sessionId: string, signal: TopicSignal): void => {
+		let entry = out.get(sessionId);
+		if (!entry) {
+			entry = { tested: 0, weak: 0, overconfident: 0, due: 0, solid: 0 };
+			out.set(sessionId, entry);
+		}
+		entry.tested += 1;
+		if (signal.status === "overconfident") {
+			entry.weak += 1;
+			entry.overconfident += 1;
+		} else if (signal.status === "shaky") {
+			entry.weak += 1;
+		} else if (signal.status === "solid") {
+			entry.solid += 1;
+		}
+		if (signal.due) entry.due += 1;
+	};
+	for (const topic of topics) {
+		const signal = signals.get(topic.key);
+		if (!signal) continue;
+		const parsedId = parseTopicKey(topic.key)?.topicId;
+		const sessionId =
+			topic.kind === "proposition" ? (parsedId ? birthByNodeId.get(parsedId) : undefined) : planChatId(topic.key);
+		if (sessionId) bump(sessionId, signal);
+	}
+	return out;
+}
+
+/** Names-only propositions born in `sessionId`, enriched with measured
+ *  retention/weak-spot status, 1-hop `GraphChain` premises/dependents, and
+ *  tested plan-node checks from that session. */
+export function graphSessionPropositionDetails(
+	deps: Pick<GraphDeps, "graphStore">,
+	sessionId: string,
+	events: readonly RecallEvent[],
+	now: number = Date.now(),
+): GraphSessionPropositionsReport {
+	const graph = getGraph(deps.graphStore);
+	const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+	const born = graph.nodes
+		.filter((node) => birthSessionOf(node) === sessionId)
+		.sort((a, b) => (a.id < b.id ? -1 : 1));
+	const { topics, signals } = buildTopicSignals(events, now);
+
+	const premisesByConclusion = new Map<string, Set<string>>();
+	const dependentsByPremise = new Map<string, Set<string>>();
+	for (const chain of graph.chains) {
+		let prems = premisesByConclusion.get(chain.conclusion);
+		if (!prems) {
+			prems = new Set<string>();
+			premisesByConclusion.set(chain.conclusion, prems);
+		}
+		for (const premiseId of chain.premises) {
+			prems.add(premiseId);
+			let depsSet = dependentsByPremise.get(premiseId);
+			if (!depsSet) {
+				depsSet = new Set<string>();
+				dependentsByPremise.set(premiseId, depsSet);
+			}
+			depsSet.add(chain.conclusion);
+		}
+	}
+
+	const propositions: GraphSessionPropositionDetail[] = born.map((node) => {
+		const signal = signals.get(`prop:${node.id}`);
+		const requires: GraphPropositionPremise[] = [...(premisesByConclusion.get(node.id) ?? [])]
+			.sort((a, b) => (a < b ? -1 : 1))
+			.flatMap((premiseId) => {
+				const premNode = nodeById.get(premiseId);
+				if (!premNode) return [];
+				const premSignal = signals.get(`prop:${premiseId}`);
+				return [{ nodeId: premNode.id, name: premNode.name, ...(premSignal ? { signal: premSignal } : {}) }];
+			});
+		const leadsTo: GraphPropositionDependent[] = [...(dependentsByPremise.get(node.id) ?? [])]
+			.sort((a, b) => (a < b ? -1 : 1))
+			.flatMap((depId) => {
+				const depNode = nodeById.get(depId);
+				return depNode ? [{ nodeId: depNode.id, name: depNode.name }] : [];
+			});
+		return {
+			nodeId: node.id,
+			name: node.name,
+			...(signal ? { signal } : {}),
+			requires,
+			leadsTo,
+		};
+	});
+
+	const planChecks: SessionPlanCheck[] = topics
+		.filter((topic) => topic.kind === "plan" && planChatId(topic.key) === sessionId)
+		.map((topic) => ({
+			topicId: parseTopicKey(topic.key)?.topicId ?? topic.key,
+			title: topic.title,
+			signal: signals.get(topic.key)!,
+		}))
+		.sort((a, b) => a.title.localeCompare(b.title) || a.topicId.localeCompare(b.topicId));
+
+	return { propositions, planChecks };
 }
 
 // Re-export: the contract owns the shape; legacy importers still reach it.

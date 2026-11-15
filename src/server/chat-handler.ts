@@ -28,6 +28,7 @@ import { runPiTurn } from "./pi/ui-stream.ts";
 import { collectToolCallIds } from "./pi/call-ids.ts";
 import { providerEventNote } from "../agent/provider-events.ts";
 import { effectiveSettings, stores } from "./stores.ts";
+import { recallEventsAcrossSessions } from "./chats.ts";
 import { answerForModel } from "./sketch.ts";
 import { searchAvailable, searchProvider } from "./search.ts";
 import { providerKeyPresent } from "./keys.ts";
@@ -558,7 +559,9 @@ export async function handleChatInput(
 							spawn: (job, input) => void jobRunner.runJob(job.id, input),
 							searchAvailable,
 						},
-						...(graphToolsEnabled(effective) ? { graph: { chatStore: stores.chatStore, graphStore: stores.graphStore } } : {}),
+						...(graphToolsEnabled(effective)
+							? { graph: { chatStore: stores.chatStore, graphStore: stores.graphStore, recallEvents: recallEventsAcrossSessions } }
+							: {}),
 						notes: stores.notesLibrary,
 					},
 					agentOpts,
@@ -591,7 +594,9 @@ export async function handleChatInput(
 						// The map reader (wave 7): the prober reads the learner's
 						// knowledge graph through tools when the gate opens —
 						// graph master switch AND the agent.graphTools toggle.
-						...(graphToolsEnabled(effective) ? { graphStore: stores.graphStore } : {}),
+						...(graphToolsEnabled(effective)
+							? { graphStore: stores.graphStore, graphRecallEvents: recallEventsAcrossSessions }
+							: {}),
 						notes: stores.notesLibrary,
 					},
 					agentOpts,

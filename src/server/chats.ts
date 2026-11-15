@@ -223,7 +223,7 @@ export function weakSpotsAcrossSessions(now: number = Date.now()): WeakSpotRepor
 	return weakSpotReport(recallEventsAcrossSessions(), now);
 }
 
-function recallEventsAcrossSessions(): RecallEvent[] {
+export function recallEventsAcrossSessions(): RecallEvent[] {
 	const names = propositionNames(stores.graphStore.readNodes());
 	const events = chatDigests().flatMap((d) =>
 		// Practice targets are named by the graph, which can be renamed
