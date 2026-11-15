@@ -26,8 +26,10 @@ import { providerKeyPresent } from "./keys.ts";
 import { effectiveSettings, stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
 
-/** How much of the session the call reads (characters, newest kept). */
-const TRANSCRIPT_MAX_CHARS = 90_000;
+/** How much of the session the call reads (characters, newest kept).
+ *  Side threads carry the whole session (2026-11-15): ~100k tokens is
+ *  well inside Gemini's window, so only very long sessions get trimmed. */
+const TRANSCRIPT_MAX_CHARS = 400_000;
 
 export interface AsideInput {
 	id: string;

@@ -19,7 +19,7 @@ process.env.LH_DATA_DIR = TMP_DATA;
 const { chatStore } = await import("../src/store/chats.ts");
 const core = await import("../src/core/index.ts");
 const { handleAside, parseAsideInput } = await import("../src/server/aside.ts");
-const { AsideBar, AsideThread } = await import("../components/aside.tsx");
+const { AsideBar, AsideThread, SideThreadLink, SideThreadPanel, questionTextOf } = await import("../components/aside.tsx");
 const { newMessageId } = await import("../src/core/native-messages.ts");
 
 after(() => fs.rmSync(TMP_DATA, { recursive: true, force: true }));
@@ -127,7 +127,6 @@ describe("aside rendering", () => {
 		assert.match(html, /Because it closes\./);
 		assert.match(html, /and then\?/);
 		assert.match(html, /Thinking/);
-		assert.match(html, /still open/);
 		assert.equal(renderToStaticMarkup(<AsideThread asides={[]} />), "");
 		assert.match(renderToStaticMarkup(<AsideBar onAsk={() => {}} />), /Ask the tutor/);
 	});
@@ -138,5 +137,29 @@ describe("aside rendering", () => {
 		);
 		assert.match(html, /boom/);
 		assert.match(html, /Try again/);
+	});
+
+	it("links the thread from the feed and shows it in the side panel", () => {
+		const link = renderToStaticMarkup(
+			<SideThreadLink asides={[aside("a1", "c", "why $x$?", "r"), aside("a2", "c", "and?", "r")]} open={false} onOpen={() => {}} />,
+		);
+		assert.match(link, /Side thread/);
+		assert.match(link, /2 questions/);
+		assert.match(link, /why x\?/);
+		assert.equal(renderToStaticMarkup(<SideThreadLink asides={[]} open={false} onOpen={() => {}} />), "");
+
+		const open = renderToStaticMarkup(
+			<SideThreadPanel question="What is a cyclic group?" open asides={[aside("a1", "c", "why?", "Because.")]} onAsk={() => {}} onClose={() => {}} />,
+		);
+		assert.match(open, /What is a cyclic group\?/);
+		assert.match(open, /Quiz still open/);
+		assert.match(open, /side-thread-composer/);
+		const closed = renderToStaticMarkup(
+			<SideThreadPanel question="Q" open={false} asides={[aside("a1", "c", "why?", "Because.")]} onAsk={() => {}} onClose={() => {}} />,
+		);
+		assert.match(closed, /Quiz answered/);
+		assert.doesNotMatch(closed, /side-thread-composer/);
+		assert.equal(questionTextOf({ question: "Q?" }), "Q?");
+		assert.equal(questionTextOf(undefined), "");
 	});
 });

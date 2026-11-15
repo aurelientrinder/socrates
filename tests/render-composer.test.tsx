@@ -51,10 +51,10 @@ describe("Composer", () => {
 		assert.ok(idleStop.includes('aria-label="Stop"'), "empty composer: stop replaces send while streaming");
 	});
 
-	it("send button: 32px with a 9px radius (sidebar + chat box refine, 2026-11-03)", () => {
+	it("send button: a 36px ink circle (chat redesign, 2026-11-15)", () => {
 		const html = render();
-		assert.ok(html.includes("rounded-[9px]"));
-		assert.ok(html.includes("size-8"));
+		assert.ok(html.includes("rounded-full"));
+		assert.ok(html.includes("size-9"));
 	});
 
 	it("disabled when nothing to send", () => {

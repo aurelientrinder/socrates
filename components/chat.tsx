@@ -14,7 +14,7 @@ import {
 	ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
-import { ThinkingGroup } from "@/components/ai-elements/reasoning";
+import { ThinkingGroup, ThinkingIndicator } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { BrailleSpinner } from "@/components/braille-spinner";
 import { LiveToolCard } from "@/components/artifacts/live-tool-card";
@@ -29,7 +29,7 @@ import { latestChatSettings } from "@/components/model-picker";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
-import { AsideBar, AsideThread, type PendingAside } from "@/components/aside";
+import { AsideBar, SideThreadLink, SideThreadPanel, questionTextOf, type PendingAside } from "@/components/aside";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
 import { DictationBar, finishDictation, joinDictation, useDictation } from "@/components/dictation";
 import { useFieldCycle } from "@/components/field-cycle";
@@ -827,6 +827,9 @@ export function Chat({
 	 * runs: the message goes the ordinary way instead. */
 	const [asides, setAsides] = useState<ChatAside[]>(initialAsides ?? []);
 	const [asideInFlight, setAsideInFlight] = useState<PendingAside | null>(null);
+	/** The question whose side thread is open in the right-hand split
+	 *  view (2026-11-15). Asking opens it; the feed's link toggles it. */
+	const [threadFor, setThreadFor] = useState<string | null>(null);
 	const askAside = useCallback(
 		async (raw: string, retryId?: string) => {
 			const q = pending?.toolCallId;
@@ -834,6 +837,7 @@ export function Chat({
 			if (!q || !t) return;
 			const id = retryId ?? `aside_${crypto.randomUUID()}`;
 			setAsideInFlight({ id, questionCallId: q, text: t });
+			setThreadFor(q);
 			try {
 				const res = await fetch(`/api/chats/${chatId}/aside`, {
 					method: "POST",
@@ -842,6 +846,7 @@ export function Chat({
 				});
 				if (res.status === 409) {
 					setAsideInFlight(null);
+					setThreadFor(null);
 					void send({ type: "text", text: t });
 					return;
 				}
@@ -1742,24 +1747,29 @@ export function Chat({
 													case "tool-recall": {
 														// Pending/streaming questions live in the dock, not the
 														// transcript; answered ones render as graded records.
+														// Side threads (2026-11-15): the link sits BEFORE
+														// the answered card. The learner asked while the
+														// question was open, so the exchange came first.
+														const callId = part.toolCallId ?? "";
 														const sideTalk = (
-															<AsideThread
+															<SideThreadLink
 																key={`aside-${pi}`}
-																asides={asides.filter((a) => a.questionCallId === part.toolCallId)}
-																pending={asideInFlight && asideInFlight.questionCallId === part.toolCallId ? asideInFlight : null}
-																onRetry={asideInFlight?.error ? () => void askAside(asideInFlight.text, asideInFlight.id) : undefined}
+																asides={asides.filter((a) => a.questionCallId === callId)}
+																pending={asideInFlight && asideInFlight.questionCallId === callId ? asideInFlight : null}
+																open={threadFor === callId}
+																onOpen={() => setThreadFor((cur) => (cur === callId ? null : callId))}
 															/>
 														);
 														if (part.state === "output-available") {
 															return (
 																<Fragment key={pi}>
+																	{sideTalk}
 																	<AnsweredCard
 																		answer={part.output as QuestionAnswerData}
 																		input={part.input}
 																		label={kind !== "review" && part.type === "tool-review" ? "Warm-up" : undefined}
 																		diagram={typeof part.diagram === "string" ? part.diagram : undefined}
 																	/>
-																	{sideTalk}
 																</Fragment>
 															);
 														}
@@ -1824,14 +1834,7 @@ export function Chat({
 									<Shimmer duration={1}>Compacting context…</Shimmer>
 								</span>
 							)}
-							{(status === "submitted" || turnInFlight) && (
-								<span className="flex items-center gap-2 font-ui text-xs font-medium text-muted-foreground">
-									<BrailleSpinner label="Thinking" />
-									<Shimmer duration={1}>
-										Thinking…
-									</Shimmer>
-								</span>
-							)}
+							{(status === "submitted" || turnInFlight) && <ThinkingIndicator className="py-1" />}
 							{error && (
 								<div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">
 									<span className="min-w-0 flex-1">Something went wrong: {error.message}</span>
@@ -1884,7 +1887,7 @@ export function Chat({
 					dictationCancel={dictation.cancel}
 					queuedSteers={visibleQueuedSteers(steerQueue, nativeMessages)}
 					asideSlot={
-						pending ? (
+						pending && threadFor !== pending.toolCallId ? (
 							<AsideBar
 								onAsk={(t) => void askAside(t)}
 								disabled={compacting}
@@ -1958,6 +1961,25 @@ export function Chat({
 					}}
 				/>
 				</Conversation>
+				{threadFor && (
+					<SideThreadPanel
+						key={threadFor}
+						question={questionTextOf(
+							pending?.toolCallId === threadFor
+								? pending.input
+								: messages
+										.flatMap((m) => m.parts)
+										.find((p) => (p as { toolCallId?: string }).toolCallId === threadFor)?.input,
+						)}
+						open={pending?.toolCallId === threadFor}
+						asides={asides.filter((a) => a.questionCallId === threadFor)}
+						pending={asideInFlight && asideInFlight.questionCallId === threadFor ? asideInFlight : null}
+						onRetry={asideInFlight?.error ? () => void askAside(asideInFlight.text, asideInFlight.id) : undefined}
+						onAsk={(t) => void askAside(t)}
+						onClose={() => setThreadFor(null)}
+						disabled={compacting}
+					/>
+				)}
 
 				{/* The session-scoped focuses (chrome-melt wave, 2026-09-19): mounted
 				    INSIDE the session area — absolute inset-0 siblings of the scroller,
@@ -2508,8 +2530,11 @@ function DockOverlay({
 					{/* The tools row is built once: an expanded question carries it
 					    inside its answer box (question card redesign, 2026-11-01);
 					    everything else keeps it under the shell. */}
-					<div className="pointer-events-auto rounded-[14px] border bg-card shadow-[0_4px_18px_rgb(0_0_0/0.05)]" data-testid="dock-card">
-					<div ref={shellRef} className="overflow-hidden rounded-t-[14px]">
+					{/* The input box (chat redesign, 2026-11-15): one soft, round card
+					    like the Gemini/ChatGPT/Claude apps, a hairline that darkens on
+					    focus, and a two-layer shadow instead of a heavy border. */}
+					<div className="pointer-events-auto rounded-[26px] border border-border/70 bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_10px_32px_-6px_rgb(0_0_0/0.09)] transition-[border-color,box-shadow] focus-within:border-foreground/20 dark:shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_32px_-6px_rgb(0_0_0/0.5)]" data-testid="dock-card">
+					<div ref={shellRef} className="overflow-hidden rounded-t-[26px]">
 						<div
 						ref={contentRef}
 						key={mode}
