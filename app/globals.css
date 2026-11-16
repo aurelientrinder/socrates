@@ -792,6 +792,13 @@ body {
 	}
 	html,
 	body,
+	.lh-app-shell,
+	.lh-app-shell > main {
+		height: auto !important;
+		overflow: visible !important;
+	}
+	html,
+	body,
 	.lh-print-root {
 		background: #fff !important;
 		color: #000 !important;

@@ -106,8 +106,8 @@ export function CheatSheetScreen(props: {
 	const ready = sheet.status === "ready";
 	return (
 		<SessionMermaidContext.Provider value={overlay}>
-			<div className="relative h-full">
-				<div data-testid="sheet-page" data-status={sheet.status} className="lh-print-root h-full overflow-y-auto">
+			<div className="relative h-full overflow-hidden">
+				<div data-testid="sheet-page" data-status={sheet.status} className="lh-print-root relative h-full overflow-y-auto">
 					<div className="mx-auto flex max-w-6xl flex-col gap-5 px-6 pb-16 pt-8 sm:px-10">
 						<PageHead
 							title={sheet.title}
