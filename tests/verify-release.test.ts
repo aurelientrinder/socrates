@@ -80,6 +80,20 @@ describe("release gate — expected asset inventory", () => {
 		]);
 	});
 
+	it("drops the mac installers, blockmaps and feed when macOS is skipped", () => {
+		const e = expectedAssets(VERSION, { mac: false });
+		assert.equal(e.mac, undefined);
+		assert.deepEqual(e.files, [
+			`Socrates-${VERSION}-x64-setup.exe`,
+			`Socrates-${VERSION}-x86_64.AppImage`,
+			`Socrates-${VERSION}-amd64.deb`,
+			`Socrates-${VERSION}-x64-setup.exe.blockmap`,
+			"latest.yml",
+			"latest-linux.yml",
+		]);
+		assert.deepEqual(feedExpectations(e).map((f) => f.file), ["latest.yml", "latest-linux.yml"]);
+	});
+
 	it("accepts plain semver versions and nothing else", () => {
 		assert.ok(checkVersion("1.2.3").ok);
 		assert.ok(checkVersion("1.2.3-beta.1").ok);
@@ -266,13 +280,13 @@ describe("release gate — update feeds", () => {
 		["mac ZIP not first (legacy path/sha512 would mislead the updater)", (feeds) => {
 			const e = expectedAssets(VERSION);
 			feeds["latest-mac.yml"] = feeds["latest-mac.yml"]!.replace(
-				`files:\n  - url: ${e.mac.zip}\n    sha512: ${sha512(e.mac.zip)}\n    size: 5000\n  - url: ${e.mac.dmg}\n    sha512: ${sha512(e.mac.dmg)}\n    size: 5000\n`,
-				`files:\n  - url: ${e.mac.dmg}\n    sha512: ${sha512(e.mac.dmg)}\n    size: 5000\n  - url: ${e.mac.zip}\n    sha512: ${sha512(e.mac.zip)}\n    size: 5000\n`,
-			).replace(`path: ${e.mac.zip}\nsha512: ${sha512(e.mac.zip)}\n`, `path: ${e.mac.dmg}\nsha512: ${sha512(e.mac.dmg)}\n`);
+				`files:\n  - url: ${e.mac!.zip}\n    sha512: ${sha512(e.mac!.zip)}\n    size: 5000\n  - url: ${e.mac!.dmg}\n    sha512: ${sha512(e.mac!.dmg)}\n    size: 5000\n`,
+				`files:\n  - url: ${e.mac!.dmg}\n    sha512: ${sha512(e.mac!.dmg)}\n    size: 5000\n  - url: ${e.mac!.zip}\n    sha512: ${sha512(e.mac!.zip)}\n    size: 5000\n`,
+			).replace(`path: ${e.mac!.zip}\nsha512: ${sha512(e.mac!.zip)}\n`, `path: ${e.mac!.dmg}\nsha512: ${sha512(e.mac!.dmg)}\n`);
 		}, /files\[0\] must be/],
 		["mac legacy path pointing away from files[0]", (feeds) => {
 			const e = expectedAssets(VERSION);
-			feeds["latest-mac.yml"] = feeds["latest-mac.yml"]!.replace(`path: ${e.mac.zip}`, `path: ${e.mac.dmg}`);
+			feeds["latest-mac.yml"] = feeds["latest-mac.yml"]!.replace(`path: ${e.mac!.zip}`, `path: ${e.mac!.dmg}`);
 		}, /top-level path is/],
 		["mac legacy sha512 not matching files[0]", (feeds) => {
 			feeds["latest-mac.yml"] = feeds["latest-mac.yml"]!.replace(`sha512: ${sha512("Socrates-0.2.0-arm64-mac.zip")}\nreleaseDate`, `sha512: ${sha512("tampered")}\nreleaseDate`);
@@ -285,7 +299,7 @@ describe("release gate — update feeds", () => {
 		}, /must reference exactly/],
 		["extra entry in latest.yml", (feeds) => {
 			const e = expectedAssets(VERSION);
-			feeds["latest.yml"] = feeds["latest.yml"]!.replace("path:", `  - url: ${e.mac.zip}\n    sha512: ${sha512(e.mac.zip)}\n    size: 5000\npath:`);
+			feeds["latest.yml"] = feeds["latest.yml"]!.replace("path:", `  - url: ${e.mac!.zip}\n    sha512: ${sha512(e.mac!.zip)}\n    size: 5000\npath:`);
 		}, /must reference exactly/],
 		["garbage sha512", (feeds) => {
 			const e = expectedAssets(VERSION);
@@ -322,7 +336,7 @@ describe("release gate — workflow wiring", () => {
 	});
 
 	it("exposes the elevated token only to the two API-reading steps", () => {
-		const readers = ["List every release, drafts included", "Download the three update feeds"];
+		const readers = ["List every release, drafts included", "Download the update feeds"];
 		for (const step of verify.steps) {
 			if (readers.includes(step.name)) assert.equal(step.env?.GH_TOKEN, "${{ github.token }}");
 			else assert.equal(step.env?.GH_TOKEN, undefined, String(step.name ?? step.uses));
@@ -354,8 +368,8 @@ describe("release gate — workflow wiring", () => {
 		}
 	});
 
-	it("download step fetches exactly the three update feeds from the selected draft", () => {
-		const download = verify.steps.find((step: any) => step.name === "Download the three update feeds");
+	it("download step fetches the update feeds (all three unless macOS is skipped) from the selected draft", () => {
+		const download = verify.steps.find((step: any) => step.name === "Download the update feeds");
 		assert.ok(download);
 		for (const feed of ["latest-mac.yml", "latest.yml", "latest-linux.yml"]) assert.ok(download.run.includes(feed));
 		assert.match(download.run, /releases\/assets\/\$id/);

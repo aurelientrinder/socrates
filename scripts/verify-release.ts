@@ -87,10 +87,12 @@ export type DraftSelection =
 	| { ok: true; release: ReleaseRecord; warnings: string[] }
 	| Failures;
 
-/** The full expected asset inventory for one version (11 files). */
+/** The full expected asset inventory for one version (11 files; 6 when
+ *  the macOS build is skipped). */
 export type ExpectedAssets = {
 	version: string;
-	mac: { dmg: string; zip: string; feed: string };
+	/** Absent on a release built without macOS (--skip-mac). */
+	mac?: { dmg: string; zip: string; feed: string };
 	win: { exe: string; feed: string };
 	linux: { appImage: string; deb: string; feed: string };
 	/** Every asset name the draft must hold, and no others. */
@@ -117,7 +119,8 @@ export function checkVersion(version: unknown): { ok: true; version: string } | 
 }
 
 /** The exact asset set the installed builder emits for this repo's config. */
-export function expectedAssets(version: string): ExpectedAssets {
+export function expectedAssets(version: string, opts: { mac?: boolean } = {}): ExpectedAssets {
+	const withMac = opts.mac ?? true;
 	const mac = {
 		dmg: `${PRODUCT_NAME}-${version}-arm64.dmg`,
 		zip: `${PRODUCT_NAME}-${version}-arm64-mac.zip`,
@@ -134,6 +137,9 @@ export function expectedAssets(version: string): ExpectedAssets {
 	};
 	// Sidecar differential-update blockmaps: emitted for dmg, mac zip and
 	// NSIS exe (createBlockmap); AppImage/deb have none in app-builder-lib 26.15.3.
+	if (!withMac) {
+		return { version, win, linux, files: [win.exe, linux.appImage, linux.deb, `${win.exe}.blockmap`, win.feed, linux.feed] };
+	}
 	const blockmaps = [mac.dmg, mac.zip, win.exe].map((name) => `${name}.blockmap`);
 	return {
 		version,
@@ -341,7 +347,7 @@ type FeedExpectation = {
 
 export function feedExpectations(expected: ExpectedAssets): FeedExpectation[] {
 	return [
-		{ file: expected.mac.feed, urls: [expected.mac.zip, expected.mac.dmg], first: expected.mac.zip },
+		...(expected.mac ? [{ file: expected.mac.feed, urls: [expected.mac.zip, expected.mac.dmg], first: expected.mac.zip }] : []),
 		{ file: expected.win.feed, urls: [expected.win.exe] },
 		{ file: expected.linux.feed, urls: [expected.linux.appImage, expected.linux.deb] },
 	];
@@ -460,7 +466,7 @@ function usage(): string {
 	return [
 		"usage:",
 		"  verify-release.ts select <releases.json> --tag <tag>",
-		"  verify-release.ts verify <releases.json> <metadata-dir> --tag <tag>",
+		"  verify-release.ts verify <releases.json> <metadata-dir> --tag <tag> [--skip-mac]",
 	].join("\n");
 }
 
@@ -510,12 +516,15 @@ function fail(errors: Issues): number {
 	return 1;
 }
 
-function parseArgs(argv: string[]): { ok: true; command: string; positional: string[]; tag?: string } | { ok: false; errors: Issues } {
+function parseArgs(argv: string[]): { ok: true; command: string; positional: string[]; tag?: string; skipMac: boolean } | { ok: false; errors: Issues } {
 	const positional: string[] = [];
 	let tag: string | undefined;
+	let skipMac = false;
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i]!;
-		if (arg === "--tag") {
+		if (arg === "--skip-mac") {
+			skipMac = true;
+		} else if (arg === "--tag") {
 			tag = argv[++i];
 			if (tag == null || tag === "") return { ok: false, errors: ["--tag needs a value"] };
 		} else {
@@ -524,12 +533,12 @@ function parseArgs(argv: string[]): { ok: true; command: string; positional: str
 	}
 	const [command] = positional;
 	if (command !== "select" && command !== "verify") return { ok: false, errors: [usage()] };
-	return { ok: true, command, positional: positional.slice(1), tag };
+	return { ok: true, command, positional: positional.slice(1), tag, skipMac };
 }
 
 /** Tag ↔ version agreement + release-list load, shared by both commands. */
 function startGate(argv: string[]):
-	| { ok: true; tag: string; version: string; releases: ReleaseRecord[]; config: unknown; pkg: unknown; positional: string[] }
+	| { ok: true; tag: string; version: string; releases: ReleaseRecord[]; config: unknown; pkg: unknown; positional: string[]; skipMac: boolean }
 	| { ok: false; errors: Issues } {
 	const parsed = parseArgs(argv);
 	if (!parsed.ok) return parsed;
@@ -554,13 +563,15 @@ function startGate(argv: string[]):
 		config: repo.config,
 		pkg: repo.pkg,
 		positional: parsed.positional,
+		skipMac: parsed.skipMac,
 	};
 }
 
 function main(argv: string[]): number {
 	const start = startGate(argv);
 	if (!start.ok) return fail(start.errors);
-	const expected = expectedAssets(start.version);
+	const expected = expectedAssets(start.version, { mac: !start.skipMac });
+	const feeds = feedExpectations(expected).map((f) => f.file);
 
 	if (argv[0] === "select") {
 		const selection = selectDraft(start.releases, start.tag, start.version);
@@ -590,7 +601,7 @@ function main(argv: string[]): number {
 	const assets = verifyAssets(selection.release, expected);
 	if (!assets.ok) errors.push(...assets.errors);
 	const files: Record<string, string> = {};
-	for (const name of [expected.mac.feed, expected.win.feed, expected.linux.feed]) {
+	for (const name of feeds) {
 		try {
 			files[name] = fs.readFileSync(path.join(metadataDir, name), "utf8");
 		} catch {
@@ -602,7 +613,7 @@ function main(argv: string[]): number {
 	if (errors.length > 0) return fail(errors);
 	const present = expected.files.filter((name) => selection.release.assets.some((asset) => asset.name === name));
 	console.log(`assets: ${present.length}/${expected.files.length} expected files present, non-zero size, and "uploaded"`);
-	console.log(`feeds: ${expected.mac.feed}, ${expected.win.feed}, ${expected.linux.feed} parse, carry version ${start.version}, and reference only uploaded assets by exact name`);
+	console.log(`feeds: ${feeds.join(", ")} parse, carry version ${start.version}, and reference only uploaded assets by exact name`);
 	console.log(`OK: draft for ${start.tag} is complete and consistent — ready for the owner to review and publish.`);
 	return 0;
 }

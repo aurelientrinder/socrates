@@ -12,6 +12,10 @@ on:
         description: "Publish the draft once it is verified (tag runs only)"
         type: boolean
         default: false
+      skip_mac:
+        description: "Build Windows and Linux only (no macOS installer or mac update feed)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -106,17 +110,10 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      # skip_mac drops the macOS entry: its runner queue has stalled releases
+      # for 15+ minutes at a time, and the owner tests on Windows.
       matrix:
-        include:
-          - os: macos-26
-            platform: mac-arm64
-            builder_args: --mac --arm64
-          - os: windows-2025
-            platform: windows-x64
-            builder_args: --win --x64
-          - os: ubuntu-24.04
-            platform: linux-x64
-            builder_args: --linux --x64
+        include: ${{ fromJSON(inputs.skip_mac && '[{"os":"windows-2025","platform":"windows-x64","builder_args":"--win --x64"},{"os":"ubuntu-24.04","platform":"linux-x64","builder_args":"--linux --x64"}]' || '[{"os":"macos-26","platform":"mac-arm64","builder_args":"--mac --arm64"},{"os":"windows-2025","platform":"windows-x64","builder_args":"--win --x64"},{"os":"ubuntu-24.04","platform":"linux-x64","builder_args":"--linux --x64"}]') }}
     runs-on: ${{ matrix.os }}
     # Apple's notarization queue has taken ~2 hours for this team.
     timeout-minutes: 180
@@ -270,13 +267,16 @@ jobs:
       - name: Select the tag's single draft
         # Machine JSON on stdout (release id + asset ids); warnings on stderr.
         run: npx tsx scripts/verify-release.ts select "$RUNNER_TEMP/releases.json" --tag "$GITHUB_REF_NAME" > "$RUNNER_TEMP/draft.json"
-      - name: Download the three update feeds
+      - name: Download the update feeds
         env:
           GH_TOKEN: ${{ github.token }}
+          SKIP_MAC: ${{ inputs.skip_mac }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/metadata"
-          for name in latest-mac.yml latest.yml latest-linux.yml; do
+          feeds="latest-mac.yml latest.yml latest-linux.yml"
+          if [ "$SKIP_MAC" = "true" ]; then feeds="latest.yml latest-linux.yml"; fi
+          for name in $feeds; do
             id=$(DRAFT="$RUNNER_TEMP/draft.json" NAME="$name" node -e '
               const fs = require("node:fs");
               const draft = JSON.parse(fs.readFileSync(process.env.DRAFT, "utf8"));
@@ -288,7 +288,9 @@ jobs:
             echo "downloaded $name ($(wc -c < "$RUNNER_TEMP/metadata/$name") bytes)"
           done
       - name: Verify draft assets and update feeds
-        run: npx tsx scripts/verify-release.ts verify "$RUNNER_TEMP/releases.json" "$RUNNER_TEMP/metadata" --tag "$GITHUB_REF_NAME"
+        env:
+          SKIP_MAC: ${{ inputs.skip_mac }}
+        run: npx tsx scripts/verify-release.ts verify "$RUNNER_TEMP/releases.json" "$RUNNER_TEMP/metadata" --tag "$GITHUB_REF_NAME" $([ "$SKIP_MAC" = "true" ] && echo --skip-mac)
 
   # Opt-in last step (tag-release.yml's "publish" input): flip the verified
   # draft to published, which is what the installed apps update from.
