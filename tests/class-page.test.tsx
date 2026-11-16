@@ -86,8 +86,23 @@ describe("ClassShell", () => {
 		assert.ok(html.includes("in 6 days"));
 		assert.ok(html.includes("77% recall on the day as things stand, 97% if you follow the plan: 3 sessions, 36 min."));
 		assert.ok(html.includes('data-testid="class-start"'));
-		assert.ok(html.includes("Review Diagonalization · 3 min"));
+		assert.ok(html.replace(/<[^>]+>/g, "").includes("Review Diagonalization · 3 min"));
 		assert.ok(html.includes('data-testid="class-mock-exam"'), "notes make a mock exam possible");
+	});
+
+	it("truncates long step titles inside the card width with a hover tooltip", () => {
+		const longTitle = "Review 1 DDL : régime libre sous-amorti et décrément logarithmique, 1 DDL : excitation par le support";
+		const html = renderToStaticMarkup(
+			<ClassShell
+				data={data({ plan: [{ date: "2026-11-08", item: item({ title: longTitle, minutes: 8 }) }] })}
+				handlers={noop}
+				now={NOW}
+			/>,
+		).replace(/<!-- -->/g, "");
+		assert.ok(html.includes(`title="${longTitle} · 8 min"`));
+		assert.ok(html.includes("max-w-full"));
+		assert.ok(html.includes("truncate"));
+		assert.ok(html.replace(/<[^>]+>/g, "").includes(`${longTitle} · 8 min`));
 	});
 
 	it("shows fading topics, the plan by day, sessions, notes and this week's classes", () => {
@@ -110,6 +125,7 @@ describe("ClassShell", () => {
 		);
 		assert.ok(html.includes("Nothing planned"));
 		assert.ok(html.includes('data-testid="class-learn"'));
+		assert.ok(html.includes('title="Learn something in Linear Algebra"'));
 		assert.ok(!html.includes('data-testid="class-mock-exam"'), "no notes, no mock exam");
 		assert.ok(html.includes("Nothing tested yet"));
 		assert.ok(html.includes("No sessions filed here yet."));

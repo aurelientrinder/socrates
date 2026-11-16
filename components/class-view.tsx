@@ -86,9 +86,19 @@ export function ClassShell({
 		<div className="flex flex-wrap items-center gap-2">
 			{next ? (
 				<>
-					<Button size="lg" className="h-11 rounded-xl px-5 text-base" disabled={starting} onClick={() => handlers.onStart(next)} data-testid="class-start">
+					<Button
+						size="lg"
+						className="h-11 max-w-full min-w-0 shrink rounded-xl px-5 text-base"
+						disabled={starting}
+						onClick={() => handlers.onStart(next)}
+						title={`${next.title} · ${next.minutes} min`}
+						data-testid="class-start"
+					>
 						<PlayIcon className="size-4 fill-current" />
-						{next.title} · {next.minutes} min
+						<span className="inline-flex min-w-0 items-center">
+							<span className="min-w-0 truncate">{next.title}</span>
+							<span className="shrink-0 whitespace-pre"> · {next.minutes} min</span>
+						</span>
 					</Button>
 					<Button variant="outline" size="lg" className="h-11 rounded-xl px-4 text-base" disabled={starting} onClick={() => handlers.onQuick(next)}>
 						<ZapIcon className="size-4" />
@@ -96,9 +106,15 @@ export function ClassShell({
 					</Button>
 				</>
 			) : (
-				<Button size="lg" className="h-11 rounded-xl px-5 text-base" onClick={handlers.onLearn} data-testid="class-learn">
+				<Button
+					size="lg"
+					className="h-11 max-w-full min-w-0 shrink rounded-xl px-5 text-base"
+					onClick={handlers.onLearn}
+					title={`Learn something in ${data.label}`}
+					data-testid="class-learn"
+				>
 					<PlayIcon className="size-4 fill-current" />
-					Learn something in {data.label}
+					<span className="min-w-0 truncate">Learn something in {data.label}</span>
 				</Button>
 			)}
 			{data.notes.length > 0 && (
