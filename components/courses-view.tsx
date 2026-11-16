@@ -472,6 +472,15 @@ function CourseCard({
 					>
 						Mock exam
 					</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						disabled={course.notes.length === 0}
+						onClick={() => openStart("sheet", undefined, { topic: course.label, notes: course.notes.map((n) => ({ id: n.id, name: n.name })) })}
+						data-testid="course-sheet"
+					>
+						Cheat sheet
+					</Button>
 					<MoreMenu
 						label={`More for ${course.label}`}
 						testId="course-more"

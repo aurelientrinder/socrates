@@ -13,6 +13,7 @@ export { listSnapshots, restoreExport, restoreSnapshot, RestoreError } from "./r
 export * from "./review.ts";
 export * from "./flashcards.ts";
 export * from "./exams.ts";
+export * from "./cheatsheets.ts";
 export * from "./graph.ts";
 export * from "./handwriting.ts";
 export * from "./sketch.ts";

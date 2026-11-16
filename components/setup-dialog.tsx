@@ -54,7 +54,7 @@ const SLOT_META: Record<ModelSlotName, { label: string; roster: string }> = {
 	strong: { label: "Strong", roster: "Prober, teacher" },
 	cheap: { label: "Cheap", roster: "Researcher, demo builder, extractor, auditor" },
 	vision: { label: "Vision", roster: "Visual maker + PDF reader" },
-	exam: { label: "Mock exams", roster: "Writes and marks mock exams" },
+	exam: { label: "Mock exams", roster: "Writes and marks mock exams, writes cheat sheets" },
 };
 const SLOT_ORDER: readonly ModelSlotName[] = ["strong", "cheap", "vision"];
 

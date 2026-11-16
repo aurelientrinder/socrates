@@ -2,7 +2,7 @@
  * YOUR DATA, SAFE: a daily snapshot and a one-file export.
  *
  * Everything the learner built (sessions, the knowledge map, flashcards,
- * mock exams, course links, settings) is plain JSON on disk. A snapshot
+ * mock exams, cheat sheets, course links, settings) is plain JSON on disk. A snapshot
  * copies it once a day into data/backups/<date>/, keeping the last few,
  * so a bad write or a deleted file is a copy away. Notes originals and
  * API keys are left out: notes can be imported again and keys are
@@ -16,7 +16,7 @@ import * as path from "node:path";
 import { PATHS, SETTINGS_FILE } from "../../config.ts";
 
 /** Folders under data/ that hold the learner's own work. */
-export const DATA_FOLDERS = ["chats", "graph", "flashcards", "exams", "digests", "briefing"] as const;
+export const DATA_FOLDERS = ["chats", "graph", "flashcards", "exams", "cheatsheets", "digests", "briefing"] as const;
 const KEEP_SNAPSHOTS = 5;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 

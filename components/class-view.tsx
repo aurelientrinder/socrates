@@ -54,6 +54,8 @@ export interface ClassHandlers {
 	onStart: (item: BriefingItem) => void;
 	onQuick: (item: BriefingItem) => void;
 	onMockExam: () => void;
+	/** The class's exam cheat sheet (Start dialog on Cheat sheet, its notes picked). */
+	onCheatSheet?: () => void;
 	onLearn: () => void;
 	onOpenSession: (id: string) => void;
 }
@@ -100,9 +102,16 @@ export function ClassShell({
 				</Button>
 			)}
 			{data.notes.length > 0 && (
-				<Button variant="ghost" size="lg" className="ml-auto h-11 rounded-xl px-4 text-base" onClick={handlers.onMockExam} data-testid="class-mock-exam">
-					Mock exam
-				</Button>
+				<span className="ml-auto flex items-center gap-1">
+					{handlers.onCheatSheet && (
+						<Button variant="ghost" size="lg" className="h-11 rounded-xl px-4 text-base" onClick={handlers.onCheatSheet} data-testid="class-cheat-sheet">
+							Cheat sheet
+						</Button>
+					)}
+					<Button variant="ghost" size="lg" className="h-11 rounded-xl px-4 text-base" onClick={handlers.onMockExam} data-testid="class-mock-exam">
+						Mock exam
+					</Button>
+				</span>
 			)}
 		</div>
 	);
@@ -280,6 +289,7 @@ export function ClassView({ data }: { data: ClassPageData }) {
 				onStart: (item) => void start(item, false),
 				onQuick: (item) => void start(item, true),
 				onMockExam: () => openStart("exam", undefined, { topic: data.label, notes: data.notes }),
+				onCheatSheet: () => openStart("sheet", undefined, { topic: data.label, notes: data.notes }),
 				onLearn: () => openStart("learn", undefined, { topic: data.label, notes: data.notes }),
 				onOpenSession: (id) => router.push(`/chat/${id}`),
 			}}
