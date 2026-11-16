@@ -42,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 			<head>
 				<script dangerouslySetInnerHTML={{ __html: BOOT_THEME_SCRIPT }} />
 			</head>
-			<body className="min-h-dvh antialiased">
+			<body className="h-dvh overflow-hidden antialiased">
 			{/* The notification channel rides OUTSIDE everything: sidebar, dock,
 				 and pages all subscribe as the polls retire (push S3, 2026-10-02). */}
 			<ServerEventsProvider>

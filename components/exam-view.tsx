@@ -208,8 +208,8 @@ export function ExamScreen(props: {
 	);
 	return (
 		<SessionMermaidContext.Provider value={overlay}>
-		<div className="relative h-full">
-		<div data-testid="exam-page" data-status={view.status} className="h-full overflow-y-auto">
+		<div className="relative h-full overflow-hidden">
+		<div data-testid="exam-page" data-status={view.status} className="relative h-full overflow-y-auto">
 			<div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 pb-20 pt-8 sm:px-10">
 				{view.status === "running" ? (
 					<RunningPaper {...props} />

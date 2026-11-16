@@ -24,7 +24,7 @@ export function PageFrame({
 	children: React.ReactNode;
 }) {
 	return (
-		<div data-testid={testId} className="h-full overflow-y-auto">
+		<div data-testid={testId} className="relative h-full overflow-y-auto">
 			<div className={cn("mx-auto flex flex-col gap-8 px-6 pb-14 pt-8 sm:px-10", width)}>
 				<PageHead title={title} actions={actions} />
 				{children}
