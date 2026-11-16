@@ -82,7 +82,7 @@ const SLOT_META: Record<ModelSlotName, { label: string; roster: string }> = {
 	strong: { label: "Teaching", roster: "The tutor you talk to" },
 	cheap: { label: "Background work", roster: "Research, demos and grading" },
 	vision: { label: "Vision", roster: "Reads PDFs and draws" },
-	exam: { label: "Mock exams", roster: "Writes and marks mock exams" },
+	exam: { label: "Mock exams", roster: "Writes and marks mock exams, writes cheat sheets" },
 };
 
 /** Plain names for the tool switches (settings redesign). */

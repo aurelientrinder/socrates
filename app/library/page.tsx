@@ -1,6 +1,7 @@
 import { CourseCalendar } from "@/components/course-calendar";
 import { CoursesView } from "@/components/courses-view";
 import { ExamLibrary } from "@/components/exam-library";
+import { SheetLibrary } from "@/components/sheet-library";
 import { NotesView } from "@/components/notes-view";
 import { ReadingQueue } from "@/components/reading-queue";
 import { LIBRARY_TABS, PageFrame, PageTabs } from "@/components/page-header";
@@ -9,7 +10,8 @@ import { SessionLibrary } from "@/components/session-library";
 /**
  * LIBRARY (redesign wave, 2026-10-26): what you have studied from and
  * studied in — the courses (a group of notes per class), the imported notes (the old Notes page) and every session,
- * searchable, beyond the sidebar's short recent list, and the mock exams.
+ * searchable, beyond the sidebar's short recent list, the mock exams and
+ * the exam cheat sheets.
  * The Calendar tab (2026-10-29) is the learner's calendar as a week grid,
  * where each event is filed under a class by hand.
  * The Notes folder (2026-11-01) is the watched folder (a reMarkable export
@@ -30,6 +32,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
 					<CoursesView />
 					<NotesView />
 					<ExamLibrary />
+					<SheetLibrary />
 					<SessionLibrary />
 				</>
 			)}

@@ -76,6 +76,8 @@ export * from "./flashcards.ts";
 export * from "./recall-review.ts";
 // Mock exams: scenario problems, checked references, quoted grading. Pure.
 export * from "./exam.ts";
+// Exam cheat sheets: what to know, marked known / shaky / not seen. Pure.
+export * from "./cheatsheet.ts";
 // The weak-spot report: per-topic overconfidence + fading, joined on the retention key. Pure.
 export * from "./weak-spots.ts";
 export * from "./context-usage.ts";

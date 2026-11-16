@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpenIcon, ClipboardCheckIcon, DumbbellIcon, Loader2Icon, PlayIcon, RotateCcwIcon, ScaleIcon, XIcon } from "lucide-react";
+import { BookOpenIcon, ClipboardCheckIcon, DumbbellIcon, Loader2Icon, PlayIcon, RotateCcwIcon, ScaleIcon, ScrollTextIcon, XIcon } from "lucide-react";
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { readWarmupPreference, startDraftSession, writeWarmupPreference } from "@/components/new-session";
 import { REVIEW_START_PROMPT } from "@/components/review-start";
@@ -21,9 +21,11 @@ import { cn } from "@/lib/utils";
  * (startDraftSession: the topic becomes the title and turn 1); Review is
  * the Progress page's Start review (/api/review/start). Mock exam writes a
  * timed paper on a topic and/or saved notes (/api/exams) and opens it.
+ * Cheat sheet (2026-11-16) writes what to know for an exam from the same
+ * class and notes, with an optional focus (/api/cheatsheets).
  */
 
-export type StartMode = "learn" | "practice" | "review" | "exam";
+export type StartMode = "learn" | "practice" | "review" | "exam" | "sheet";
 
 /** What a caller can fill in ahead (a course's "Mock exam": its name and files). */
 export interface StartPreset {
@@ -109,6 +111,7 @@ function StartDialog({
 	const router = useRouter();
 	const [mode, setMode] = useState<StartMode>(initialMode);
 	const [topic, setTopic] = useState(preset?.topic ?? "");
+	const [focus, setFocus] = useState("");
 	const [due, setDue] = useState<number | null>(null);
 	const [honesty, setHonesty] = useState<{ points: number } | null>(null);
 	const [notes, setNotes] = useState<NoteChip[]>([]);
@@ -191,7 +194,16 @@ function StartDialog({
 		setError(null);
 		try {
 			let target: string | null;
-			if (mode === "exam") {
+			if (mode === "sheet") {
+				const res = await fetch("/api/cheatsheets", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ scope: text, focus, noteIds: pickedNotes }),
+				});
+				const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
+				if (!res.ok || !body.id) throw new Error(body.error ?? "Could not start the cheat sheet.");
+				target = `/sheet/${body.id}`;
+			} else if (mode === "exam") {
 				const res = await fetch("/api/exams", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
@@ -257,6 +269,8 @@ function StartDialog({
 					writeWarmupPreference(on);
 				}}
 				onTopic={setTopic}
+				focus={focus}
+				onFocus={setFocus}
 				onStart={() => void go(topic)}
 				onNote={(name) => void go(notePrompt(mode === "practice" ? "practice" : "learn", name))}
 				onPickNote={(id) =>
@@ -282,6 +296,12 @@ const MODES: { id: StartMode; label: string; desc: string; icon: React.ReactNode
 	{ id: "practice", label: "Practice", desc: "Solve problems on what you have covered. No new teaching.", icon: <DumbbellIcon className="size-4" /> },
 	{ id: "review", label: "Review", desc: "Quick recall on the topics you are starting to forget.", icon: <RotateCcwIcon className="size-4" /> },
 	{ id: "exam", label: "Mock exam", desc: "A timed paper of real exam problems. No hints, marked at the end.", icon: <ClipboardCheckIcon className="size-4" /> },
+	{
+		id: "sheet",
+		label: "Cheat sheet",
+		desc: "Everything to know for an exam, each line marked known, shaky or not seen yet.",
+		icon: <ScrollTextIcon className="size-4" />,
+	},
 ];
 
 /** The dialog's pure body: the render-test seam (state lives in the wrapper). */
@@ -305,6 +325,8 @@ export function StartDialogBody({
 	classKey = null,
 	onClass = () => {},
 	onTopic,
+	focus = "",
+	onFocus = () => {},
 	onStart,
 	onNote,
 	onPickNote = () => {},
@@ -336,6 +358,9 @@ export function StartDialogBody({
 	classKey?: string | null;
 	onClass?: (key: string | null) => void;
 	onTopic: (text: string) => void;
+	/** Cheat sheet: what it should relate to specifically (optional). */
+	focus?: string;
+	onFocus?: (text: string) => void;
 	onStart: () => void;
 	onNote: (name: string) => void;
 	onPickNote?: (id: string) => void;
@@ -347,8 +372,8 @@ export function StartDialogBody({
 	}, [mode]);
 	const canStart =
 		!busy &&
-		(mode === "review" ? (due ?? 0) > 0 : mode === "exam" ? topic.trim().length > 0 || pickedNotes.length > 0 : topic.trim().length > 0);
-	const verb = mode === "learn" ? "Start learning" : mode === "practice" ? "Start practice" : mode === "exam" ? "Write my exam" : "Start review";
+		(mode === "review" ? (due ?? 0) > 0 : mode === "exam" || mode === "sheet" ? topic.trim().length > 0 || pickedNotes.length > 0 : topic.trim().length > 0);
+	const verb = mode === "learn" ? "Start learning" : mode === "practice" ? "Start practice" : mode === "exam" ? "Write my exam" : mode === "sheet" ? "Make my cheat sheet" : "Start review";
 	return (
 		<div
 			role="dialog"
@@ -383,6 +408,7 @@ export function StartDialogBody({
 							onClick={() => onMode(m.id)}
 							className={cn(
 								"flex flex-col gap-2 rounded-xl border-[1.5px] p-3.5 text-left transition-colors",
+								MODES.length % 2 === 1 && m.id === MODES.at(-1)!.id && "sm:col-span-2",
 								mode === m.id ? "border-good bg-good-soft" : "border-border/70 bg-background hover:bg-accent/60",
 							)}
 						>
@@ -408,7 +434,13 @@ export function StartDialogBody({
 			) : (
 				<div className="flex flex-col gap-2.5">
 					<label htmlFor="start-topic" className="text-sm font-semibold">
-						{mode === "practice" ? "What do you want to practise?" : mode === "exam" ? "What does the exam cover?" : "What do you want to learn?"}
+						{mode === "practice"
+							? "What do you want to practise?"
+							: mode === "exam"
+								? "What does the exam cover?"
+								: mode === "sheet"
+									? "Which exam is it for?"
+									: "What do you want to learn?"}
 					</label>
 					{classes.length > 0 && (
 						<div className="flex flex-wrap items-center gap-2" data-testid="start-classes">
@@ -450,11 +482,13 @@ export function StartDialogBody({
 								? "e.g. entropy change problems"
 								: mode === "exam"
 									? "e.g. Thermodynamics, chapters 2 and 3: first law, enthalpy, calorimetry"
+									: mode === "sheet"
+										? "e.g. Thermodynamics final exam, or pick a class above"
 									: "e.g. the Calvin cycle, or paste a question from your course"
 						}
 						className="lh-input resize-none rounded-xl border bg-background px-3.5 py-3 font-prose text-lg outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
 					/>
-					{mode === "exam" && notes.length > 0 && (
+					{(mode === "exam" || mode === "sheet") && notes.length > 0 && (
 						<div className="flex flex-wrap items-center gap-2" data-testid="start-exam-notes">
 							<span className="text-sm text-muted-foreground">Write it from your notes (up to {EXAM_MAX_NOTES}):</span>
 							{notes.map((n) => (
@@ -474,7 +508,29 @@ export function StartDialogBody({
 							))}
 						</div>
 					)}
-					{mode !== "exam" && notes.length > 0 && (
+					{mode === "sheet" && (
+						<div className="flex flex-col gap-1.5 pt-1">
+							<label htmlFor="start-focus" className="text-sm font-semibold">
+								Anything specific? <span className="font-normal text-muted-foreground">Optional</span>
+							</label>
+							<input
+								id="start-focus"
+								data-testid="start-focus"
+								value={focus}
+								disabled={busy}
+								onChange={(e) => onFocus(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" && canStart) {
+										e.preventDefault();
+										onStart();
+									}
+								}}
+								placeholder="e.g. only chapters 3 and 4: the formulas and the proofs from TD 2"
+								className="lh-input h-10 rounded-lg border bg-background px-3 text-[15px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+							/>
+						</div>
+					)}
+					{mode !== "exam" && mode !== "sheet" && notes.length > 0 && (
 						<div className="flex flex-wrap items-center gap-2" data-testid="start-notes">
 							<span className="text-sm text-muted-foreground">From your notes:</span>
 							{notes.slice(0, 3).map((n) => (
@@ -529,7 +585,13 @@ export function StartDialogBody({
 				</div>
 			)}
 
-			{mode !== "review" && mode !== "exam" && (
+			{mode === "sheet" && (
+				<p className="text-sm text-muted-foreground" data-testid="start-sheet-note">
+					Written and checked in a minute or two. Each line is then marked from your tested answers: known, shaky, or not seen yet.
+				</p>
+			)}
+
+			{mode !== "review" && mode !== "exam" && mode !== "sheet" && (
 				<div className="flex flex-wrap items-center gap-3">
 					<span id="start-length-label" className="text-sm font-semibold">
 						How long?

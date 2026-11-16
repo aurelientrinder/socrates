@@ -754,3 +754,50 @@ body {
 }
 .lh-thread-in { animation: lh-thread-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 @media (prefers-reduced-motion: reduce) { .lh-thread-in { animation: none; } }
+
+/* Exam cheat sheet (2026-11-16): dense lines, not reading prose. The
+   prose size/leading tokens are unlayered, so the sheet sets its own. */
+.lh-prose.lh-sheet-body {
+	font-size: 14px;
+	line-height: 1.4;
+}
+.lh-prose.lh-sheet-watch {
+	font-size: 13px;
+	color: var(--lh-warn-ink);
+}
+.lh-sheet-body :where(p, ul, ol, li) {
+	margin-block: 0.15rem;
+}
+.lh-sheet-body :where(ul, ol) {
+	padding-left: 1.1rem;
+}
+.lh-sheet-body .katex-display {
+	margin-block: 0.3rem;
+}
+
+/* Printing a cheat sheet: the sheet alone, black on white, no app chrome. */
+@media print {
+	body * {
+		visibility: hidden;
+	}
+	.lh-print-root,
+	.lh-print-root * {
+		visibility: visible;
+	}
+	.lh-print-root {
+		position: absolute;
+		inset: 0;
+		height: auto !important;
+		overflow: visible !important;
+	}
+	html,
+	body,
+	.lh-print-root {
+		background: #fff !important;
+		color: #000 !important;
+		print-color-adjust: exact;
+	}
+	.lh-print-root :where(p, li, h1, h2, h3, span, strong, em) {
+		color: #000 !important;
+	}
+}

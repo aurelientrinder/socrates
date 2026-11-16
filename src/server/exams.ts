@@ -84,7 +84,7 @@ function examinerRun(signal: AbortSignal): ExaminerRun {
 
 // ─── material and topics ────────────────────────────────────────────────────
 
-function examMaterial(noteIds: readonly string[]): string {
+export function examMaterial(noteIds: readonly string[]): string {
 	let budget = MATERIAL_CHARS;
 	const out: string[] = [];
 	for (const id of noteIds) {
