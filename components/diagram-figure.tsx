@@ -17,10 +17,13 @@ export const DiagramFigure = memo(function DiagramFigure({
 	svg,
 	streaming = false,
 	className,
+	svgClassName,
 }: {
 	svg: string;
 	streaming?: boolean;
 	className?: string;
+	/** Overrides for the drawing's own box (e.g. a taller max height). */
+	svgClassName?: string;
 }) {
 	const overlay = useSessionMermaid();
 	const safe = useMemo(
@@ -54,7 +57,7 @@ export const DiagramFigure = memo(function DiagramFigure({
 			)}
 			{safe ? (
 				<div
-					className="flex items-center justify-center [&_svg]:h-auto [&_svg]:max-h-64 [&_svg]:w-full [&_svg]:max-w-full"
+					className={cn("flex items-center justify-center [&_svg]:h-auto [&_svg]:max-h-64 [&_svg]:w-full [&_svg]:max-w-full", svgClassName)}
 					dangerouslySetInnerHTML={{ __html: safe }}
 				/>
 			) : (

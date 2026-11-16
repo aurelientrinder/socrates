@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckIcon, ClockIcon, Loader2Icon, MinusIcon, PlayIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { DiagramFigure } from "@/components/diagram-figure";
+import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { PageHead } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import {
@@ -198,7 +200,15 @@ export function ExamScreen(props: {
 	onAgain: () => void;
 }) {
 	const { view } = props;
+	// Figures expand to the same full-pane pan/zoom view as in a chat.
+	const [figureFocus, setFigureFocus] = useState<string | null>(null);
+	const overlay = useMemo(
+		() => ({ openMermaid: () => {}, openFigure: (svg: string) => setFigureFocus(svg) }),
+		[],
+	);
 	return (
+		<SessionMermaidContext.Provider value={overlay}>
+		<div className="relative h-full">
 		<div data-testid="exam-page" data-status={view.status} className="h-full overflow-y-auto">
 			<div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 pb-20 pt-8 sm:px-10">
 				{view.status === "running" ? (
@@ -220,6 +230,19 @@ export function ExamScreen(props: {
 				)}
 			</div>
 		</div>
+		{figureFocus !== null && <MermaidOverlay svg={figureFocus} themed onClose={() => setFigureFocus(null)} />}
+		</div>
+		</SessionMermaidContext.Provider>
+	);
+}
+
+/** A problem's or part's figure: drawn in the ink colour, so it reads on paper and in the dark theme. */
+function ExamFigure({ svg, label }: { svg: string | undefined; label: string }) {
+	if (!svg) return null;
+	return (
+		<figure data-testid="exam-figure" aria-label={label} className="m-0">
+			<DiagramFigure svg={svg} className="border-border/50 bg-transparent px-4 py-3" svgClassName="[&_svg]:max-h-80" />
+		</figure>
 	);
 }
 
@@ -439,6 +462,7 @@ function ProblemCard({ problem, children, score }: { problem: ExamProblemView; c
 			<div className="font-prose text-[17px] leading-relaxed">
 				<MessageResponse>{repairMathForDisplay(problem.scenario)}</MessageResponse>
 			</div>
+			<ExamFigure svg={problem.figure} label={`Figure for problem ${problem.id}`} />
 			<div className="flex flex-col gap-6">{children}</div>
 		</section>
 	);
@@ -446,12 +470,15 @@ function ProblemCard({ problem, children, score }: { problem: ExamProblemView; c
 
 function PartPrompt({ part }: { part: ExamPartView }) {
 	return (
+		<div className="flex flex-col gap-3">
 		<div className="flex items-start gap-3">
 			<span className="pt-0.5 font-semibold">({part.id.replace(/^\d+/, "")})</span>
 			<div className="min-w-0 flex-1 font-prose text-[17px]">
 				<MessageResponse>{repairMathForDisplay(part.prompt)}</MessageResponse>
 			</div>
 			<span className="shrink-0 pt-1 text-xs text-muted-foreground tabular-nums">{points(part.points)}</span>
+		</div>
+		<ExamFigure svg={part.figure} label={`Figure for part ${part.id}`} />
 		</div>
 	);
 }

@@ -210,6 +210,88 @@ describe("the independent check", () => {
 	});
 });
 
+// ─── figures and graphs ─────────────────────────────────────────────────────
+
+const FIG =
+	'<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240"><rect x="40" y="40" width="200" height="160" fill="none" stroke="currentColor" stroke-width="2"/><text x="60" y="30" font-size="16" fill="currentColor">2.0 L tank</text></svg>';
+
+describe("figures and graphs", () => {
+	it("checks a figure before it can go on the paper", () => {
+		assert.equal(exam.figureProblem(FIG), null);
+		assert.match(exam.figureProblem("a box with a gas")!, /complete <svg>/);
+		assert.match(exam.figureProblem(FIG.replace(' viewBox="0 0 480 240"', ""))!, /viewBox/);
+		assert.match(exam.figureProblem(FIG.replace("<text", "<script>x</script><text"))!, /no script/);
+		assert.match(exam.figureProblem(FIG.replace("</svg>", `<!--${"x".repeat(exam.MAX_FIGURE_CHARS)}--></svg>`))!, /under/);
+	});
+
+	it("resolves drawn figure ids and names an id that was never drawn", () => {
+		const d = draft([{ figure: "fig2" }]);
+		d.problems[0]!.figure = "fig1";
+		const resolved = exam.resolveDraftFigures(d, new Map([["fig1", FIG]]));
+		assert.equal(resolved.problems[0]!.figure, FIG);
+		const problems = examDraftProblems(resolved, 1);
+		assert.equal(problems.length, 1);
+		assert.match(problems[0]!, /parts\[0\]\.figure: figure "fig2" was never drawn/);
+		const ok = exam.resolveDraftFigures(d, new Map([["fig1", FIG], ["fig2", FIG]]));
+		assert.deepEqual(examDraftProblems(ok, 1), []);
+		const [p] = problemsFromDraft(ok, TOPICS);
+		assert.equal(p!.figure, FIG);
+		assert.equal(p!.parts[0]!.figure, FIG);
+		assert.equal(p!.parts[1]!.figure, undefined);
+	});
+
+	it("shows figures with the paper, and the audit can take a wrong one off", () => {
+		const d = exam.resolveDraftFigures({ ...draft([{}, { figure: "g" }]), problems: draft([{}, { figure: "g" }]).problems.map((p) => ({ ...p, figure: "f" })) }, new Map([["f", FIG], ["g", FIG]]));
+		const [p] = problemsFromDraft(d, TOPICS);
+		const running = examView(record("running", { problems: [p!] }), 0);
+		assert.equal(running.problems[0]!.figure, FIG);
+		assert.equal(running.problems[0]!.parts[1]!.figure, FIG);
+		const out = applyAudit([p!], [{ partId: "1a", verdict: "drop", reason: "needs the wrong figure" }], ["1", "1b"]);
+		assert.equal(out.problems[0]!.figure, undefined);
+		assert.equal(out.problems[0]!.parts[0]!.id, "1a", "renumbered after the drop");
+		assert.equal(out.problems[0]!.parts[0]!.figure, undefined, "the old 1b lost its figure");
+		const kept = applyAudit([p!], []);
+		assert.equal(kept.problems[0]!.figure, FIG);
+	});
+
+	it("gives the solver, auditor and grader the figure source", async () => {
+		const examiner = await import("../src/agent/subagents/examiner.ts");
+		const d = exam.resolveDraftFigures({ ...draft(), problems: draft().problems.map((p) => ({ ...p, figure: "f" })) }, new Map([["f", FIG]]));
+		const [p] = problemsFromDraft(d, TOPICS);
+		assert.ok(examiner.paperText([p!]).includes('<figure for="1" format="svg">'));
+		assert.ok(examiner.auditPrompt([p!], []).includes("2.0 L tank"));
+		assert.ok(examiner.gradePrompt(p!, {}, p!.parts, {}).includes("2.0 L tank"));
+		assert.ok(!examiner.paperText([problem()]).includes("<figure"), "no figure, no block");
+	});
+
+	it("draw_figure keeps a good figure, shows its render, and refuses a bad one", async () => {
+		const examiner = await import("../src/agent/subagents/examiner.ts");
+		const { headlessOverride } = await import("../src/agent/subagents/headless.ts");
+		const rendered: string[] = [];
+		headlessOverride.current = {
+			unavailableReason: () => null,
+			renderSvg: async (svg: string) => {
+				rendered.push(svg);
+				return Buffer.from("png");
+			},
+		} as never;
+		try {
+			const figures = new Map<string, string>();
+			const tool = examiner.figureTool(figures);
+			const ok = await tool.execute("c1", { id: "fig1", svg: FIG });
+			assert.equal(ok.isError, undefined);
+			assert.equal(figures.get("fig1"), FIG);
+			assert.deepEqual(rendered, [FIG]);
+			assert.ok(ok.content.some((c) => c.type === "image"), "the author sees the render");
+			const bad = await tool.execute("c2", { id: "fig2", svg: "<div>no</div>" });
+			assert.equal(bad.isError, true);
+			assert.equal(figures.has("fig2"), false);
+		} finally {
+			headlessOverride.current = undefined;
+		}
+	});
+});
+
 // ─── numbers and quotes ─────────────────────────────────────────────────────
 
 describe("numbers", () => {
