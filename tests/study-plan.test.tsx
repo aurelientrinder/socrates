@@ -93,7 +93,7 @@ describe("planStudy: exams", () => {
 	it("plans more reviews for a topic that has lapsed", () => {
 		const shaky = topic({ key: "plan:x:s", title: "Shaky", chatId: "x", lapses: 2 });
 		const clean = topic({ key: "plan:y:c", title: "Clean", chatId: "y" });
-		const plan = planStudy(input({ budgetMinutes: 90, targets: [exam("x", 21, [shaky]), exam("y", 21, [clean])], topics: [shaky, clean] }));
+		const plan = planStudy(input({ budgetMinutes: 90, targets: [exam("x", 30, [shaky]), exam("y", 30, [clean])], topics: [shaky, clean] }));
 		const count = (key: string) => allItems(plan).filter((x) => x.item.action === "review" && x.item.topicKeys.includes(key)).length;
 		assert.ok(count("plan:x:s") > count("plan:y:c"), `${count("plan:x:s")} vs ${count("plan:y:c")}`);
 	});

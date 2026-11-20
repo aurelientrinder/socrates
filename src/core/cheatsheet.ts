@@ -117,6 +117,15 @@ export function standingOf(topic: TopicRetention | undefined, spot: WeakSpot | u
 	if (topic.lastGrade === GRADE_AGAIN) return { standing: "shaky", reason: "You missed it the last time it was tested.", retention };
 	if (topic.lastGrade === GRADE_HARD) return { standing: "shaky", reason: "Right last time, but only just: unsure or with hints.", retention };
 	if (retention < KNOWN_RECALL) return { standing: "shaky", reason: `Right last time, but fading: about ${pct(retention)}% recall now.`, retention };
+	if (topic.shakyPremises && topic.shakyPremises.length > 0) {
+		const p = topic.shakyPremises[0]!;
+		const extra = topic.shakyPremises.length > 1 ? ` (+${topic.shakyPremises.length - 1} more)` : "";
+		return {
+			standing: "shaky",
+			reason: `Built on a shaky foundation: ${p.title} (${pct(p.retention)}% recall)${extra}.`,
+			retention,
+		};
+	}
 	return {
 		standing: "known",
 		reason: `Right ${topic.reviews === 1 ? "the one time" : `${topic.reviews - topic.lapses} of ${topic.reviews} times`} it was tested, about ${pct(retention)}% recall now.`,

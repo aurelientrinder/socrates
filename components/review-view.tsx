@@ -7,12 +7,14 @@ import {
 	relativeDays,
 	isExamId,
 	memoryByClass,
+	type FsrsModelStatus,
 	type LensClass,
 	sessionHref,
 	type RetentionReport,
 	type ReviewStatus,
 	type TopicRetention,
 } from "@/src/core";
+import { FsrsFitCard } from "@/components/fsrs-fit-card";
 import { ReviewStart } from "@/components/review-start";
 import { SectionHeading } from "@/components/page-header";
 import { cn } from "@/lib/utils";
@@ -25,7 +27,17 @@ import { cn } from "@/lib/utils";
  * server-side (src/core/retention.ts). Rendered as the Memory tab of the
  * Progress page, which owns the page title.
  */
-export function ReviewView({ report, status, classes = [] }: { report: RetentionReport; status?: ReviewStatus; classes?: LensClass[] }) {
+export function ReviewView({
+	report,
+	status,
+	classes = [],
+	model,
+}: {
+	report: RetentionReport;
+	status?: ReviewStatus;
+	classes?: LensClass[];
+	model?: FsrsModelStatus;
+}) {
 	const target = Math.round(TARGET_RETENTION * 100);
 	const byClass = classes.length > 0 ? memoryByClass(report.topics, classes) : [];
 	return (
@@ -36,7 +48,7 @@ export function ReviewView({ report, status, classes = [] }: { report: Retention
 				</p>
 				<p className="text-sm text-muted-foreground">
 					Each topic&apos;s memory is estimated from how you actually did when tested (quiz checks after teaching,
-					practice problems and mock exams), never from how sure you felt. It fades over time, and a topic is due once its estimated
+					practice problems, flashcards and mock exams), never from how sure you felt. It fades over time, and a topic is due once its estimated
 					recall drops under {target}%. Each successful review makes it last longer.
 				</p>
 			</header>
@@ -87,6 +99,7 @@ export function ReviewView({ report, status, classes = [] }: { report: Retention
 						<SectionHeading>All topics</SectionHeading>
 						<TopicList topics={report.topics} now={report.now} testId="review-topic" />
 					</section>
+					{model && <FsrsFitCard initial={model} />}
 				</>
 			)}
 		</div>
@@ -109,11 +122,24 @@ function TopicList({ topics, now, testId }: { topics: TopicRetention[]; now: num
 						<div className="min-w-0 flex-1">
 							<p className="truncate">{t.title}</p>
 							<p className="truncate text-xs text-muted-foreground">
-								{isExamId(t.chatId) ? "Mock exam" : t.kind === "proposition" ? "Practice" : "Lesson"} · {t.chatTitle} · {lastResult(t)}{" "}
+								{isExamId(t.chatId)
+									? "Mock exam"
+									: t.kind === "card"
+										? "Flashcards"
+										: t.kind === "proposition"
+											? "Practice"
+											: "Lesson"}{" "}
+								· {t.chatTitle} · {lastResult(t)}{" "}
 								{relativeDays(t.lastReviewedAt, now)}
 							</p>
+							{t.shakyPremises && t.shakyPremises.length > 0 && (
+								<p className="truncate text-xs text-warn-ink" data-testid="shaky-foundation">
+									Foundation shaky: {t.shakyPremises[0]!.title}
+									{t.shakyPremises.length > 1 ? ` (+${t.shakyPremises.length - 1} more)` : ""}
+								</p>
+							)}
 						</div>
-						<RetentionBar retention={t.retention} />
+						<RetentionBar retention={t.retention} implicitCredits={t.implicitCredits} />
 						<span className={cn("w-24 shrink-0 text-right text-xs tabular-nums", t.due ? "font-semibold text-warn-ink" : "text-muted-foreground")}>
 							{t.due ? `due ${dueText(t.dueAt, now)}` : `due ${relativeDays(t.dueAt, now)}`}
 						</span>
@@ -134,10 +160,14 @@ function dueText(dueAt: number, now: number): string {
 	return rel === "today" ? "now" : rel;
 }
 
-function RetentionBar({ retention }: { retention: number }) {
+function RetentionBar({ retention, implicitCredits }: { retention: number; implicitCredits?: number }) {
 	const pct = Math.round(retention * 100);
+	const creditNote =
+		implicitCredits && implicitCredits > 0
+			? ` · includes ${implicitCredits} implicit ${implicitCredits === 1 ? "credit" : "credits"} from higher topics`
+			: "";
 	return (
-		<div className="flex w-32 shrink-0 items-center gap-2" title={`Estimated chance you recall this now: ${pct}%`}>
+		<div className="flex w-32 shrink-0 items-center gap-2" title={`Estimated chance you recall this now: ${pct}%${creditNote}`}>
 			<div className="relative h-1.5 flex-1 rounded-full bg-accent">
 				<div
 					className={cn(

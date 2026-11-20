@@ -1,4 +1,5 @@
-import { parseTopicKey } from "../core/retention.ts";
+import { orderPrerequisitesFirst, parseTopicKey, withPrerequisiteRepairs } from "../core/retention.ts";
+import { getGraph } from "../core/graph.ts";
 import {
 	newReviewContextMessage,
 	newWarmupContextMessage,
@@ -50,29 +51,41 @@ function topicMaterial(
 }
 
 /** The queue one review session would take right now, weakest first,
- *  each topic with its question format (recall-review.ts). */
+ *  ordered prerequisites-before-conclusions. Unlinked flashcards stay
+ *  in the fast-flip Cards UI. */
 export function reviewQueue(now: number = Date.now(), limit: number = REVIEW_SESSION_SIZE): ReviewTopic[] {
-	return toReviewTopics(pickReviewTopics(retentionAcrossSessions(now).due, limit));
+	const due = retentionAcrossSessions(now).due.filter(
+		(t): t is TopicRetention & { kind: "plan" | "proposition" } => t.kind !== "card",
+	);
+	const chains = getGraph(stores.graphStore).chains;
+	return toReviewTopics(orderPrerequisitesFirst(pickReviewTopics(due, limit), chains));
 }
 
 /** The queue a weak-spot drill would take: the asked topics that are
  *  still weak spots, in the report's order (worst first), capped like a
- *  review. No keys = the worst few. Not-yet-due topics are fine: a drill
- *  is an early review, and the fold schedules it like any other. */
+ *  review. Broken/shaky ancestor premises are automatically pulled ahead
+ *  of conclusions built on them so root causes are repaired first. */
 export function drillQueue(keys: readonly string[] | undefined, now: number = Date.now(), limit: number = REVIEW_SESSION_SIZE): ReviewTopic[] {
-	const spots = weakSpotsAcrossSessions(now).spots;
+	const spots = weakSpotsAcrossSessions(now).spots.filter((s) => s.kind !== "card");
 	const asked = keys ? new Set(keys) : null;
 	const picked = spots.filter((s) => !asked || asked.has(s.key)).slice(0, Math.max(0, limit));
-	const missed = new Map(picked.map((s) => [s.key, s.missedQuestions]));
-	return toReviewTopics(picked).map((t) => (missed.get(t.key)?.length ? { ...t, missed: missed.get(t.key) } : t));
+	const allTracked = retentionAcrossSessions(now).topics.filter((t) => t.kind !== "card");
+	const chains = getGraph(stores.graphStore).chains;
+	const ordered = withPrerequisiteRepairs<TopicRetention>(picked, allTracked, chains, limit);
+	const missed = new Map(spots.map((s) => [s.key, s.missedQuestions]));
+	return toReviewTopics(ordered).map((t) => (missed.get(t.key)?.length ? { ...t, missed: missed.get(t.key) } : t));
 }
 
 /** The queue for a study-plan step (Today's Review, Check and Prep):
- *  the asked topics that are tracked, weakest first, due or not, capped
- *  like a review. Unknown keys are dropped. */
+ *  the asked topics that are tracked, weakest first, ordered prerequisites
+ *  before conclusions, due or not, capped like a review. */
 export function topicsQueue(keys: readonly string[], now: number = Date.now(), limit: number = REVIEW_SESSION_SIZE): ReviewTopic[] {
 	const asked = new Set(keys);
-	return toReviewTopics(retentionAcrossSessions(now).topics.filter((t) => asked.has(t.key)).slice(0, Math.max(0, limit)));
+	const chains = getGraph(stores.graphStore).chains;
+	const picked = retentionAcrossSessions(now)
+		.topics.filter((t) => t.kind !== "card" && asked.has(t.key))
+		.slice(0, Math.max(0, limit));
+	return toReviewTopics(orderPrerequisitesFirst(picked, chains));
 }
 
 function toReviewTopics(picked: readonly TopicRetention[]): ReviewTopic[] {
@@ -101,7 +114,7 @@ function startOfLocalDay(now: number): number {
 }
 
 export function reviewStatus(now: number = Date.now()): ReviewStatus {
-	const due = retentionAcrossSessions(now).due.length;
+	const due = retentionAcrossSessions(now).due.filter((t) => t.kind !== "card").length;
 	const dayStart = startOfLocalDay(now);
 	let reviewedToday = 0;
 	// Any session kind: a learn or practice session's warm-up answers are

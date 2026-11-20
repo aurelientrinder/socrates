@@ -3,13 +3,32 @@ import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
 import { titleFromPrompt, type ChatRecord } from "../core/contracts.ts";
 import { calibrationAnswers, calibrationReport, type CalibrationReport } from "../core/calibration.ts";
-import { propositionNames, recallEvents, retentionReport, type RecallEvent, type RetentionReport } from "../core/retention.ts";
+import {
+	propositionNames,
+	recallEvents,
+	resolvePlanToPropositions,
+	retentionReport,
+	type RecallEvent,
+	type RetentionReport,
+} from "../core/retention.ts";
+import {
+	FSRS_MIN_REVIEWS,
+	countFitReviews,
+	fitFsrsWeights,
+	type FsrsFitResult,
+	type FsrsModelStatus,
+} from "../core/fsrs-fit.ts";
+import { buildDiagnosticBrief, newDiagnosticContextMessage, type MissClassEvent } from "../core/diagnostics.ts";
+import type { LhMarkerMessage } from "../core/native-messages.ts";
+import { flashcardRecallEvents } from "../core/flashcards.ts";
+import { getGraph } from "../core/graph.ts";
 import { weakSpotReport, type WeakSpotReport } from "../core/weak-spots.ts";
 import { STREAK_LOOKBACK_DAYS, daysBackStart, studyMinutesByDay, studyStreak, weekStartOf, type StudyStreak } from "../core/study-time.ts";
 import { examCalibrationAnswers, examRecallEvents } from "../core/exam.ts";
 import { chatDigests, forgetChatDigest } from "./chat-digests.ts";
 import { examStore } from "../store/exams.ts";
 import { flashcardStore } from "../store/flashcards.ts";
+import { activeFsrsWeights, clearFsrsWeights, readStoredFsrsWeights, saveFsrsWeights } from "../store/fsrs-weights.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -213,24 +232,102 @@ export function studyRecord(now: Date = new Date()): { week: number[]; streak: S
 }
 
 /** The review view's report: every tested recall across sessions, folded
- *  into per-topic memory state, estimated retention, and what is due. */
+ *  into per-topic memory state, estimated retention, and what is due
+ *  (with FIRe graph propagation over stored reasoning chains and active
+ *  FSRS-6 weights). */
 export function retentionAcrossSessions(now: number = Date.now()): RetentionReport {
-	return retentionReport(recallEventsAcrossSessions(), now);
+	return retentionReport(recallEventsAcrossSessions(), now, getGraph(stores.graphStore).chains, activeFsrsWeights());
 }
 
 /** The weak-spot tab's report: the same recalls, read per topic for
  *  overconfidence (stated confidence vs right) as well as fading. */
 export function weakSpotsAcrossSessions(now: number = Date.now()): WeakSpotReport {
-	return weakSpotReport(recallEventsAcrossSessions(), now);
+	return weakSpotReport(recallEventsAcrossSessions(), now, getGraph(stores.graphStore).chains, activeFsrsWeights());
+}
+
+/** Status of the FSRS-6 memory model (default vs. personalized fit). */
+export function fsrsModelStatus(): FsrsModelStatus {
+	const reviews = countFitReviews(recallEventsAcrossSessions());
+	const stored = readStoredFsrsWeights();
+	if (!stored) return { source: "default", reviews, minReviews: FSRS_MIN_REVIEWS };
+	return {
+		source: "personal",
+		reviews,
+		minReviews: FSRS_MIN_REVIEWS,
+		fittedAt: stored.fittedAt,
+		baselineLogLoss: stored.baselineLogLoss,
+		fittedLogLoss: stored.fittedLogLoss,
+		baselineBrier: stored.baselineBrier,
+		fittedBrier: stored.fittedBrier,
+	};
+}
+
+/** Fit personal FSRS-6 weights to the unified recall history; persists only
+ *  when the fitted weights beat FSRS-6 defaults on log-loss. */
+export function fitPersonalFsrs(now: number = Date.now()): { fit: FsrsFitResult | null; status: FsrsModelStatus } {
+	const fit = fitFsrsWeights(recallEventsAcrossSessions(), { now });
+	if (fit?.improved) saveFsrsWeights(fit);
+	return { fit, status: fsrsModelStatus() };
+}
+
+/** Reset personal FSRS-6 weights back to published defaults. */
+export function resetPersonalFsrs(): FsrsModelStatus {
+	clearFsrsWeights();
+	return fsrsModelStatus();
+}
+
+/** All practice `conclude` missClass events cached across sessions. */
+export function missEventsAcrossSessions(): MissClassEvent[] {
+	return chatDigests().flatMap((d) => d.misses ?? []);
+}
+
+/** Build the opening `diagnostic-context` marker for a new session, or null
+ *  when there are no relevant prerequisites, weak spots, or miss patterns. */
+export function diagnosticContextMessage(opts: {
+	topic: string;
+	pickedIds?: readonly string[];
+	now?: number;
+}): LhMarkerMessage | null {
+	const now = opts.now ?? Date.now();
+	const graph = getGraph(stores.graphStore);
+	const events = recallEventsAcrossSessions();
+	const weights = activeFsrsWeights();
+	const retention = retentionReport(events, now, graph.chains, weights);
+	const weakSpots = weakSpotReport(events, now, graph.chains, weights);
+	const brief = buildDiagnosticBrief({
+		topic: opts.topic,
+		pickedIds: opts.pickedIds,
+		nodes: graph.nodes,
+		chains: graph.chains,
+		retention,
+		weakSpots,
+		misses: missEventsAcrossSessions(),
+	});
+	return brief ? newDiagnosticContextMessage(brief, now) : null;
 }
 
 export function recallEventsAcrossSessions(): RecallEvent[] {
-	const names = propositionNames(stores.graphStore.readNodes());
-	const events = chatDigests().flatMap((d) =>
+	const nodes = getGraph(stores.graphStore).nodes;
+	const names = propositionNames(nodes);
+	const digests = chatDigests();
+	const planMessages = new Map<string, Record<string, string[]>>();
+	for (const d of digests) {
+		if (d.planMessages && Object.keys(d.planMessages).length > 0) {
+			planMessages.set(d.chatId, d.planMessages);
+		}
+	}
+	const chatEvents = digests.flatMap((d) =>
 		// Practice targets are named by the graph, which can be renamed
 		// after the digest was written.
 		d.events.map((e) => (e.kind === "proposition" && !e.review && names.has(e.topicId) ? { ...e, title: names.get(e.topicId)! } : e)),
 	);
 	// Graded mock exams test topics too (as reviews: core/exam.ts).
-	return [...events, ...examStore.list().flatMap(examRecallEvents)];
+	const examEvents = examStore.list().flatMap(examRecallEvents);
+	// Resolve plan:* checks (and reviews of them) onto canonical graph
+	// propositions whenever provenance overlaps; keep unextracted ones as plan:*.
+	const resolved = resolvePlanToPropositions([...chatEvents, ...examEvents], planMessages, nodes);
+	// Flashcards from notes feed the same memory fold: linked cards update
+	// their prop:<nodeId>, unlinked cards stay card:<noteId>:<cardId>.
+	const cardEvents = flashcardRecallEvents(flashcardStore.list(), names);
+	return [...resolved, ...cardEvents];
 }

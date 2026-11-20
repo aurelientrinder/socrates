@@ -53,6 +53,7 @@ import { downloadFile } from "@/components/artifacts/download";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
 import { KeyboardSection } from "./keyboard-section.tsx";
 import { CalendarSection } from "./calendar-section.tsx";
+import { SyncControls } from "./sync-section.tsx";
 import { SettingsGroup, SettingsAdvanced } from "./controls.tsx";
 import { CalendarIcon, DatabaseIcon, GraduationCapIcon, KeyboardIcon, KeyRoundIcon, NetworkIcon, PaletteIcon, SearchIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -422,6 +423,12 @@ export function SettingsDialogBody({
 									>
 										<RestoreControls />
 									</SettingsRow>
+									</SettingsGroup>
+									<SettingsGroup
+										label="Encrypted sync"
+										hint="Sync across devices through iCloud Drive, Dropbox, Google Drive, or Syncthing (AES-256-GCM; your passphrase is never saved)."
+									>
+										<SyncControls />
 									</SettingsGroup>
 								</SettingsSection>
 							)}

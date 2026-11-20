@@ -18,15 +18,19 @@
  */
 
 import {
+	FSRS_WEIGHTS,
 	GRADE_AGAIN,
 	GRADE_GOOD,
 	GRADE_HARD,
 	SITTING_GAP_MS,
+	TARGET_RETENTION,
 	initialState,
 	intervalDays,
 	nextState,
 	retrievability,
+	type FsrsWeights,
 	type MemoryState,
+	type RecallEvent,
 	type RecallGrade,
 } from "./retention.ts";
 
@@ -47,6 +51,9 @@ export interface Flashcard {
 	quote: string;
 	/** The PDF page the quote is on (text notes have none). */
 	page?: number;
+	/** Optional canonical GraphNode id this card tests (linked at generation
+	 *  time against propositions extracted from the same note). */
+	nodeId?: string;
 	/** Epoch ms. */
 	createdAt: number;
 	/** Every answer, oldest first. Empty = a new card. */
@@ -94,7 +101,11 @@ export interface CardSchedule {
 /** Fold a card's answers into its memory state. One sitting = one FSRS
  *  review, graded by its FIRST answer (what the learner knew walking in;
  *  later answers in the same sitting come right after seeing the card). */
-export function cardSchedule(reviews: readonly CardReview[], now: number): CardSchedule {
+export function cardSchedule(
+	reviews: readonly CardReview[],
+	now: number,
+	weights: FsrsWeights = FSRS_WEIGHTS,
+): CardSchedule {
 	const sorted = [...reviews].sort((a, b) => a.at - b.at);
 	if (sorted.length === 0) {
 		return { status: "new", sittings: 0, lapses: 0, retention: null, dueAt: null, lastGrade: null, lastReviewedAt: null, stability: null };
@@ -109,14 +120,14 @@ export function cardSchedule(reviews: readonly CardReview[], now: number): CardS
 	let prevAt = 0;
 	let lapses = 0;
 	for (const s of sittings) {
-		state = state === null ? initialState(s.first) : nextState(state, s.first, (s.last - prevAt) / DAY_MS);
+		state = state === null ? initialState(s.first, weights) : nextState(state, s.first, (s.last - prevAt) / DAY_MS, weights);
 		if (s.first === GRADE_AGAIN) lapses++;
 		prevAt = s.last;
 	}
 	const final = state!;
 	const lastGrade = sittings.at(-1)!.first;
-	const dueAt = prevAt + intervalDays(final.stability) * DAY_MS;
-	const retention = retrievability((now - prevAt) / DAY_MS, final.stability);
+	const dueAt = prevAt + intervalDays(final.stability, TARGET_RETENTION, weights) * DAY_MS;
+	const retention = retrievability((now - prevAt) / DAY_MS, final.stability, weights);
 	const due = dueAt <= now;
 	return {
 		status: due ? "due" : lastGrade === GRADE_GOOD && sittings.length > 1 ? "known" : "learning",
@@ -128,6 +139,55 @@ export function cardSchedule(reviews: readonly CardReview[], now: number): CardS
 		lastReviewedAt: prevAt,
 		stability: final.stability,
 	};
+}
+
+/**
+ * Lift answered flashcards into the unified RecallEvent stream (retention.ts).
+ * Preserves the card sitting rule (first answer within SITTING_GAP_MS grades
+ * the sitting, stamped at the sitting's end). Cards linked to a live graph
+ * proposition emit `prop:<nodeId>` (`review: true`) so they update canonical
+ * proposition retention without hijacking its home session; unlinked cards
+ * (or cards whose node was deleted) emit `card:<noteId>:<cardId>`.
+ */
+export function flashcardRecallEvents(
+	decks: readonly FlashcardDeck[],
+	propositionNames?: ReadonlyMap<string, string>,
+): RecallEvent[] {
+	const out: RecallEvent[] = [];
+	for (const deck of decks) {
+		for (const card of deck.cards) {
+			if (card.reviews.length === 0) continue;
+			const sorted = [...card.reviews].sort((a, b) => a.at - b.at);
+			const sittings: { first: RecallGrade; last: number }[] = [];
+			for (const r of sorted) {
+				const current = sittings.at(-1);
+				if (current && r.at - current.last < SITTING_GAP_MS) current.last = r.at;
+				else sittings.push({ first: r.grade, last: r.at });
+			}
+			const linked =
+				typeof card.nodeId === "string" &&
+				card.nodeId.length > 0 &&
+				(propositionNames ? propositionNames.has(card.nodeId) : true);
+			const topicKey = linked ? `prop:${card.nodeId}` : `card:${deck.noteId}:${card.id}`;
+			const kind = linked ? ("proposition" as const) : ("card" as const);
+			const topicId = linked ? card.nodeId! : card.id;
+			const title = linked ? (propositionNames?.get(card.nodeId!) ?? card.front) : card.front;
+			for (const s of sittings) {
+				out.push({
+					topicKey,
+					kind,
+					topicId,
+					title,
+					chatId: deck.noteId,
+					chatTitle: deck.noteName,
+					at: s.last,
+					grade: s.first,
+					...(linked ? { review: true } : {}),
+				});
+			}
+		}
+	}
+	return out;
 }
 
 /** A card as the views see it: the card, where it lives, its schedule. */
@@ -148,14 +208,14 @@ export interface DeckSummary {
 	known: number;
 }
 
-export function deckSummary(deck: FlashcardDeck, now: number): DeckSummary {
+export function deckSummary(deck: FlashcardDeck, now: number, weights: FsrsWeights = FSRS_WEIGHTS): DeckSummary {
 	const out: DeckSummary = { noteId: deck.noteId, noteName: deck.noteName, generatedAt: deck.generatedAt, total: deck.cards.length, new: 0, due: 0, learning: 0, known: 0 };
-	for (const card of deck.cards) out[cardSchedule(card.reviews, now).status]++;
+	for (const card of deck.cards) out[cardSchedule(card.reviews, now, weights).status]++;
 	return out;
 }
 
-export function cardViews(deck: FlashcardDeck, now: number): CardView[] {
-	return deck.cards.map((c) => ({ ...c, noteId: deck.noteId, noteName: deck.noteName, schedule: cardSchedule(c.reviews, now) }));
+export function cardViews(deck: FlashcardDeck, now: number, weights: FsrsWeights = FSRS_WEIGHTS): CardView[] {
+	return deck.cards.map((c) => ({ ...c, noteId: deck.noteId, noteName: deck.noteName, schedule: cardSchedule(c.reviews, now, weights) }));
 }
 
 /** New cards first answered since `dayStart` (today's share of the limit). */
@@ -190,11 +250,12 @@ export function cardQueue(
 	decks: readonly FlashcardDeck[],
 	now: number,
 	dayStart: number,
-	opts: { newPerDay?: number; roundSize?: number } = {},
+	opts: { newPerDay?: number; roundSize?: number; weights?: FsrsWeights } = {},
 ): CardQueue {
 	const newPerDay = opts.newPerDay ?? NEW_CARDS_PER_DAY;
 	const roundSize = opts.roundSize ?? CARD_ROUND_SIZE;
-	const all = decks.flatMap((d) => cardViews(d, now));
+	const weights = opts.weights ?? FSRS_WEIGHTS;
+	const all = decks.flatMap((d) => cardViews(d, now, weights));
 	const due = all
 		.filter((c) => c.schedule.status === "due")
 		.sort((a, b) => a.schedule.retention! - b.schedule.retention! || a.schedule.dueAt! - b.schedule.dueAt!);

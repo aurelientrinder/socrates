@@ -58,7 +58,7 @@ import { PlanRail, planStepOf, railProgress, usePlanSteps } from "@/components/s
 import { PlanProgressLine, SessionTimerChip, useSessionTimer } from "@/components/session-timer";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
-import { ArrowRightIcon, DumbbellIcon, FlagIcon, RepeatIcon, WaypointsIcon } from "lucide-react";
+import { ArrowRightIcon, BookOpenIcon, DumbbellIcon, FlagIcon, RepeatIcon, WaypointsIcon } from "lucide-react";
 import { SessionClassKindTile } from "@/components/sidebar";
 import { sessionDisplay } from "@/components/session-display";
 import type { PlanBlockData } from "@/src/core";
@@ -69,6 +69,20 @@ import { SessionMessageNavigation } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
+import { DiagnosticContextCard } from "@/components/diagnostic-context-card";
+import { SourcePane } from "@/components/source-pane";
+import { StudyFlowStrip } from "@/components/study-flow-strip";
+import { LessonStateStrip, SectionHeader } from "@/components/lesson-document";
+import {
+	deriveLessonSections,
+	derivePlanStatuses,
+	derivedNodeStatus,
+	messageIdFromHash,
+	sectionAnchorId,
+	sectionForMessage,
+	type DiagnosticContextData,
+	type LessonSection,
+} from "@/src/core";
 import { ReviewContextCard, WarmupDoneDivider, type ReviewContextData } from "@/components/review-context-card";
 import { TopBar } from "@/components/top-bar";
 import type { ArtifactPartProps, ChatAside, JobRecord, Phase3, QuestionAnswerData, TurnUsage, SessionPricing } from "@/src/core";
@@ -973,6 +987,26 @@ export function Chat({
 	// The live plan popup (wave 4): opened by any transcript plan block, the
 	// top-bar plan chip, and the dock band's marginalia.
 	const [planOpen, setPlanOpen] = useState(false);
+	const [sourceOpen, setSourceOpen] = useState(false);
+	const [sourceNoteId, setSourceNoteId] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const note = new URLSearchParams(window.location.search).get("note");
+		if (note && note.startsWith("src_")) {
+			setSourceNoteId(note);
+			setSourceOpen(true);
+		}
+	}, []);
+
+	const insertSourceQuote = useCallback(
+		(quoted: string) => {
+			const cur = textRef.current.trimEnd();
+			applyText(cur ? `${cur}\n\n${quoted}` : quoted);
+			composerInputRef.current?.focus();
+		},
+		[applyText],
+	);
 	// Real plan presence — gates the marginalia's clickable flank. A JSX
 	// element is always truthy; gating on the node alone mounted a phantom
 	// (invisible, clickable) button in the bottom-right whenever a question
@@ -1012,6 +1046,67 @@ export function Chat({
 	// progress line, and the studied-time chip when the session has a budget.
 	const planSteps = usePlanSteps(messages);
 	const sessionTimer = useSessionTimer(chatId);
+
+	// Document-First Lesson UX: derive contiguous chapter sections from the plan
+	// tree, support collapsing covered sections, PlanRail TOC jump, and auto-expand
+	// on #message-<id> deep links from the Knowledge Map.
+	const lessonSections = useMemo(() => {
+		if (!planTree || kind !== "teach") return [];
+		const statuses = derivePlanStatuses(planTree, messages as Parameters<typeof derivePlanStatuses>[1]);
+		return deriveLessonSections(messages, planTree, (id) => derivedNodeStatus(statuses, id));
+	}, [planTree, kind, messages]);
+	const sectionStartByIndex = useMemo(() => new Map(lessonSections.map((s) => [s.startIndex, s])), [lessonSections]);
+	const sectionByMessageIndex = useMemo(() => {
+		const map = new Map<number, LessonSection>();
+		for (const s of lessonSections) {
+			for (let i = s.startIndex; i <= s.endIndex; i++) map.set(i, s);
+		}
+		return map;
+	}, [lessonSections]);
+	const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
+	const toggleSection = useCallback((nodeId: string) => {
+		setCollapsedSections((prev) => {
+			const next = new Set(prev);
+			if (next.has(nodeId)) next.delete(nodeId);
+			else next.add(nodeId);
+			return next;
+		});
+	}, []);
+	const collapseCoveredSections = useCallback(() => {
+		setCollapsedSections(new Set(lessonSections.filter((s) => s.status === "visited").map((s) => s.nodeId)));
+	}, [lessonSections]);
+	const expandAllSections = useCallback(() => {
+		setCollapsedSections(new Set());
+	}, []);
+	const jumpToSection = useCallback((nodeId: string) => {
+		setCollapsedSections((prev) => {
+			if (!prev.has(nodeId)) return prev;
+			const next = new Set(prev);
+			next.delete(nodeId);
+			return next;
+		});
+		requestAnimationFrame(() => {
+			document.getElementById(sectionAnchorId(nodeId))?.scrollIntoView({ behavior: "smooth", block: "start" });
+		});
+	}, []);
+	useEffect(() => {
+		if (typeof window === "undefined" || lessonSections.length === 0) return;
+		const ensureVisible = () => {
+			const targetId = messageIdFromHash(window.location.hash);
+			if (!targetId) return;
+			const secNode = sectionForMessage(lessonSections, messages, targetId);
+			if (!secNode) return;
+			setCollapsedSections((prev) => {
+				if (!prev.has(secNode)) return prev;
+				const next = new Set(prev);
+				next.delete(secNode);
+				return next;
+			});
+		};
+		ensureVisible();
+		window.addEventListener("hashchange", ensureVisible);
+		return () => window.removeEventListener("hashchange", ensureVisible);
+	}, [lessonSections, messages]);
 
 	// ── Session usage (wave-4 stats bar) ──
 	// The money channel: the record's turns log and read-time server Pi
@@ -1503,6 +1598,25 @@ export function Chat({
 				    practice never extracts, so an ever-filling ring with no
 				    run behind it would lie. */}
 					{kind === "teach" && <CoverageRing chatId={chatId} refreshKey={coverageTick} />}
+					<Hint label="Open a saved PDF or note side-by-side" side="bottom">
+						<button
+							type="button"
+							data-testid="source-toggle"
+							aria-pressed={sourceOpen}
+							onClick={(e) => {
+								blurAfterPointerClick(e);
+								setSourceOpen((v) => !v);
+							}}
+							className={`lh-no-drag flex h-7.5 shrink-0 cursor-pointer items-center gap-1.75 rounded-lg px-2.75 text-[13.5px] font-semibold transition-colors ${
+								sourceOpen
+									? "bg-accent text-foreground"
+									: "text-foreground/82 hover:bg-ink-soft hover:text-foreground"
+							}`}
+						>
+							<BookOpenIcon className="size-3.5 text-muted-foreground" aria-hidden />
+							Source
+						</button>
+					</Hint>
 					{planTree && (
 						<Hint label="Open the full plan" side="bottom">
 <button
@@ -1537,10 +1651,28 @@ export function Chat({
 					{/* Practice sessions: no phase arc — a quiet Practice tag
 					    instead of the phase chip. */}
 				</TopBar>
+				<StudyFlowStrip chatId={chatId} kind={kind} warmingUp={warmingUp} />
+				{lessonSections.length > 0 && (
+					<LessonStateStrip
+						sections={lessonSections}
+						totalPlanNodes={planTree?.nodes.length ?? lessonSections.length}
+						collapsed={collapsedSections}
+						onCollapseCovered={collapseCoveredSections}
+						onExpandAll={expandAllSections}
+						onJumpToSection={jumpToSection}
+					/>
+				)}
 				{planSteps && <PlanProgressLine value={railProgress(planSteps)} />}
 
 				<SessionFind scopeRef={sessionFindScopeRef} scrollContextRef={scrollContextRef} />
 				<div ref={sessionFindScopeRef} className="relative flex min-h-0 flex-1">
+				{sourceOpen && (
+					<SourcePane
+						initialNoteId={sourceNoteId}
+						onQuote={insertSourceQuote}
+						onClose={() => setSourceOpen(false)}
+					/>
+				)}
 				<Conversation className="h-full min-w-0 flex-1" initial="instant" contextRef={scrollContextRef}>
 					<SessionMessageNavigation />
 					<ConversationContent className="min-h-full gap-0 p-0">
@@ -1552,8 +1684,29 @@ export function Chat({
 								/>
 							)}
 
-							{messages.map((m, mi) =>
-								m.role === "user" && isSubagentSteer(m) ? (
+							{messages.map((m, mi) => {
+								const startSection = sectionStartByIndex.get(mi);
+								const enclosingSection = sectionByMessageIndex.get(mi);
+								if (enclosingSection && collapsedSections.has(enclosingSection.nodeId)) {
+									return startSection ? (
+										<SectionHeader
+											key={`sec-${startSection.nodeId}`}
+											section={startSection}
+											collapsed={true}
+											onToggle={() => toggleSection(startSection.nodeId)}
+										/>
+									) : null;
+								}
+								return (
+									<Fragment key={m.id || `m-${mi}`}>
+										{startSection && (
+											<SectionHeader
+												section={startSection}
+												collapsed={false}
+												onToggle={() => toggleSection(startSection.nodeId)}
+											/>
+										)}
+										{m.role === "user" && isSubagentSteer(m) ? (
 									// Sub-agent delivery (wake-pipeline steer): NO message bubble — the
 									// artifact card sits in the transcript column directly, full width
 									// and centered like the teacher's artifacts (contracts.ts "THE ASYNC
@@ -1583,6 +1736,8 @@ export function Chat({
 										switch (part.type) {
 											case "data-graph-context":
 												return <GraphContextCard key={pi} data={part.data as GraphContextData} />;
+											case "data-diagnostic-context":
+												return <DiagnosticContextCard key={pi} data={part.data as DiagnosticContextData} />;
 											case "data-review-context":
 												return <ReviewContextCard key={pi} data={part.data as ReviewContextData} outcomes={reviewProgress.outcomes} />;
 											case "data-warmup-done":
@@ -1810,7 +1965,10 @@ export function Chat({
 									</Message>
 									)}
 								</div>
-							))}
+									)}
+									</Fragment>
+								);
+							})}
 
 							{/* THE placeholder, ACTION-gated (owner, optimistic round
 							    3, 2026-10-02): spinner + shimmered Thinking… from the
@@ -2012,7 +2170,7 @@ export function Chat({
 				/>
 				</div>
 			</div>
-			{planSteps && <PlanRail steps={planSteps} onOpenPlan={() => setPlanOpen(true)} />}
+			{planSteps && <PlanRail steps={planSteps} onOpenPlan={() => setPlanOpen(true)} onSelectStep={jumpToSection} />}
 		</div>
 		</JobsContext.Provider>
 		</SessionMermaidContext.Provider>

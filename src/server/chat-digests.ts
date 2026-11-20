@@ -21,11 +21,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { PATHS } from "../../config.ts";
 import { calibrationAnswers, type CalibrationAnswer } from "../core/calibration.ts";
-import { recallEvents, type RecallEvent } from "../core/retention.ts";
+import { extractMissClasses, type MissClassEvent } from "../core/diagnostics.ts";
+import { planNodeMessageIds, recallEvents, type RecallEvent } from "../core/retention.ts";
 import { writeFileAtomic } from "../store/fs-atomic.ts";
 import { stores } from "./stores.ts";
 
-const DIGEST_VERSION = 1;
+const DIGEST_VERSION = 3;
 const CHAT_ID = /^[A-Za-z0-9_-]+$/;
 
 export interface ChatDigest {
@@ -35,6 +36,11 @@ export interface ChatDigest {
 	/** The chat file this digest was derived from. */
 	src: { mtimeMs: number; size: number };
 	events: RecallEvent[];
+	/** Plan node id → assistant message ids taught/checked for that node (for
+	 *  deterministic plan:* → prop:* provenance resolution). */
+	planMessages?: Record<string, string[]>;
+	/** Practice conclude missClass classifications for diagnostic injection. */
+	misses?: MissClassEvent[];
 	calibration: CalibrationAnswer[];
 	/** Message times (ms), the study-time estimate's input. */
 	stamps: number[];
@@ -55,7 +61,14 @@ function memory(): Map<string, ChatDigest> {
 function readDigestFile(id: string): ChatDigest | null {
 	try {
 		const raw = JSON.parse(fs.readFileSync(path.join(digestsDir(), `${id}.json`), "utf-8")) as Partial<ChatDigest>;
-		if (raw.version !== DIGEST_VERSION || raw.chatId !== id || !raw.src || !Array.isArray(raw.events)) return null;
+		if (
+			(raw.version !== DIGEST_VERSION && raw.version !== 2 && raw.version !== 1) ||
+			raw.chatId !== id ||
+			!raw.src ||
+			!Array.isArray(raw.events)
+		) {
+			return null;
+		}
 		return raw as ChatDigest;
 	} catch {
 		return null;
@@ -65,12 +78,16 @@ function readDigestFile(id: string): ChatDigest | null {
 function buildDigest(id: string, src: ChatDigest["src"]): ChatDigest | null {
 	const record = stores.chatStore.getChat(id);
 	if (!record) return null;
+	const planMessages = planNodeMessageIds(record.messages);
+	const misses = extractMissClasses(record.messages);
 	return {
 		version: DIGEST_VERSION,
 		chatId: id,
 		title: record.title,
 		src,
 		events: recallEvents(record),
+		...(Object.keys(planMessages).length > 0 ? { planMessages } : {}),
+		...(misses.length > 0 ? { misses } : {}),
 		calibration: calibrationAnswers(record),
 		stamps: record.messages.map((m) => (m as { timestamp?: number }).timestamp).filter((t): t is number => typeof t === "number" && Number.isFinite(t)),
 	};
@@ -99,7 +116,8 @@ export function chatDigests(): ChatDigest[] {
 			continue;
 		}
 		const src = { mtimeMs: st.mtimeMs, size: st.size };
-		const fresh = (d: ChatDigest | null | undefined): d is ChatDigest => !!d && d.src.mtimeMs === src.mtimeMs && d.src.size === src.size;
+		const fresh = (d: ChatDigest | null | undefined): d is ChatDigest =>
+			!!d && d.version === DIGEST_VERSION && d.src.mtimeMs === src.mtimeMs && d.src.size === src.size;
 		let digest: ChatDigest | null | undefined = mem.get(id);
 		if (!fresh(digest)) {
 			digest = readDigestFile(id);

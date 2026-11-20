@@ -51,8 +51,9 @@ export * from "./tool-parts.ts";
 export * from "./prices.ts";
 // The cross-session confidence fold (calibration view). Pure, browser-safe.
 export * from "./calibration.ts";
-// Knowledge decay: per-topic FSRS memory state and the review schedule. Pure, browser-safe.
+// Knowledge decay: per-topic FSRS-6 memory state, FIRe propagation, and personal weight fitting. Pure, browser-safe.
 export * from "./retention.ts";
+export * from "./fsrs-fit.ts";
 // Minutes studied per day, from transcript timestamps (Today's "This week"). Pure, browser-safe.
 export * from "./study-time.ts";
 // The tutor's reply language (settings → agent.replyLanguage). Pure, browser-safe.
@@ -80,6 +81,8 @@ export * from "./exam.ts";
 export * from "./cheatsheet.ts";
 // The weak-spot report: per-topic overconfidence + fading, joined on the retention key. Pure.
 export * from "./weak-spots.ts";
+// Diagnostic-hotspot context injection: prerequisite neighborhood, blind spots, missClass patterns. Pure.
+export * from "./diagnostics.ts";
 export * from "./context-usage.ts";
 export * from "./cost-summary.ts";
 export * from "./fuzzy.ts";
@@ -116,3 +119,7 @@ export * from "./literal-newlines.ts";
 export * from "./llm-types.ts";
 export * from "./tool-narration.ts";
 export * from "./diagram.ts";
+export * from "./sync-merge.ts";
+export * from "./source-quote.ts";
+export * from "./study-flow.ts";
+export * from "./lesson-sections.ts";
