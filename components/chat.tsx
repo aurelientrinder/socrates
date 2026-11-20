@@ -70,7 +70,7 @@ import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
 import { DiagnosticContextCard } from "@/components/diagnostic-context-card";
-import { SourcePane } from "@/components/source-pane";
+import { SourceSplit } from "@/components/source-pane";
 import { StudyFlowStrip } from "@/components/study-flow-strip";
 import { LessonStateStrip, SectionHeader } from "@/components/lesson-document";
 import {
@@ -1666,13 +1666,6 @@ export function Chat({
 
 				<SessionFind scopeRef={sessionFindScopeRef} scrollContextRef={scrollContextRef} />
 				<div ref={sessionFindScopeRef} className="relative flex min-h-0 flex-1">
-				{sourceOpen && (
-					<SourcePane
-						initialNoteId={sourceNoteId}
-						onQuote={insertSourceQuote}
-						onClose={() => setSourceOpen(false)}
-					/>
-				)}
 				<Conversation className="h-full min-w-0 flex-1" initial="instant" contextRef={scrollContextRef}>
 					<SessionMessageNavigation />
 					<ConversationContent className="min-h-full gap-0 p-0">
@@ -2122,6 +2115,14 @@ export function Chat({
 					}}
 				/>
 				</Conversation>
+				{/* The source reader docks on the RIGHT of the chat (owner,
+				    2026-11-20), easing in/out; a side thread stays outermost. */}
+				<SourceSplit
+					open={sourceOpen}
+					initialNoteId={sourceNoteId}
+					onQuote={insertSourceQuote}
+					onClose={() => setSourceOpen(false)}
+				/>
 				{threadFor && (
 					<SideThreadPanel
 						key={threadFor}
