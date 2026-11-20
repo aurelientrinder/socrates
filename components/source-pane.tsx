@@ -1,9 +1,97 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BookOpenIcon, FileTextIcon, QuoteIcon, SearchIcon, XIcon } from "lucide-react";
 import { filterSourcePages, formatSourceQuote, notesPages, type NoteMeta } from "@/src/core";
 import { cn } from "@/lib/utils";
+
+const SPLIT_MIN = 320;
+const SPLIT_MAX = 680;
+const SPLIT_SHARE = 0.44;
+
+function prefersReducedMotion(): boolean {
+	return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
+
+/**
+ * The split's right column: owns open/close motion so the pane can play its
+ * exit before unmounting. The column's width eases between 0 and the pane's
+ * width (44% of the session area, 320-680px), so the chat reflows smoothly
+ * beside it, while the pane itself keeps a fixed width and slides with the
+ * edge like a drawer. Reduced motion: it simply appears and disappears.
+ */
+export function SourceSplit({
+	open,
+	...pane
+}: {
+	open: boolean;
+	initialNoteId?: string | null;
+	onQuote: (quotedMarkdown: string) => void;
+	onClose: () => void;
+}) {
+	const [mounted, setMounted] = useState(open);
+	const [shown, setShown] = useState(false);
+	const [width, setWidth] = useState(0);
+	const columnRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (open) {
+			setMounted(true);
+			// Two frames: the column must first paint at width 0 for the
+			// transition to have a starting point.
+			let second = 0;
+			const first = requestAnimationFrame(() => {
+				second = requestAnimationFrame(() => setShown(true));
+			});
+			return () => {
+				cancelAnimationFrame(first);
+				cancelAnimationFrame(second);
+			};
+		}
+		setShown(false);
+		if (prefersReducedMotion()) {
+			setMounted(false);
+			return undefined;
+		}
+		// transitionend is the normal exit; the timer covers a transition
+		// that never runs (hidden window, width never measured).
+		const fallback = window.setTimeout(() => setMounted(false), 320);
+		return () => window.clearTimeout(fallback);
+	}, [open]);
+
+	useLayoutEffect(() => {
+		if (!mounted) return;
+		const area = columnRef.current?.parentElement;
+		if (!area) return;
+		const measure = () =>
+			setWidth(Math.round(Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, area.clientWidth * SPLIT_SHARE))));
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(area);
+		return () => observer.disconnect();
+	}, [mounted]);
+
+	if (!mounted) return null;
+	return (
+		<div
+			ref={columnRef}
+			data-testid="source-split"
+			data-state={shown ? "open" : "closed"}
+			style={{ width: shown ? width : 0 }}
+			onTransitionEnd={(e) => {
+				if (e.target === e.currentTarget && e.propertyName === "width" && !open) setMounted(false);
+			}}
+			className={cn(
+				"relative h-full shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none",
+				shown ? "opacity-100" : "opacity-0",
+			)}
+		>
+			<div className="absolute inset-y-0 left-0" style={{ width }}>
+				<SourcePane {...pane} />
+			</div>
+		</div>
+	);
+}
 
 interface SelectedPassage {
 	text: string;
@@ -34,6 +122,8 @@ export function SourcePane({
 	const [query, setQuery] = useState("");
 	const [selection, setSelection] = useState<SelectedPassage | null>(null);
 	const textContainerRef = useRef<HTMLDivElement>(null);
+	const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+	const [pdfError, setPdfError] = useState(false);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -85,6 +175,35 @@ export function SourcePane({
 		};
 	}, [selectedId]);
 
+	// The original PDF is fetched by THIS (trusted, main) frame and shown as a
+	// blob: URL. Pointing the iframe at /api/notes/:id/file directly fails in
+	// the desktop app: the capability header is only attached to main-frame
+	// requests (electron/desktop-api.cjs), so a subframe navigation gets the
+	// 403 "requires the trusted window" JSON. The blob is same-origin, holds
+	// only the PDF bytes, and needs no API access from the subframe.
+	const pdfNoteId = activeNote?.kind === "pdf" && view === "pdf" ? activeNote.id : null;
+	useEffect(() => {
+		if (!pdfNoteId) return;
+		let cancelled = false;
+		let objectUrl: string | null = null;
+		setPdfUrl(null);
+		setPdfError(false);
+		fetch(`/api/notes/${encodeURIComponent(pdfNoteId)}/file`, { cache: "no-store" })
+			.then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+			.then((blob) => {
+				if (cancelled) return;
+				objectUrl = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+				setPdfUrl(objectUrl);
+			})
+			.catch(() => {
+				if (!cancelled) setPdfError(true);
+			});
+		return () => {
+			cancelled = true;
+			if (objectUrl) URL.revokeObjectURL(objectUrl);
+		};
+	}, [pdfNoteId]);
+
 	const pages = useMemo(() => (text ? notesPages(text) : []), [text]);
 	const filtered = useMemo(() => filterSourcePages(pages, query), [pages, query]);
 
@@ -114,7 +233,7 @@ export function SourcePane({
 		<aside
 			data-testid="source-pane"
 			aria-label="Source reader"
-			className="flex h-full w-[44%] min-w-[320px] max-w-[680px] shrink-0 flex-col border-r border-border bg-surface"
+			className="flex h-full w-full flex-col border-l border-border bg-surface"
 		>
 			<div className="flex items-center gap-2 border-b border-border px-3 py-2">
 				<BookOpenIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -187,11 +306,13 @@ export function SourcePane({
 							Switch to Text to highlight &amp; quote
 						</button>
 					</div>
-					<iframe
-						title={activeNote.name}
-						src={`/api/notes/${encodeURIComponent(activeNote.id)}/file`}
-						className="min-h-0 flex-1 w-full bg-background"
-					/>
+					{pdfUrl ? (
+						<iframe title={activeNote.name} src={pdfUrl} className="min-h-0 w-full flex-1 bg-background" />
+					) : (
+						<div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground">
+							{pdfError ? "Couldn’t open the original PDF. The Text view still works." : "Opening PDF…"}
+						</div>
+					)}
 				</div>
 			) : (
 				<div className="flex min-h-0 flex-1 flex-col">

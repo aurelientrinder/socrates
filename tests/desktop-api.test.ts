@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import path from "node:path";
 import { NextRequest } from "next/server";
 // Installed Next 16.3.2 retains the old test-helper export despite proxy.md's new name.
 import { unstable_doesMiddlewareMatch as unstable_doesProxyMatch } from "next/experimental/testing/server";
@@ -88,4 +90,21 @@ test("desktop IPC requires the trusted main frame", async () => {
 	mainFrame.url = "https://thirdparty.invalid/";
 	assert(!trustedSender({ sender: contents, senderFrame: mainFrame }, origin, BrowserWindow));
 	assert.equal(browserServiceSpawnEnv({ LH_DESKTOP_API_SECRET: secret, LH_DESKTOP_SERVER: "1" }).LH_DESKTOP_API_SECRET, undefined);
+});
+
+test("no component points an iframe at the API (subframes never carry the desktop capability)", () => {
+	const dir = path.join(process.cwd(), "components");
+	const offenders: string[] = [];
+	const walk = (d: string) => {
+		for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+			const full = path.join(d, entry.name);
+			if (entry.isDirectory()) walk(full);
+			else if (/\.tsx$/.test(entry.name)) {
+				const src = fs.readFileSync(full, "utf8");
+				if (/<iframe[^>]*src=\{?[`"']\/api\//s.test(src)) offenders.push(path.relative(dir, full));
+			}
+		}
+	};
+	walk(dir);
+	assert.deepEqual(offenders, []);
 });
