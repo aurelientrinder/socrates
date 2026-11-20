@@ -31,7 +31,17 @@
  * plain words (missed sessions, slipped topics, new exams, dropped reviews).
  */
 
-import { GRADE_GOOD, GRADE_HARD, TARGET_RETENTION, nextState, retentionAt, retrievability, type TopicRetention } from "./retention.ts";
+import {
+	FSRS_WEIGHTS,
+	GRADE_GOOD,
+	GRADE_HARD,
+	TARGET_RETENTION,
+	nextState,
+	retentionAt,
+	retrievability,
+	type FsrsWeights,
+	type TopicRetention,
+} from "./retention.ts";
 import type { BriefingItem, StudyEvent } from "./briefing.ts";
 import { sessionTypeOf, type SessionType } from "./session-type.ts";
 
@@ -178,6 +188,8 @@ export interface StudyPlanInput {
 	/** Every tracked topic (the ones with no event keep their due day). */
 	topics: readonly TopicRetention[];
 	confidentMissChats: ReadonlySet<string>;
+	/** Active FSRS-6 weights (personal when fitted, else defaults). */
+	weights?: FsrsWeights;
 }
 
 export interface PlanDay {
@@ -281,6 +293,7 @@ function simulateTopic(
 	targets: readonly PlanTarget[],
 	now: number,
 	shaky: boolean,
+	weights: FsrsWeights,
 ): { tasks: Task[]; planned: Map<string, number>; reviewed: Set<string> } {
 	const tasks: Task[] = [];
 	const planned = new Map<string, number>();
@@ -293,15 +306,15 @@ function simulateTopic(
 	let ti = 0;
 	for (let d = 0; d < lastDay; d++) {
 		while (ti < targets.length && ends[ti]! <= d) {
-			planned.set(targets[ti]!.event.id, retrievability((targets[ti]!.event.start - last) / DAY_MS, state.stability));
+			planned.set(targets[ti]!.event.id, retrievability((targets[ti]!.event.start - last) / DAY_MS, state.stability, weights));
 			ti++;
 		}
 		const target = targets[ti];
 		if (!target) break;
 		const at = studyAt(d, now);
 		const checkpoint = Math.min(studyAt(d + 1, now), target.event.start);
-		if (retrievability((checkpoint - last) / DAY_MS, state.stability) >= TARGET_RETENTION) continue;
-		const projected = retrievability((target.event.start - last) / DAY_MS, state.stability);
+		if (retrievability((checkpoint - last) / DAY_MS, state.stability, weights) >= TARGET_RETENTION) continue;
+		const projected = retrievability((target.event.start - last) / DAY_MS, state.stability, weights);
 		const gap = Math.max(0, TARGET_RETENTION - projected) / TARGET_RETENTION;
 		tasks.push({
 			day: d,
@@ -313,11 +326,11 @@ function simulateTopic(
 			projected,
 		});
 		reviewed.add(target.event.id);
-		state = nextState(state, grade, Math.max(0, (at - last) / DAY_MS));
+		state = nextState(state, grade, Math.max(0, (at - last) / DAY_MS), weights);
 		last = at;
 	}
 	for (; ti < targets.length; ti++) {
-		planned.set(targets[ti]!.event.id, retrievability((targets[ti]!.event.start - last) / DAY_MS, state.stability));
+		planned.set(targets[ti]!.event.id, retrievability((targets[ti]!.event.start - last) / DAY_MS, state.stability, weights));
 	}
 	return { tasks, planned, reviewed };
 }
@@ -330,6 +343,7 @@ function spreadDays(count: number, end: number): number[] {
 
 export function planStudy(input: StudyPlanInput): StudyPlan {
 	const { now, targets, classes, confidentMissChats: misses } = input;
+	const weights = input.weights ?? FSRS_WEIGHTS;
 	const tasks: Task[] = [];
 	const sortedTargets = [...targets].sort((a, b) => a.event.start - b.event.start);
 
@@ -346,7 +360,7 @@ export function planStudy(input: StudyPlanInput): StudyPlan {
 	const plannedRecall = new Map<string, number[]>();
 	for (const { topic, targets: ts } of byTopic.values()) {
 		const shaky = topic.lapses > 0 || misses.has(topic.chatId);
-		const sim = simulateTopic(topic, ts, now, shaky);
+		const sim = simulateTopic(topic, ts, now, shaky, weights);
 		tasks.push(...sim.tasks);
 		for (const [eventId, r] of sim.planned) plannedRecall.set(eventId, [...(plannedRecall.get(eventId) ?? []), r]);
 		// Solid on paper but untested for a while: one quick check in the last week.
@@ -447,7 +461,7 @@ export function planStudy(input: StudyPlanInput): StudyPlan {
 		if (byTopic.has(topic.key)) continue;
 		const day = topic.due ? 0 : dayIndex(topic.dueAt, now);
 		if (day >= WEEK_DAYS) continue;
-		const r = day === 0 ? topic.retention : retentionAt(topic, studyAt(day, now));
+		const r = day === 0 ? topic.retention : retentionAt(topic, studyAt(day, now), weights);
 		tasks.push({
 			day,
 			latest: Infinity,
@@ -457,14 +471,14 @@ export function planStudy(input: StudyPlanInput): StudyPlan {
 		});
 	}
 
-	const sessions = groupSessions(tasks, now, misses);
+	const sessions = groupSessions(tasks, now, misses, weights);
 	const { days, unscheduled } = fillDays(sessions, input.budgetMinutes, now);
 
 	const exams: ExamPlan[] = sortedTargets.map((target) => {
 		const placed = days.flatMap((d) => d.items).filter((i) => i.eventId === target.event.id);
 		const left = unscheduled.filter((i) => i.eventId === target.event.id);
 		const readinessNow =
-			target.topics.length > 0 ? target.topics.reduce((a, t) => a + retentionAt(t, target.event.start), 0) / target.topics.length : null;
+			target.topics.length > 0 ? target.topics.reduce((a, t) => a + retentionAt(t, target.event.start, weights), 0) / target.topics.length : null;
 		const planned = plannedRecall.get(target.event.id);
 		const readinessPlanned = planned && planned.length > 0 ? planned.reduce((a, b) => a + b, 0) / planned.length : null;
 		const unscheduledMinutes = left.reduce((a, i) => a + i.minutes, 0);
@@ -496,7 +510,7 @@ export function planStudy(input: StudyPlanInput): StudyPlan {
 }
 
 /** Topic tasks → sessions: one per day, action, session and event. */
-function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<string>): Session[] {
+function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<string>, weights: FsrsWeights): Session[] {
 	const groups = new Map<string, Task[]>();
 	for (const task of tasks) {
 		const anchor = task.topic?.chatId ?? task.target?.event.id ?? task.klass?.event.id ?? "";
@@ -529,7 +543,7 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 			: material;
 		const topics = group.flatMap((t) => (t.topic ? [t.topic] : []));
 		const at = target ? target.event.start : studyAt(task.day, now);
-		topics.sort((a, b) => retentionAt(a, at) - retentionAt(b, at));
+		topics.sort((a, b) => retentionAt(a, at, weights) - retentionAt(b, at, weights));
 		const named = topics.slice(0, TOPICS_PER_ITEM).map((t) => t.title);
 		const list = `${named.join(", ")}${topics.length > named.length ? ` +${topics.length - named.length}` : ""}`;
 		const first = topics[0];
@@ -552,7 +566,7 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 					title: `Review ${list}`,
 					reason: target
 						? `${when}. Recall on the day would be about ${pct(worst)} without a review.${miss}`
-						: `Recall has dropped to ${pct(Math.min(...topics.map((t) => retentionAt(t, at))))}.${miss}`,
+						: `Recall has dropped to ${pct(Math.min(...topics.map((t) => retentionAt(t, at, weights))))}.${miss}`,
 					minutes: reviewMinutes(topics.length),
 				});
 				break;
@@ -608,7 +622,7 @@ function groupSessions(tasks: readonly Task[], now: number, misses: ReadonlySet<
 				const klass = task.klass!;
 				const course = klass.topics
 					.filter((t) => !reviewedOn.has(`${task.day}:${t.key}`))
-					.sort((a, b) => retentionAt(a, klass.event.start) - retentionAt(b, klass.event.start))
+					.sort((a, b) => retentionAt(a, klass.event.start, weights) - retentionAt(b, klass.event.start, weights))
 					.slice(0, TOPICS_PER_ITEM);
 				if (course.length === 0) break;
 				const stats = courseStats(klass.topics, misses);

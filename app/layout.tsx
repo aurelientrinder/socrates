@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Source_Sans_3 } from "next/font/google";
 import "katex/dist/katex.min.css";
 import "./globals.css";
@@ -8,6 +8,7 @@ import { ServerEventsProvider } from "@/components/server-events";
 import { AppearanceProvider } from "@/components/settings/appearance";
 import UpdateBanner from "@/components/update-banner";
 import { ReviewReminder } from "@/components/review-reminder";
+import { PwaRegister } from "@/components/pwa-register";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // One font for every bit of UI text (owner, 2026-11-03): Source Sans 3
@@ -26,8 +27,24 @@ const prose = Source_Sans_3({ subsets: ["latin"], variable: "--font-sans3" });
 const BOOT_THEME_SCRIPT = `(function(){try{var b=(window.lh&&window.lh.bootTheme)||null;if(!b){try{b=JSON.parse(localStorage.getItem("lh.appearance.boot")||"null")}catch(e){}}b=b||{};var m=b.mode||"light";if(m==="system")m=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";var d=document.documentElement;d.classList.toggle("dark",m==="dark");d.setAttribute("data-typeface",b.typeface==="classic"?"classic":"claude")}catch(e){}})()`;
 
 export const metadata: Metadata = {
-	title: "Learning Harness",
+	title: "Socrates",
 	description: "A teacher agent with a memory — sessions, quizzes, and a knowledge graph of what you know.",
+	appleWebApp: {
+		capable: true,
+		statusBarStyle: "default",
+		title: "Socrates",
+	},
+	icons: {
+		icon: "/icon.svg",
+		apple: "/icon.svg",
+	},
+};
+
+export const viewport: Viewport = {
+	themeColor: "#1c1917",
+	width: "device-width",
+	initialScale: 1,
+	viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -60,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 			<UpdateBanner />
 			{/* The opt-in daily review reminder (spaced repetition): renders nothing. */}
 			<ReviewReminder />
+			<PwaRegister />
 		</body>
 		</html>
 	);

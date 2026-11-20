@@ -21,6 +21,7 @@ import {
 import { startDraftSession } from "@/components/new-session";
 import { startPlanStep } from "@/components/plan-start";
 import { QUICK_SESSION_MINUTES, setSessionBudget } from "@/components/session-timer";
+import { StudyFlowLauncher } from "@/components/study-flow-strip";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { onSettingsSaved } from "@/components/settings-signal";
 import { Button } from "@/components/ui/button";
@@ -208,6 +209,7 @@ export function TodayShell({
 			{setup && <SetupChecklist setup={setup} onConnect={() => handlers.onOpenSettings?.("calendar")} onQuiz={quick} />}
 			<div className="flex flex-wrap items-start gap-6">
 				<div className="flex min-w-0 flex-[2_1_30rem] flex-col gap-6">
+					<StudyFlowLauncher />
 					{/* THE PLAN CARD (Today refine, 2026-11-08): the first step is
 					    the hero, with the start button right under its title, so the
 					    first click needs no reading; the rest of today's list sits

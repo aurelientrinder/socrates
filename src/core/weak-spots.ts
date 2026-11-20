@@ -20,7 +20,16 @@
  */
 
 import { CALIBRATED_WITHIN, CONFIDENT_MISS_FLOOR } from "./calibration.ts";
-import { GRADE_AGAIN, GRADE_GOOD, retentionReport, type RecallEvent, type TopicRetention } from "./retention.ts";
+import {
+	FSRS_WEIGHTS,
+	GRADE_AGAIN,
+	GRADE_GOOD,
+	retentionReport,
+	type ChainLink,
+	type FsrsWeights,
+	type RecallEvent,
+	type TopicRetention,
+} from "./retention.ts";
 
 /** How many of a topic's latest rated answers its overconfidence reads. */
 export const RECENT_ANSWERS = 5;
@@ -116,10 +125,15 @@ function reasonOf(r: {
 	return r.lastGrade === GRADE_AGAIN ? "You missed it the last time it was tested." : "Right last time, but only just: unsure or with hints.";
 }
 
-export function weakSpotReport(events: readonly RecallEvent[], now: number): WeakSpotReport {
+export function weakSpotReport(
+	events: readonly RecallEvent[],
+	now: number,
+	chains: readonly ChainLink[] = [],
+	weights: FsrsWeights = FSRS_WEIGHTS,
+): WeakSpotReport {
 	const byTopic = new Map<string, RecallEvent[]>();
 	for (const e of events) byTopic.set(e.topicKey, [...(byTopic.get(e.topicKey) ?? []), e]);
-	const { topics } = retentionReport(events, now);
+	const { topics } = retentionReport(events, now, chains, weights);
 	const all = topics
 		.map((t) => weakSpotOf(t, byTopic.get(t.key) ?? []))
 		.filter((s): s is WeakSpot => s !== null)

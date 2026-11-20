@@ -173,9 +173,16 @@ export function isExamId(id: string): boolean {
 	return EXAM_ID.test(id);
 }
 
-/** Where a session or exam id lives in the app. */
+/** Notes source ids ("src_…"): link to the Cards tab when shown as a topic home. */
+export function isNoteSourceId(id: string): boolean {
+	return id.startsWith("src_");
+}
+
+/** Where a session, exam, or flashcard deck id lives in the app. */
 export function sessionHref(id: string): string {
-	return isExamId(id) ? `/exam/${id}` : `/chat/${id}`;
+	if (isExamId(id)) return `/exam/${id}`;
+	if (isNoteSourceId(id)) return "/progress?tab=cards";
+	return `/chat/${id}`;
 }
 
 // ─── sizing ─────────────────────────────────────────────────────────────────

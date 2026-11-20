@@ -10,6 +10,7 @@ export * from "./events-stream.ts";
 export * from "./chats.ts";
 export { backupIfDue, exportData } from "./backup.ts";
 export { listSnapshots, restoreExport, restoreSnapshot, RestoreError } from "./restore.ts";
+export * from "./sync.ts";
 export * from "./review.ts";
 export * from "./flashcards.ts";
 export * from "./exams.ts";

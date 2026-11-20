@@ -388,6 +388,16 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			});
 			return;
 		}
+		case "diagnostic-context": {
+			// Auto-injected diagnostic hotspots (prerequisites, blind spots,
+			// miss patterns): user-side scaffolding, twin of graph-context.
+			out.push({
+				id: marker.id,
+				role: "user",
+				parts: [{ type: "data-diagnostic-context", id: `dc_${marker.id}`, data: marker.details }],
+			});
+			return;
+		}
 		case "review-context": {
 			// The review session's queue (spaced repetition): user-side
 			// scaffolding, the graph-context card's twin.

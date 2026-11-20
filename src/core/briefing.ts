@@ -21,7 +21,7 @@
  * lives in core/study-plan.ts; today's list is its first day.
  */
 
-import { retentionAt, type TopicRetention } from "./retention.ts";
+import { retentionAt, type FsrsWeights, type TopicRetention } from "./retention.ts";
 import { GROUP_SRC, LAB_SRC, LECTURE_SRC, OTHER_CLASS_SRC, TUTORIAL_SRC, CLASS_RE, sessionTypeOf, type SessionType } from "./session-type.ts";
 
 export { sessionTypeOf, type SessionType };
@@ -258,14 +258,16 @@ export function topicsForEvent(
 	const chatIds = confirmed ?? (raw.key ? suggestSessions(raw.label, sessions) : []);
 	const chatSet = new Set(chatIds);
 	const fromNotes = new Set(found ? (material[found.key]?.topicKeys ?? []) : []);
+	const notes = found ? (material[found.key]?.notes ?? []) : [];
+	const noteSet = new Set(notes.map((n) => n.id));
 	const words = tokens(event.title);
 	const matched = topics.filter(
 		(t) =>
 			chatSet.has(t.chatId) ||
+			noteSet.has(t.chatId) ||
 			fromNotes.has(t.key) ||
 			(!confirmed && words.size > 0 && overlaps(words, tokens(`${t.title} ${t.chatTitle}`))),
 	);
-	const notes = found ? (material[found.key]?.notes ?? []) : [];
 	return { topics: matched, course, linked: confirmed !== undefined, chatIds, notes };
 }
 
@@ -354,6 +356,8 @@ export interface BriefingInput {
 	budgetMinutes?: number;
 	/** The last saved plan from an earlier day, to say what changed. */
 	previous?: PlanSnapshot | null;
+	/** Active FSRS-6 weights (personal when fitted, else defaults). */
+	weights?: FsrsWeights;
 }
 
 /** The local calendar day a moment belongs to, shifted so the day starts at BRIEFING_HOUR. */
@@ -369,7 +373,7 @@ export function briefingDay(now: number): string {
  * first day as today's list.
  */
 export function planBriefing(input: BriefingInput): BriefingPlan {
-	const { now, topics, sessions, links, confidentMissChats } = input;
+	const { now, topics, sessions, links, confidentMissChats, weights } = input;
 	const material = input.material ?? {};
 	const budget = input.budgetMinutes ?? DEFAULT_BUDGET_MINUTES;
 	const reach = (kind: EventKind) => now + (kind === "exam" ? EXAM_HORIZON_DAYS : kind === "class" ? WEEK_DAYS : HORIZON_DAYS) * DAY_MS;
@@ -381,16 +385,17 @@ export function planBriefing(input: BriefingInput): BriefingPlan {
 	const upcoming: UpcomingEntry[] = [];
 	const targets: PlanTarget[] = [];
 	const classes: PlanClass[] = [];
+	const reviewable = (xs: readonly TopicRetention[]) => xs.filter((t) => t.kind !== "card");
 	for (const event of events) {
 		if (event.kind === "class") {
 			const match = topicsForEvent(event, topics, links, sessions, material);
-			classes.push({ event, course: match.course, topics: match.topics, chatIds: match.chatIds, notes: match.notes });
+			classes.push({ event, course: match.course, topics: reviewable(match.topics), chatIds: match.chatIds, notes: match.notes });
 			continue;
 		}
 		if (event.kind !== "exam" && event.kind !== "deadline") continue;
 		const match = topicsForEvent(event, topics, links, sessions, material);
 		const at = Math.max(event.start, now);
-		const projections = match.topics.map((t) => retentionAt(t, at));
+		const projections = match.topics.map((t) => retentionAt(t, at, weights));
 		upcoming.push({
 			event,
 			kind: event.kind,
@@ -405,13 +410,13 @@ export function planBriefing(input: BriefingInput): BriefingPlan {
 			event,
 			kind: event.kind,
 			label: match.course.label || event.title,
-			topics: match.topics,
+			topics: reviewable(match.topics),
 			chatIds: match.chatIds,
 			notes: match.notes,
 		});
 	}
 
-	const study = planStudy({ now, budgetMinutes: budget, targets, classes, topics, confidentMissChats });
+	const study = planStudy({ now, budgetMinutes: budget, targets, classes, topics: reviewable(topics), confidentMissChats, weights });
 
 	const todayEnd = new Date(now);
 	todayEnd.setHours(23, 59, 59, 999);

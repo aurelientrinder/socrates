@@ -73,7 +73,15 @@ export function usePlanSteps(messages: readonly PopupMessage[]): RailStep[] | nu
 	}, [messages]);
 }
 
-export function PlanRail({ steps, onOpenPlan }: { steps: readonly RailStep[]; onOpenPlan: () => void }) {
+export function PlanRail({
+	steps,
+	onOpenPlan,
+	onSelectStep,
+}: {
+	steps: readonly RailStep[];
+	onOpenPlan: () => void;
+	onSelectStep?: (nodeId: string) => void;
+}) {
 	return (
 		<aside
 			aria-labelledby="plan-rail-heading"
@@ -95,35 +103,40 @@ export function PlanRail({ steps, onOpenPlan }: { steps: readonly RailStep[]; on
 				</button>
 			</div>
 			<ol className="flex flex-col gap-[3px]">
-				{steps.map((s) => (
-					<li
-						key={s.id}
-						data-testid="plan-rail-step"
-						data-status={s.status}
-						aria-current={s.status === "current" ? "step" : undefined}
-						className={cn(
-							"flex items-start gap-2.5 rounded-lg px-2 py-1.75 text-[13.5px] leading-[1.3]",
-							s.status === "current" && "bg-ink-soft font-semibold text-foreground",
-							s.status === "visited" && "text-muted-foreground",
-						)}
-					>
-						<span
-							aria-hidden="true"
+				{steps.map((s) => {
+					const clickable = Boolean(onSelectStep) && s.status !== "upcoming";
+					return (
+						<li
+							key={s.id}
+							data-testid="plan-rail-step"
+							data-status={s.status}
+							aria-current={s.status === "current" ? "step" : undefined}
+							onClick={clickable ? () => onSelectStep?.(s.id) : undefined}
 							className={cn(
-								"mt-px flex size-4 shrink-0 items-center justify-center rounded-full",
-								s.status === "visited" && "bg-foreground/45 text-background",
-								s.status === "current" && "border-2 border-foreground!",
-								s.status === "upcoming" && "border-[1.5px] border-border",
+								"flex items-start gap-2.5 rounded-lg px-2 py-1.75 text-[13.5px] leading-[1.3]",
+								s.status === "current" && "bg-ink-soft font-semibold text-foreground",
+								s.status === "visited" && "text-muted-foreground",
+								clickable && "cursor-pointer transition-colors hover:bg-accent/70 hover:text-foreground",
 							)}
 						>
-							{s.status === "visited" && <CheckIcon className="size-2.5" strokeWidth={3.5} />}
-						</span>
-						<span>
-							{s.title}
-							{s.status === "visited" && <span className="sr-only"> (covered)</span>}
-						</span>
-					</li>
-				))}
+							<span
+								aria-hidden="true"
+								className={cn(
+									"mt-px flex size-4 shrink-0 items-center justify-center rounded-full",
+									s.status === "visited" && "bg-foreground/45 text-background",
+									s.status === "current" && "border-2 border-foreground!",
+									s.status === "upcoming" && "border-[1.5px] border-border",
+								)}
+							>
+								{s.status === "visited" && <CheckIcon className="size-2.5" strokeWidth={3.5} />}
+							</span>
+							<span>
+								{s.title}
+								{s.status === "visited" && <span className="sr-only"> (covered)</span>}
+							</span>
+						</li>
+					);
+				})}
 			</ol>
 			</div>
 		</aside>

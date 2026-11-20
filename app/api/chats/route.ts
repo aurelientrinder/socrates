@@ -1,6 +1,16 @@
 import { chainsForSelection, formatChainLine } from "@/src/core";
 import { newGraphContextMessage, type GraphContextPick } from "@/src/core";
-import { compactionInFlight, createChat, isTurnRunning, listChats, readSettingsRecord, stores, titleFromPrompt, warmupContextMessage } from "@/src/server";
+import {
+	compactionInFlight,
+	createChat,
+	diagnosticContextMessage,
+	isTurnRunning,
+	listChats,
+	readSettingsRecord,
+	stores,
+	titleFromPrompt,
+	warmupContextMessage,
+} from "@/src/server";
 import type { ChatListItem, LhMessage } from "@/src/core";
 
 /** The session picker's list: record-derived summaries (phase, pending
@@ -68,6 +78,10 @@ export async function POST(req: Request) {
 		);
 		opening.push(newGraphContextMessage(picks, chainLines));
 	}
+	// DIAGNOSTIC HOTSPOTS: inject structural prerequisite neighborhood,
+	// active overconfident blind spots, and recurring practice miss patterns.
+	const diagnostic = diagnosticContextMessage({ topic: title, pickedIds: picks.map((p) => p.id) });
+	if (diagnostic) opening.push(diagnostic);
 	// WARM-UP RECALL: unless the learner turned it off for this session
 	// (warmup: false), a learn or practice session opens with the weakest
 	// due topics from earlier sessions — the review agent asks them before

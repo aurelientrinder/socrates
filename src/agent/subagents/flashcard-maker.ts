@@ -52,6 +52,12 @@ const cardsSchema = Type.Object({
 			front: Type.String({ description: "The question the student answers from memory." }),
 			back: Type.String({ description: "The short answer, as the notes put it." }),
 			quote: Type.String({ description: "A passage copied exactly from the notes (6-40 words) that contains the answer." }),
+			nodeId: Type.Optional(
+				Type.String({
+					description:
+						"Optional: if <propositions> were provided and this card directly tests one of them, copy its exact id. Omit if none match.",
+				}),
+			),
 		}),
 		{ description: `The flashcards for this part of the notes (at most ${MAX_CARDS_PER_CHUNK}).` },
 	),
@@ -61,6 +67,7 @@ interface RawCard {
 	front: string;
 	back: string;
 	quote: string;
+	nodeId?: string;
 }
 
 export interface MadeCard {
@@ -68,6 +75,7 @@ export interface MadeCard {
 	back: string;
 	quote: string;
 	page?: number;
+	nodeId?: string;
 }
 
 export interface ChunkCards {
@@ -102,10 +110,17 @@ export async function makeChunkCards(opts: {
 	part: { i: number; n: number };
 	engine: PiEngine | undefined;
 	signal: AbortSignal | undefined;
+	propositions?: readonly { id: string; name: string; statement: string }[];
 	onUsage?: (usage: Usage, model: string) => void;
 }): Promise<ChunkCards> {
 	const { chunk } = opts;
 	const where = opts.part.n > 1 ? ` (part ${opts.part.i} of ${opts.part.n})` : "";
+	const props = opts.propositions ?? [];
+	const validNodeIds = new Set(props.map((p) => p.id));
+	const propBlock =
+		props.length > 0
+			? `\n\n<propositions>\nIf a card directly tests one of these propositions from the notes, set nodeId to its exact id (otherwise omit nodeId):\n${props.map((p) => `[${p.id}] ${p.name}: ${p.statement}`).join("\n")}\n</propositions>`
+			: "";
 	const submitted = await runSubmitAgent<{ cards: RawCard[] }>({
 		role: "extractor",
 		toolName: "submit_cards",
@@ -121,7 +136,7 @@ export async function makeChunkCards(opts: {
 				: `Only ${found} of ${cards.length} quotes were found in the notes. Copy each quote character for character from the notes (no paraphrase, no page headers), then submit all the cards again.`;
 		},
 		systemPrompt: FLASHCARD_INSTRUCTIONS,
-		prompt: `Notes file: ${opts.noteName}${where}\n\n<notes>\n${chunkText(chunk)}\n</notes>`,
+		prompt: `Notes file: ${opts.noteName}${where}\n\n<notes>\n${chunkText(chunk)}\n</notes>${propBlock}`,
 		engine: opts.engine,
 		signal: opts.signal,
 		onStep: (usage, model) => opts.onUsage?.(usage, model),
@@ -137,11 +152,13 @@ export async function makeChunkCards(opts: {
 			dropped++;
 			continue;
 		}
+		const nodeId = typeof c.nodeId === "string" && validNodeIds.has(c.nodeId) ? c.nodeId : undefined;
 		cards.push({
 			front: tidyCardText(c.front, 400),
 			back: tidyCardText(c.back),
 			quote: tidyCardText(c.quote, 400),
 			...(at.page !== undefined ? { page: at.page } : {}),
+			...(nodeId ? { nodeId } : {}),
 		});
 	}
 	return { cards, dropped };

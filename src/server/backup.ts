@@ -51,6 +51,8 @@ export function backupIfDue(now: Date = new Date()): void {
 				if (fs.existsSync(from)) await fs.promises.cp(from, path.join(tmp, folder), { recursive: true });
 			}
 			if (fs.existsSync(SETTINGS_FILE)) await fs.promises.copyFile(SETTINGS_FILE, path.join(tmp, "settings.json"));
+			const weightsFile = path.join(PATHS.data, "fsrs-weights.json");
+			if (fs.existsSync(weightsFile)) await fs.promises.copyFile(weightsFile, path.join(tmp, "fsrs-weights.json"));
 			await fs.promises.rename(tmp, path.join(dir, today));
 			const old = fs.readdirSync(dir).filter((d) => DAY.test(d)).sort().slice(0, -KEEP_SNAPSHOTS);
 			for (const d of old) await fs.promises.rm(path.join(dir, d), { recursive: true, force: true });
@@ -101,6 +103,11 @@ export function exportData(now: Date = new Date()): DataExport {
 		files["settings.json"] = fs.readFileSync(SETTINGS_FILE, "utf-8");
 	} catch {
 		// no settings yet
+	}
+	try {
+		files["fsrs-weights.json"] = fs.readFileSync(path.join(PATHS.data, "fsrs-weights.json"), "utf-8");
+	} catch {
+		// no personal FSRS weights yet
 	}
 	return { app: "socrates", format: 1, exportedAt: now.toISOString(), files };
 }

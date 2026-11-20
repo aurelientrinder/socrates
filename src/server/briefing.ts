@@ -15,6 +15,7 @@
  */
 
 import { renameWithRetry } from "../store/fs-atomic.ts";
+import { activeFsrsWeights } from "../store/fsrs-weights.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { PATHS } from "../../config.ts";
@@ -260,6 +261,7 @@ async function generate(now: number): Promise<Briefing> {
 		confidentMissChats,
 		budgetMinutes: readBriefingPrefs().budgetMinutes,
 		previous: previousPlan(day),
+		weights: activeFsrsWeights(),
 	});
 	if (plan.study) savePlanSnapshot(planSnapshot(plan.day, plan.study, retention.topics));
 	const { note, source } = await writeNote(plan);

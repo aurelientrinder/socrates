@@ -35,8 +35,10 @@ import {
 import { resolveRoleSpec } from "../core/settings-resolution.ts";
 import { providerKeyMissing } from "../core/settings.ts";
 import { flashcardStore, newCardId } from "../store/flashcards.ts";
+import { activeFsrsWeights } from "../store/fsrs-weights.ts";
 import { notesLibrary } from "../store/notes.ts";
 import { providerKeyPresent } from "./keys.ts";
+import { getGraph } from "../core/graph.ts";
 import { stores } from "./stores.ts";
 
 /** Tokens of notes per model call. Big enough that a 40-page PDF is a
@@ -117,12 +119,15 @@ export function startFlashcards(noteId: string, opts: { engine?: PiEngine } = {}
 
 	void (async () => {
 		const made: MadeCard[] = [];
+		const propositions = getGraph(stores.graphStore)
+			.nodes.filter((n) => n.provenance.some((p) => p.chatId === noteId))
+			.map((n) => ({ id: n.id, name: n.name, statement: n.statement }));
 		try {
 			for (const [i, chunk] of chunks.entries()) {
 				const signal = entry.controller.signal;
 				signal.throwIfAborted();
 				const result = await withBgLlmSlot(signal, () =>
-					makeChunkCards({ chunk, noteName: note.name, part: { i: i + 1, n: chunks.length }, engine, signal }),
+					makeChunkCards({ chunk, noteName: note.name, part: { i: i + 1, n: chunks.length }, engine, signal, propositions }),
 				);
 				for (const card of result.cards) if (!made.some((m) => sameFront(m.front, card.front))) made.push(card);
 				entry.run.partsDone = i + 1;
@@ -163,7 +168,16 @@ function saveMadeCards(noteId: string, noteName: string, made: MadeCard[]): void
 	const now = Date.now();
 	const fresh: Flashcard[] = made
 		.filter((m) => !kept.some((k) => sameFront(k.front, m.front)))
-		.map((m) => ({ id: newCardId(), front: m.front, back: m.back, quote: m.quote, ...(m.page !== undefined ? { page: m.page } : {}), createdAt: now, reviews: [] }));
+		.map((m) => ({
+			id: newCardId(),
+			front: m.front,
+			back: m.back,
+			quote: m.quote,
+			...(m.page !== undefined ? { page: m.page } : {}),
+			...(m.nodeId ? { nodeId: m.nodeId } : {}),
+			createdAt: now,
+			reviews: [],
+		}));
 	flashcardStore.save({ noteId, noteName, generatedAt: now, cards: [...kept, ...fresh] });
 }
 
@@ -176,22 +190,25 @@ function startOfLocalDay(now: number): number {
 /** One deck with every card's schedule (the Library's card list). */
 export function flashcardDeck(noteId: string, now: number = Date.now()): { summary: DeckSummary; cards: CardView[] } | null {
 	const deck = flashcardStore.get(noteId);
-	return deck ? { summary: deckSummary(deck, now), cards: cardViews(deck, now) } : null;
+	const weights = activeFsrsWeights();
+	return deck ? { summary: deckSummary(deck, now, weights), cards: cardViews(deck, now, weights) } : null;
 }
 
 export function flashcardDeckSummaries(now: number = Date.now()): DeckSummary[] {
-	return flashcardStore.list().map((d) => deckSummary(d, now));
+	const weights = activeFsrsWeights();
+	return flashcardStore.list().map((d) => deckSummary(d, now, weights));
 }
 
 /** The next round of cards: across every deck, or one deck. */
 export function flashcardQueue(opts: { noteId?: string; now?: number } = {}): CardQueue {
 	const now = opts.now ?? Date.now();
+	const weights = activeFsrsWeights();
 	const all = flashcardStore.list();
 	const decks = opts.noteId ? all.filter((d) => d.noteId === opts.noteId) : all;
 	// Today's new-card allowance is shared by every deck, so count it on all.
-	const queue = cardQueue(decks, now, startOfLocalDay(now));
+	const queue = cardQueue(decks, now, startOfLocalDay(now), { weights });
 	if (!opts.noteId) return queue;
-	const overall = cardQueue(all, now, startOfLocalDay(now));
+	const overall = cardQueue(all, now, startOfLocalDay(now), { weights });
 	const newAllowed = Math.min(queue.newToday, overall.newToday);
 	const due = queue.cards.filter((c) => c.schedule.status === "due");
 	const fresh = queue.cards.filter((c) => c.schedule.status === "new").slice(0, newAllowed);
@@ -209,7 +226,7 @@ export function answerFlashcard(noteId: string, cardId: string, verdict: CardVer
 		});
 		return found ? { ...d, cards } : null;
 	});
-	return deck ? (cardViews(deck, now).find((c) => c.id === cardId) ?? null) : null;
+	return deck ? (cardViews(deck, now, activeFsrsWeights()).find((c) => c.id === cardId) ?? null) : null;
 }
 
 /** Fix a card's wording. Its review history stays. */
