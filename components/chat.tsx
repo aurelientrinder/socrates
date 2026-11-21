@@ -72,15 +72,28 @@ import { GraphContextCard, type GraphContextData } from "@/components/graph-cont
 import { DiagnosticContextCard } from "@/components/diagnostic-context-card";
 import { SourcePane } from "@/components/source-pane";
 import { StudyFlowStrip } from "@/components/study-flow-strip";
-import { LessonStateStrip, SectionHeader } from "@/components/lesson-document";
+import {
+	DialogueArchiveToggle,
+	LessonStateStrip,
+	OpeningProbeDisclosure,
+	SectionHeader,
+	SectionMarginNote,
+	SectionQuotePopover,
+	SectionTrapCallout,
+	type LessonViewMode,
+} from "@/components/lesson-document";
 import {
 	deriveLessonSections,
 	derivePlanStatuses,
 	derivedNodeStatus,
+	distillLessonSection,
+	isExpositionPart,
 	messageIdFromHash,
+	openingProbeSpan,
 	sectionAnchorId,
 	sectionForMessage,
 	type DiagnosticContextData,
+	type DistilledSection,
 	type LessonSection,
 } from "@/src/core";
 import { ReviewContextCard, WarmupDoneDivider, type ReviewContextData } from "@/components/review-context-card";
@@ -1063,6 +1076,61 @@ export function Chat({
 		}
 		return map;
 	}, [lessonSections]);
+	const [lessonViewMode, setLessonViewMode] = useState<LessonViewMode>("textbook");
+	const [probeOpen, setProbeOpen] = useState(false);
+	const [expandedArchives, setExpandedArchives] = useState<Set<string>>(() => new Set());
+	const [sectionNotes, setSectionNotes] = useState<Record<string, string>>(() => ({}));
+	const [editingNoteNodeId, setEditingNoteNodeId] = useState<string | null>(null);
+	const transcriptRootRef = useRef<HTMLDivElement>(null);
+
+	const distilledByNode = useMemo(() => {
+		const map = new Map<string, DistilledSection>();
+		for (const s of lessonSections) {
+			map.set(s.nodeId, distillLessonSection(s, messages));
+		}
+		return map;
+	}, [lessonSections, messages]);
+	const probeSpan = useMemo(() => openingProbeSpan(lessonSections, messages), [lessonSections, messages]);
+	const isTextbookActive = lessonSections.length > 0 && lessonViewMode === "textbook";
+
+	const toggleArchive = useCallback((nodeId: string) => {
+		setExpandedArchives((prev) => {
+			const next = new Set(prev);
+			if (next.has(nodeId)) next.delete(nodeId);
+			else next.add(nodeId);
+			return next;
+		});
+	}, []);
+
+	const saveSectionNote = useCallback(
+		async (nodeId: string, note: string) => {
+			const trimmed = note.trim();
+			setEditingNoteNodeId((cur) => (cur === nodeId ? null : cur));
+			setSectionNotes((prev) => {
+				const next = { ...prev };
+				if (trimmed === "") delete next[nodeId];
+				else next[nodeId] = trimmed;
+				return next;
+			});
+			try {
+				const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}/section-notes`, {
+					method: "PUT",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ nodeId, note }),
+				});
+				if (res.ok) {
+					const data = (await res.json()) as { sectionNotes?: Record<string, string> };
+					if (data.sectionNotes && typeof data.sectionNotes === "object") {
+						setSectionNotes(data.sectionNotes);
+					}
+				}
+			} catch {
+				// optimistic state stays intact; next sync reconciles
+			}
+		},
+		[chatId],
+	);
+
 	const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
 	const toggleSection = useCallback((nodeId: string) => {
 		setCollapsedSections((prev) => {
@@ -1095,11 +1163,20 @@ export function Chat({
 			const targetId = messageIdFromHash(window.location.hash);
 			if (!targetId) return;
 			const secNode = sectionForMessage(lessonSections, messages, targetId);
-			if (!secNode) return;
+			if (!secNode) {
+				setProbeOpen(true);
+				return;
+			}
 			setCollapsedSections((prev) => {
 				if (!prev.has(secNode)) return prev;
 				const next = new Set(prev);
 				next.delete(secNode);
+				return next;
+			});
+			setExpandedArchives((prev) => {
+				if (prev.has(secNode)) return prev;
+				const next = new Set(prev);
+				next.add(secNode);
 				return next;
 			});
 		};
@@ -1135,9 +1212,16 @@ export function Chat({
 		try {
 			const res = await fetch(`/api/chats/${chatId}`);
 			if (!res.ok) return;
-			const record = (await res.json()) as { turns?: TurnUsage[]; pricing?: SessionPricing };
+			const record = (await res.json()) as {
+				turns?: TurnUsage[];
+				pricing?: SessionPricing;
+				sectionNotes?: Record<string, string>;
+			};
 			if (Array.isArray(record.turns)) setTurns(record.turns);
 			setPricing(record.pricing);
+			if (record.sectionNotes && typeof record.sectionNotes === "object") {
+				setSectionNotes(record.sectionNotes);
+			}
 		} catch {
 			// transient blip: stats stay on the last known figures
 		}
@@ -1656,6 +1740,8 @@ export function Chat({
 					<LessonStateStrip
 						sections={lessonSections}
 						totalPlanNodes={planTree?.nodes.length ?? lessonSections.length}
+						viewMode={lessonViewMode}
+						onViewModeChange={setLessonViewMode}
 						collapsed={collapsedSections}
 						onCollapseCovered={collapseCoveredSections}
 						onExpandAll={expandAllSections}
@@ -1676,7 +1762,13 @@ export function Chat({
 				<Conversation className="h-full min-w-0 flex-1" initial="instant" contextRef={scrollContextRef}>
 					<SessionMessageNavigation />
 					<ConversationContent className="min-h-full gap-0 p-0">
-						<div data-session-find-root="" className={`${COLUMN} flex flex-1 flex-col gap-4 pt-4`}>
+						<div ref={transcriptRootRef} data-session-find-root="" className={`${COLUMN} flex flex-1 flex-col gap-4 pt-4`}>
+							<SectionQuotePopover
+								containerRef={transcriptRootRef}
+								sections={lessonSections}
+								enabled={isTextbookActive}
+								onQuote={insertSourceQuote}
+							/>
 							{messages.length === 0 && !busy && (
 								<ConversationEmptyState
 									title="New session"
@@ -1687,25 +1779,85 @@ export function Chat({
 							{messages.map((m, mi) => {
 								const startSection = sectionStartByIndex.get(mi);
 								const enclosingSection = sectionByMessageIndex.get(mi);
-								if (enclosingSection && collapsedSections.has(enclosingSection.nodeId)) {
+								const isSectionEnd = enclosingSection ? mi === enclosingSection.endIndex : false;
+								const distilled = enclosingSection ? distilledByNode.get(enclosingSection.nodeId) : undefined;
+								const isMasteredTextbook = isTextbookActive && enclosingSection?.status === "visited";
+								const archiveOpen = enclosingSection ? expandedArchives.has(enclosingSection.nodeId) : false;
+								const isDiagnosticCard = m.parts.some((p) => p.type === "data-diagnostic-context");
+								const isProbeRow = Boolean(
+									isTextbookActive && probeSpan && mi >= probeSpan.startIndex && mi <= probeSpan.endIndex,
+								);
+								const hideInProbe = isProbeRow && !probeOpen && !isDiagnosticCard;
+
+								if (!isTextbookActive && enclosingSection && collapsedSections.has(enclosingSection.nodeId)) {
 									return startSection ? (
 										<SectionHeader
 											key={`sec-${startSection.nodeId}`}
 											section={startSection}
+											viewMode="transcript"
 											collapsed={true}
 											onToggle={() => toggleSection(startSection.nodeId)}
 										/>
 									) : null;
 								}
+
+								const isStructuralMarker =
+									m.role === "user" &&
+									(isSubagentSteer(m) ||
+										m.parts.some(
+											(p) =>
+												p.type === "data-diagnostic-context" ||
+												p.type === "data-graph-context" ||
+												p.type === "data-phase-divider",
+										));
+								const hideBodyInTextbook =
+									hideInProbe ||
+									(isMasteredTextbook &&
+										!archiveOpen &&
+										((m.role === "user" && !isStructuralMarker) ||
+											(m.role === "assistant" && !m.parts.some(isExpositionPart))));
+
 								return (
 									<Fragment key={m.id || `m-${mi}`}>
-										{startSection && (
-											<SectionHeader
-												section={startSection}
-												collapsed={false}
-												onToggle={() => toggleSection(startSection.nodeId)}
+										{isTextbookActive && probeSpan && mi === probeSpan.startIndex && (
+											<OpeningProbeDisclosure
+												count={probeSpan.count}
+												open={probeOpen}
+												onToggle={() => setProbeOpen((o) => !o)}
 											/>
 										)}
+										{startSection && (
+											<>
+												<SectionHeader
+													section={startSection}
+													viewMode={isTextbookActive ? "textbook" : "transcript"}
+													collapsed={false}
+													hasNote={Boolean(sectionNotes[startSection.nodeId]?.trim())}
+													noteOpen={editingNoteNodeId === startSection.nodeId}
+													onToggle={() => toggleSection(startSection.nodeId)}
+													onToggleNote={
+														isTextbookActive
+															? () =>
+																	setEditingNoteNodeId((cur) =>
+																		cur === startSection.nodeId ? null : startSection.nodeId,
+																	)
+															: undefined
+													}
+												/>
+												{isTextbookActive && (
+													<SectionMarginNote
+														nodeId={startSection.nodeId}
+														value={sectionNotes[startSection.nodeId] ?? ""}
+														editing={editingNoteNodeId === startSection.nodeId}
+														onStartEdit={() => setEditingNoteNodeId(startSection.nodeId)}
+														onSave={(next) => void saveSectionNote(startSection.nodeId, next)}
+														onCancel={() => setEditingNoteNodeId(null)}
+													/>
+												)}
+											</>
+										)}
+										{hideBodyInTextbook ? null : (
+										<div data-textbook-section={isTextbookActive && enclosingSection ? enclosingSection.nodeId : undefined}>
 										{m.role === "user" && isSubagentSteer(m) ? (
 									// Sub-agent delivery (wake-pipeline steer): NO message bubble — the
 									// artifact card sits in the transcript column directly, full width
@@ -1823,6 +1975,7 @@ export function Chat({
 									<Message from="assistant" className="max-w-full">
 									<MessageContent className="w-full">
 											{m.parts.map((part, pi) => {
+												if (isMasteredTextbook && !archiveOpen && !isExpositionPart(part)) return null;
 												const isLastPart = mi === messages.length - 1 && pi === m.parts.length - 1;
 												const thinking = cachedThinkingGroup(m.parts);
 												// The step boundary where teaching begins (round 8): when
@@ -1955,7 +2108,7 @@ export function Chat({
 												}
 											})}
 										</MessageContent>
-										{!(busy && mi === messages.length - 1) && (
+										{!(busy && mi === messages.length - 1) && !(isMasteredTextbook && !archiveOpen) && (
 											<ReplyActions
 												parts={m.parts}
 												onRetry={canRetry && mi === messages.length - 1 ? retryLast : undefined}
@@ -1966,6 +2119,19 @@ export function Chat({
 									)}
 								</div>
 									)}
+										</div>
+										)}
+										{isMasteredTextbook && isSectionEnd && distilled && enclosingSection && (
+											<div className="space-y-2 pb-1">
+												<SectionTrapCallout traps={distilled.traps} />
+												<DialogueArchiveToggle
+													nodeId={enclosingSection.nodeId}
+													distilled={distilled}
+													open={archiveOpen}
+													onToggle={() => toggleArchive(enclosingSection.nodeId)}
+												/>
+											</div>
+										)}
 									</Fragment>
 								);
 							})}

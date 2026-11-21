@@ -60,6 +60,8 @@ export interface ChatRecord {
 	 *  the record's open tail, so these never enter `messages`. Folded into
 	 *  the question's answer result when it is answered (core/asides.ts). */
 	asides?: ChatAside[];
+	/** Per-section personal margin notes keyed by PlanNode.id (Document-First Textbook UX). */
+	sectionNotes?: Record<string, string>;
 	/** SCHEMA STAMP (schema-versioning wave, owner 2026-10-10): LAZY v1 —
 	 *  existing records stay unstamped (absence reads as v1); every write
 	 *  stamps the current version. A record stamped NEWER than this build

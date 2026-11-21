@@ -319,6 +319,24 @@ function saveTree(id: string, tree: PlanTree | undefined): void {
 	writeChat(record);
 }
 
+/** Persist a per-section personal margin note (trimmed empty deletes the key). */
+function saveSectionNote(id: string, nodeId: string, note: string): Record<string, string> {
+	const record = getChat(id);
+	if (!record) throw new Error(`Chat not found: ${id}`);
+	const next: Record<string, string> = { ...(record.sectionNotes ?? {}) };
+	const trimmed = note.trim();
+	if (trimmed === "") {
+		delete next[nodeId];
+	} else {
+		next[nodeId] = trimmed;
+	}
+	if (Object.keys(next).length === 0) delete record.sectionNotes;
+	else record.sectionNotes = next;
+	// Like saveSettings / saveTree: editing a personal note does not bump updatedAt.
+	writeChat(record);
+	return next;
+}
+
 export const chatStore: ChatStore = {
 	createChat,
 	getChat,
@@ -327,6 +345,7 @@ export const chatStore: ChatStore = {
 	saveTurn,
 	saveTree,
 	saveSettings,
+	saveSectionNote,
 	renameChat,
 	deleteChat,
 	appendTurnUsage,

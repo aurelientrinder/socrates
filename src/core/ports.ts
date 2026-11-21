@@ -61,6 +61,8 @@ export interface ChatStore {
 	saveAsides(id: string, asides: ChatAside[]): void;
 	/** Append one extraction-run usage entry — idempotent per startedAt. */
 	appendExtractionUsage(id: string, entry: ExtractionRunUsage): void;
+	/** Persist a personal margin note for a plan section (empty removes it). */
+	saveSectionNote?(id: string, nodeId: string, note: string): Record<string, string>;
 	/** Persist the per-chat model/thinking settings (the model control).
 	 *  Replace-whole: the picker sends the complete settings object. */
 	saveSettings(id: string, settings: ChatSettings): void;
